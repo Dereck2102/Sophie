@@ -111,7 +111,7 @@ function savePlatformConfig(): void {
                 'flex-1 py-2.5 px-4 rounded-xl border-2 text-sm font-medium transition-all',
                 locale === 'es'
                   ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300'
-                  : 'border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:border-gray-300'
+                  : 'border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:border-gray-300 dark:hover:border-gray-500'
               ]"
             >
               🇪🇸 {{ t('config.languageES') }}
@@ -122,7 +122,7 @@ function savePlatformConfig(): void {
                 'flex-1 py-2.5 px-4 rounded-xl border-2 text-sm font-medium transition-all',
                 locale === 'en'
                   ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300'
-                  : 'border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:border-gray-300'
+                  : 'border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:border-gray-300 dark:hover:border-gray-500'
               ]"
             >
               🇺🇸 {{ t('config.languageEN') }}

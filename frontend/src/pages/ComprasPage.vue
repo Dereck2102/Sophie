@@ -48,7 +48,7 @@ const columns = [
   { key: 'categoria', label: 'Categoría', class: 'w-28' },
   { key: 'stock_actual', label: 'Stock', class: 'w-24' },
   { key: 'stock_minimo', label: 'Mín.', class: 'w-20' },
-  { key: 'precio_venta', label: 'Precio (S/)', class: 'w-28' },
+  { key: 'precio_venta', label: 'Precio ($)', class: 'w-28' },
 ]
 
 const alertas = computed(() =>

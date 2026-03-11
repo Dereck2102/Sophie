@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { ref, watch } from 'vue'
+import { ref } from 'vue'
 
 export type ThemeMode = 'light' | 'dark' | 'system'
 
@@ -28,8 +28,6 @@ export const useThemeStore = defineStore('theme', () => {
   mq.addEventListener('change', () => {
     if (mode.value === 'system') applyTheme('system')
   })
-
-  watch(mode, applyTheme)
 
   return { mode, setMode }
 })

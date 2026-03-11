@@ -404,10 +404,10 @@ const ticketIsFinished = computed(() => !!selectedTicket.value?.fecha_fin_trabaj
             >
               <div>
                 <p class="font-medium text-gray-800">{{ r.nombre }}</p>
-                <p class="text-xs text-gray-500">{{ r.cantidad }} × S/ {{ r.precio.toFixed(2) }}</p>
+                <p class="text-xs text-gray-500">{{ r.cantidad }} × ${{ r.precio.toFixed(2) }}</p>
               </div>
               <div class="flex items-center gap-2">
-                <span class="font-semibold text-gray-700">S/ {{ (r.cantidad * r.precio).toFixed(2) }}</span>
+                <span class="font-semibold text-gray-700">${{ (r.cantidad * r.precio).toFixed(2) }}</span>
                 <button @click="removeRepuesto(i)" class="text-red-400 hover:text-red-600 transition-colors">
                   <Trash2 :size="15" />
                 </button>
@@ -415,7 +415,7 @@ const ticketIsFinished = computed(() => !!selectedTicket.value?.fecha_fin_trabaj
             </div>
             <div class="flex justify-between font-semibold text-sm border-t pt-2 text-gray-800">
               <span>Total Repuestos</span>
-              <span>S/ {{ totalRepuestos.toFixed(2) }}</span>
+              <span>${{ totalRepuestos.toFixed(2) }}</span>
             </div>
           </div>
 

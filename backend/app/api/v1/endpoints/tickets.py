@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import base64
 import json
+import secrets
 from datetime import datetime, timezone
 from typing import Annotated, List, Optional
 
@@ -19,10 +21,12 @@ from app.infrastructure.models.tickets import (
     SLA,
     Ticket,
     TipoTicketEnum,
+    EstadoTicketEnum,
 )
 from app.infrastructure.models.usuario import RolEnum, Usuario
 from app.schemas.tickets import (
     IncidenciaITOut,
+    OrdenTrabajoPublicOut,
     ReparacionOut,
     ReparacionUpdate,
     RepuestoUsadoCreate,
@@ -39,6 +43,42 @@ router = APIRouter(prefix="/tickets", tags=["Soporte Técnico"])
 
 def _next_ticket_numero(count: int) -> str:
     return f"TKT-{count + 1:06d}"
+
+
+@router.get("/seguimiento/{token}", response_model=OrdenTrabajoPublicOut)
+async def get_orden_by_token(
+    token: str,
+    db: AsyncSession = Depends(get_db),
+) -> OrdenTrabajoPublicOut:
+    """Public endpoint – no authentication required. Used for client order tracking."""
+    result = await db.execute(
+        select(ReparacionTaller)
+        .options(selectinload(ReparacionTaller.repuestos), selectinload(ReparacionTaller.ticket))
+        .where(ReparacionTaller.token_seguimiento == token)
+    )
+    rep = result.scalar_one_or_none()
+    if not rep or not rep.ticket:
+        raise HTTPException(status_code=404, detail="Orden de trabajo no encontrada")
+
+    t = rep.ticket
+    return OrdenTrabajoPublicOut(
+        ticket_numero=t.numero,
+        ticket_titulo=t.titulo,
+        ticket_descripcion=t.descripcion,
+        ticket_estado=t.estado.value,
+        ticket_prioridad=t.prioridad.value,
+        ticket_fecha_creacion=t.fecha_creacion,
+        ticket_fecha_inicio=t.fecha_inicio_trabajo,
+        ticket_fecha_fin=t.fecha_fin_trabajo,
+        equipo_descripcion=rep.equipo_descripcion,
+        marca_equipo=rep.marca_equipo,
+        modelo_equipo=rep.modelo_equipo,
+        numero_serie_equipo=rep.numero_serie_equipo,
+        accesorios_recibidos=rep.accesorios_recibidos,
+        diagnostico=rep.diagnostico,
+        costo_reparacion=float(rep.costo_reparacion) if rep.costo_reparacion else None,
+        repuestos=rep.repuestos,
+    )
 
 
 @router.get("/", response_model=List[TicketOut])
@@ -66,15 +106,26 @@ async def create_ticket(
     count = count_result.scalar_one() or 0
     numero = _next_ticket_numero(count)
 
-    ticket = Ticket(
-        numero=numero,
-        **body.model_dump(),
-    )
+    ticket_data = body.model_dump(exclude={
+        "equipo_descripcion", "marca_equipo", "modelo_equipo",
+        "numero_serie_equipo", "accesorios_recibidos", "email_cliente",
+    })
+    ticket = Ticket(numero=numero, **ticket_data)
     db.add(ticket)
     await db.flush()
 
     if body.tipo == TipoTicketEnum.REPARACION:
-        db.add(ReparacionTaller(id_ticket=ticket.id_ticket))
+        token = secrets.token_urlsafe(32)
+        db.add(ReparacionTaller(
+            id_ticket=ticket.id_ticket,
+            equipo_descripcion=body.equipo_descripcion,
+            marca_equipo=body.marca_equipo,
+            modelo_equipo=body.modelo_equipo,
+            numero_serie_equipo=body.numero_serie_equipo,
+            accesorios_recibidos=body.accesorios_recibidos,
+            email_cliente=body.email_cliente,
+            token_seguimiento=token,
+        ))
     else:
         # Try to find applicable SLA
         sla_result = await db.execute(select(SLA).limit(1))
@@ -248,7 +299,10 @@ async def upload_fotos(
 
     existing: list[str] = json.loads(r.fotos_urls or "[]")
     for f in files:
-        existing.append(f.filename or "unknown")
+        content = await f.read()
+        b64 = base64.b64encode(content).decode()
+        mime = f.content_type or "image/jpeg"
+        existing.append(f"data:{mime};base64,{b64}")
     r.fotos_urls = json.dumps(existing)
     await db.flush()
     await db.refresh(r, ["repuestos"])

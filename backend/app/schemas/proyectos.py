@@ -46,6 +46,10 @@ class TareaCreate(BaseModel):
     titulo: str
     descripcion: Optional[str] = None
     estado: str = "pendiente"
+    prioridad: str = "media"
+    id_asignado: Optional[int] = None
+    fecha_vencimiento: Optional[datetime] = None
+    etiquetas: Optional[str] = None  # JSON array
     horas_estimadas: Optional[float] = None
 
 
@@ -53,6 +57,10 @@ class TareaUpdate(BaseModel):
     titulo: Optional[str] = None
     descripcion: Optional[str] = None
     estado: Optional[str] = None
+    prioridad: Optional[str] = None
+    id_asignado: Optional[int] = None
+    fecha_vencimiento: Optional[datetime] = None
+    etiquetas: Optional[str] = None
     horas_estimadas: Optional[float] = None
     horas_reales: Optional[float] = None
 
@@ -63,6 +71,10 @@ class TareaOut(BaseModel):
     titulo: str
     descripcion: Optional[str] = None
     estado: str
+    prioridad: str
+    id_asignado: Optional[int] = None
+    fecha_vencimiento: Optional[datetime] = None
+    etiquetas: Optional[str] = None
     horas_estimadas: Optional[float] = None
     horas_reales: float
     fecha_creacion: datetime

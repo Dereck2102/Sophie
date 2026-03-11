@@ -10,6 +10,12 @@ const routes: RouteRecordRaw[] = [
     meta: { public: true },
   },
   {
+    path: '/orden/:token',
+    name: 'OrdenTrabajo',
+    component: () => import('../pages/OrdenTrabajoPage.vue'),
+    meta: { public: true },
+  },
+  {
     path: '/',
     component: () => import('../layouts/MainLayout.vue'),
     meta: { requiresAuth: true },

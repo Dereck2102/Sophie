@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import {
   Users, ShoppingCart, Wrench, AlertCircle, TrendingUp, FolderOpen,
@@ -105,7 +105,7 @@ const cotizacionTotal = computed(() => Object.values(cotizacionStats.value).redu
 
 interface CotizacionSummary { estado: string }
 
-onMounted(async () => {
+async function loadData(): Promise<void> {
   try {
     const [statsRes, ticketRes, cotRes] = await Promise.all([
       api.get<DashboardStats>('/api/v1/dashboard/stats'),
@@ -124,6 +124,20 @@ onMounted(async () => {
   } finally {
     loading.value = false
   }
+}
+
+let refreshTimer: ReturnType<typeof setInterval> | null = null
+
+/** Refresh interval for dashboard KPIs — balance between freshness and API load */
+const DASHBOARD_REFRESH_MS = 60_000
+
+onMounted(async () => {
+  await loadData()
+  refreshTimer = setInterval(loadData, DASHBOARD_REFRESH_MS)
+})
+
+onUnmounted(() => {
+  if (refreshTimer) clearInterval(refreshTimer)
 })
 </script>
 

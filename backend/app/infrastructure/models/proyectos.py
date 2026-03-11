@@ -53,6 +53,10 @@ class Tarea(Base):
     titulo: Mapped[str] = mapped_column(String(300), nullable=False)
     descripcion: Mapped[str | None] = mapped_column(Text)
     estado: Mapped[str] = mapped_column(String(30), default="pendiente")
+    prioridad: Mapped[str] = mapped_column(String(20), default="media")
+    id_asignado: Mapped[int | None] = mapped_column(Integer, ForeignKey("usuario.id_usuario"))
+    fecha_vencimiento: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    etiquetas: Mapped[str | None] = mapped_column(Text)  # JSON array of strings
     horas_estimadas: Mapped[float | None] = mapped_column(Numeric(8, 2))
     horas_reales: Mapped[float] = mapped_column(Numeric(8, 2), default=0)
     fecha_creacion: Mapped[datetime] = mapped_column(
@@ -60,6 +64,7 @@ class Tarea(Base):
     )
 
     proyecto: Mapped["Proyecto"] = relationship(back_populates="tareas")
+    asignado: Mapped["Usuario | None"] = relationship(foreign_keys=[id_asignado])
     registros_tiempo: Mapped[list["RegistroTiempo"]] = relationship(back_populates="tarea")
 
 

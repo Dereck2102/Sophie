@@ -36,20 +36,23 @@ const linkCopied = ref(false)
 const reparacionLoading = ref(false)
 
 // New ticket form
-const form = ref({
-  tipo: 'reparacion',
-  id_cliente: 0,
-  id_tecnico: null as number | null,
-  prioridad: 'media',
-  titulo: '',
-  descripcion: '',
-  equipo_descripcion: '',
-  marca_equipo: '',
-  modelo_equipo: '',
-  numero_serie_equipo: '',
-  accesorios_recibidos: '',
-  email_cliente: '',
-})
+function initialFormState() {
+  return {
+    tipo: 'reparacion',
+    id_cliente: 0,
+    id_tecnico: null as number | null,
+    prioridad: 'media',
+    titulo: '',
+    descripcion: '',
+    equipo_descripcion: '',
+    marca_equipo: '',
+    modelo_equipo: '',
+    numero_serie_equipo: '',
+    accesorios_recibidos: '',
+    email_cliente: '',
+  }
+}
+const form = ref(initialFormState())
 
 // Elapsed timer
 const elapsedSeconds = ref(0)
@@ -283,11 +286,7 @@ async function handleCreate(): Promise<void> {
 }
 
 function resetForm(): void {
-  form.value = {
-    tipo: 'reparacion', id_cliente: 0, id_tecnico: null, prioridad: 'media',
-    titulo: '', descripcion: '', equipo_descripcion: '', marca_equipo: '',
-    modelo_equipo: '', numero_serie_equipo: '', accesorios_recibidos: '', email_cliente: '',
-  }
+  form.value = initialFormState()
   formError.value = null
 }
 

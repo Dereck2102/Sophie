@@ -23,6 +23,19 @@ const formError = ref<string | null>(null)
 
 const usuariosStore = useUsuarioStore()
 
+function initialTareaFormState() {
+  return {
+    titulo: '',
+    descripcion: '',
+    estado: 'pendiente' as EstadoTarea,
+    prioridad: 'media',
+    id_asignado: null as number | null,
+    fecha_vencimiento: '',
+    etiquetas: '',
+    horas_estimadas: '',
+  }
+}
+
 const form = ref({
   id_cliente: 0,
   nombre: '',
@@ -33,16 +46,7 @@ const form = ref({
   fecha_fin: '',
 })
 
-const tareaForm = ref({
-  titulo: '',
-  descripcion: '',
-  estado: 'pendiente' as EstadoTarea,
-  prioridad: 'media',
-  id_asignado: null as number | null,
-  fecha_vencimiento: '',
-  etiquetas: '',
-  horas_estimadas: '',
-})
+const tareaForm = ref(initialTareaFormState())
 
 const estadoVariant: Record<EstadoProyecto, 'default' | 'info' | 'success' | 'warning' | 'danger'> = {
   propuesta: 'info', en_progreso: 'warning', pausado: 'default', completado: 'success', cancelado: 'danger',
@@ -98,8 +102,8 @@ function parseEtiquetas(raw?: string): string[] {
   try {
     const parsed = JSON.parse(raw)
     if (Array.isArray(parsed)) return parsed as string[]
-  } catch {
-    // not JSON — treat as plain string
+  } catch (err) {
+    if (import.meta.env.DEV) console.warn('parseEtiquetas: invalid JSON', raw, err)
   }
   return []
 }
@@ -202,7 +206,7 @@ function resetForm(): void {
 }
 
 function resetTareaForm(): void {
-  tareaForm.value = { titulo: '', descripcion: '', estado: 'pendiente', prioridad: 'media', id_asignado: null, fecha_vencimiento: '', etiquetas: '', horas_estimadas: '' }
+  tareaForm.value = initialTareaFormState()
   formError.value = null
 }
 

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import { useRoute } from 'vue-router'
 import {
   LayoutDashboard,
@@ -9,6 +9,7 @@ import {
   Wrench,
   Code2,
   Lock,
+  UserCog,
   ChevronLeft,
   ChevronRight,
 } from 'lucide-vue-next'
@@ -18,15 +19,20 @@ const auth = useAuthStore()
 const route = useRoute()
 const collapsed = ref(false)
 
-const navItems = [
-  { path: '/', label: 'Dashboard', icon: LayoutDashboard },
-  { path: '/crm', label: 'CRM', icon: Users },
-  { path: '/ventas', label: 'Ventas', icon: ShoppingCart },
-  { path: '/compras', label: 'Compras', icon: Package },
-  { path: '/taller', label: 'Taller', icon: Wrench },
-  { path: '/proyectos', label: 'Proyectos', icon: Code2 },
-  { path: '/boveda', label: 'Bóveda', icon: Lock },
+const baseNavItems = [
+  { path: '/', label: 'Dashboard', icon: LayoutDashboard, adminOnly: false },
+  { path: '/crm', label: 'CRM', icon: Users, adminOnly: false },
+  { path: '/ventas', label: 'Ventas', icon: ShoppingCart, adminOnly: false },
+  { path: '/compras', label: 'Compras', icon: Package, adminOnly: false },
+  { path: '/taller', label: 'Taller', icon: Wrench, adminOnly: false },
+  { path: '/proyectos', label: 'Proyectos', icon: Code2, adminOnly: false },
+  { path: '/boveda', label: 'Bóveda', icon: Lock, adminOnly: false },
+  { path: '/usuarios', label: 'Usuarios', icon: UserCog, adminOnly: true },
 ]
+
+const navItems = computed(() =>
+  baseNavItems.filter((item) => !item.adminOnly || auth.user?.rol === 'admin')
+)
 
 function isActive(path: string): boolean {
   if (path === '/') return route.path === '/'

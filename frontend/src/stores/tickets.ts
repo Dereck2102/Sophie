@@ -30,5 +30,27 @@ export const useTicketStore = defineStore('tickets', () => {
     return data
   }
 
-  return { tickets, loading, fetchTickets, createTicket, updateTicket }
+  async function startTicket(id: number): Promise<Ticket> {
+    const { data } = await api.post<Ticket>(`/api/v1/tickets/${id}/start`)
+    const idx = tickets.value.findIndex((t) => t.id_ticket === id)
+    if (idx >= 0) tickets.value[idx] = data
+    return data
+  }
+
+  async function finishTicket(id: number): Promise<Ticket> {
+    const { data } = await api.post<Ticket>(`/api/v1/tickets/${id}/finish`)
+    const idx = tickets.value.findIndex((t) => t.id_ticket === id)
+    if (idx >= 0) tickets.value[idx] = data
+    return data
+  }
+
+  async function uploadFotos(id: number, files: File[]): Promise<void> {
+    const form = new FormData()
+    files.forEach((f) => form.append('files', f))
+    await api.post(`/api/v1/tickets/${id}/reparacion/fotos`, form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+  }
+
+  return { tickets, loading, fetchTickets, createTicket, updateTicket, startTicket, finishTicket, uploadFotos }
 })

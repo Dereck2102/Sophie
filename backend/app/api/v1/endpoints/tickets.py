@@ -48,9 +48,11 @@ async def list_tickets(
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=200),
 ) -> list[Ticket]:
-    result = await db.execute(
-        select(Ticket).offset(skip).limit(limit).order_by(Ticket.fecha_creacion.desc())
-    )
+    query = select(Ticket).offset(skip).limit(limit).order_by(Ticket.fecha_creacion.desc())
+    # Technicians only see their own assigned tickets
+    if current_user.rol in (RolEnum.TECNICO_TALLER, RolEnum.TECNICO_IT):
+        query = query.where(Ticket.id_tecnico == current_user.id_usuario)
+    result = await db.execute(query)
     return list(result.scalars().all())
 
 
@@ -134,6 +136,49 @@ async def update_ticket(
         setattr(ticket, k, v)
     if body.estado and body.estado.value in ("resuelto", "cerrado"):
         ticket.fecha_cierre = datetime.now(timezone.utc)
+    await db.flush()
+    return ticket
+
+
+def _assert_ticket_assignee(ticket: Ticket, current_user: Usuario) -> None:
+    """Raise 403 if current_user is not the assigned technician (admins are exempt)."""
+    if ticket.id_tecnico != current_user.id_usuario and current_user.rol != RolEnum.ADMIN:
+        raise HTTPException(status_code=403, detail="Not assigned to this ticket")
+
+
+@router.post("/{id_ticket}/start", response_model=TicketOut)
+async def start_ticket(
+    id_ticket: int,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[Usuario, Depends(get_current_user)],
+) -> Ticket:
+    """Mark a ticket as started (sets fecha_inicio_trabajo and status to en_progreso)."""
+    result = await db.execute(select(Ticket).where(Ticket.id_ticket == id_ticket))
+    ticket = result.scalar_one_or_none()
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+    _assert_ticket_assignee(ticket, current_user)
+    ticket.fecha_inicio_trabajo = datetime.now(timezone.utc)
+    ticket.estado = EstadoTicketEnum.EN_PROGRESO
+    await db.flush()
+    return ticket
+
+
+@router.post("/{id_ticket}/finish", response_model=TicketOut)
+async def finish_ticket(
+    id_ticket: int,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[Usuario, Depends(get_current_user)],
+) -> Ticket:
+    """Mark a ticket as finished (sets fecha_fin_trabajo and status to resuelto)."""
+    result = await db.execute(select(Ticket).where(Ticket.id_ticket == id_ticket))
+    ticket = result.scalar_one_or_none()
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+    _assert_ticket_assignee(ticket, current_user)
+    ticket.fecha_fin_trabajo = datetime.now(timezone.utc)
+    ticket.estado = EstadoTicketEnum.RESUELTO
+    ticket.fecha_cierre = datetime.now(timezone.utc)
     await db.flush()
     return ticket
 

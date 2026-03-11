@@ -22,6 +22,8 @@ const routes: RouteRecordRaw[] = [
       { path: 'taller', name: 'Taller', component: () => import('../pages/TallerPage.vue') },
       { path: 'proyectos', name: 'Proyectos', component: () => import('../pages/ProyectosPage.vue') },
       { path: 'boveda', name: 'Boveda', component: () => import('../pages/BovedaPage.vue') },
+      { path: 'usuarios', name: 'Usuarios', component: () => import('../pages/UsuariosPage.vue'), meta: { adminOnly: true } },
+      { path: 'perfil', name: 'Perfil', component: () => import('../pages/PerfilPage.vue') },
     ],
   },
 ]
@@ -36,6 +38,8 @@ router.beforeEach((to, _from, next) => {
   if (to.meta.requiresAuth && !auth.accessToken) {
     next({ name: 'Login', query: { redirect: to.fullPath } })
   } else if (to.name === 'Login' && auth.accessToken) {
+    next({ name: 'Dashboard' })
+  } else if (to.meta.adminOnly && auth.user && auth.user.rol !== 'admin') {
     next({ name: 'Dashboard' })
   } else {
     next()

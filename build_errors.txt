@@ -1,0 +1,27 @@
+src/components/TopBar.vue(3,24): error TS6133: 'User' is declared but its value is never read.
+src/pages/ClienteDetailPage.vue(6,31): error TS6133: 'Edit' is declared but its value is never read.
+src/pages/ComprasPage.vue(5,31): error TS6133: 'ArrowDown' is declared but its value is never read.
+src/pages/ComprasPage.vue(5,42): error TS6133: 'ArrowUp' is declared but its value is never read.
+src/pages/ComprasPage.vue(5,62): error TS6133: 'Filter' is declared but its value is never read.
+src/pages/CrmPage.vue(5,34): error TS6133: 'Filter' is declared but its value is never read.
+src/pages/CrmPage.vue(6,3): error TS6133: 'ArrowUpDown' is declared but its value is never read.
+src/pages/CrmPage.vue(6,16): error TS6133: 'Mail' is declared but its value is never read.
+src/pages/CrmPage.vue(6,22): error TS6133: 'Phone' is declared but its value is never read.
+src/pages/DashboardPage.vue(17,3): error TS6133: 'CheckCircle' is declared but its value is never read.
+src/pages/DashboardPage.vue(18,3): error TS6133: 'XCircle' is declared but its value is never read.
+src/pages/TallerPage.vue(2,26): error TS6133: 'computed' is declared but its value is never read.
+src/pages/TallerPage.vue(4,33): error TS6133: 'Filter' is declared but its value is never read.
+src/pages/TallerPage.vue(4,41): error TS6133: 'AlertTriangle' is declared but its value is never read.
+src/pages/TallerPage.vue(5,16): error TS6133: 'User' is declared but its value is never read.
+src/pages/TallerPage.vue(5,22): error TS6133: 'FileText' is declared but its value is never read.
+src/pages/TallerPage.vue(6,3): error TS6133: 'Clock' is declared but its value is never read.
+src/pages/TallerPage.vue(6,10): error TS6133: 'Hash' is declared but its value is never read.
+src/pages/TallerPage.vue(6,16): error TS6133: 'ChevronDown' is declared but its value is never read.
+src/pages/TallerPage.vue(171,7): error TS6133: 'tipoIcons' is declared but its value is never read.
+src/pages/VentasPage.vue(5,3): error TS6133: 'ChevronLeft' is declared but its value is never read.
+src/pages/VentasPage.vue(5,16): error TS6133: 'ChevronRight' is declared but its value is never read.
+src/pages/VentasPage.vue(5,30): error TS6133: 'MoreHorizontal' is declared but its value is never read.
+src/pages/VentasPage.vue(6,3): error TS6133: 'Building2' is declared but its value is never read.
+src/pages/VentasPage.vue(6,14): error TS6133: 'User' is declared but its value is never read.
+src/pages/VentasPage.vue(105,64): error TS18048: 'det' is possibly 'undefined'.
+src/pages/VentasPage.vue(106,13): error TS18048: 'det' is possibly 'undefined'.

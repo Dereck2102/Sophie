@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from typing import Annotated, List
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -63,8 +63,8 @@ async def create_cotizacion(
         Usuario, Depends(require_roles(RolEnum.VENDEDOR, RolEnum.ADMIN))
     ],
 ) -> Cotizacion:
-    count_result = await db.execute(select(Cotizacion))
-    count = len(list(count_result.scalars().all()))
+    count_result = await db.execute(select(func.count(Cotizacion.id_cotizacion)))
+    count = count_result.scalar_one() or 0
     numero = _next_numero_cotizacion(count)
 
     subtotal = 0.0

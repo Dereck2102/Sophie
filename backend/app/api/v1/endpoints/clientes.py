@@ -129,7 +129,7 @@ async def update_cliente(
     return cliente
 
 
-@router.delete("/{id_cliente}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{id_cliente}", response_model=None, status_code=status.HTTP_204_NO_CONTENT)
 async def delete_cliente(
     id_cliente: int,
     db: Annotated[AsyncSession, Depends(get_db)],

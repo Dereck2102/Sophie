@@ -122,7 +122,7 @@ async def update_credencial(
     return cred
 
 
-@router.delete("/{id_credencial}", status_code=204)
+@router.delete("/{id_credencial}", response_model=None, status_code=status.HTTP_204_NO_CONTENT)
 async def delete_credencial(
     id_credencial: int,
     db: Annotated[AsyncSession, Depends(get_db)],

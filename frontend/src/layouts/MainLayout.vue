@@ -13,6 +13,7 @@ const pageTitles: Record<string, string> = {
   '/taller': 'Taller de Reparaciones',
   '/proyectos': 'Proyectos & Asesoría',
   '/boveda': 'Bóveda de Credenciales',
+  '/usuarios': 'Gestión de Usuarios',
 }
 
 const pageTitle = () => {

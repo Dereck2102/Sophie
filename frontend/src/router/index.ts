@@ -23,6 +23,7 @@ const routes: RouteRecordRaw[] = [
       { path: 'proyectos', name: 'Proyectos', component: () => import('../pages/ProyectosPage.vue') },
       { path: 'boveda', name: 'Boveda', component: () => import('../pages/BovedaPage.vue') },
       { path: 'usuarios', name: 'Usuarios', component: () => import('../pages/UsuariosPage.vue'), meta: { adminOnly: true } },
+      { path: 'perfil', name: 'Perfil', component: () => import('../pages/PerfilPage.vue') },
     ],
   },
 ]

@@ -35,6 +35,8 @@ class TicketOut(BaseModel):
     titulo: str
     descripcion: Optional[str] = None
     fecha_creacion: datetime
+    fecha_inicio_trabajo: Optional[datetime] = None
+    fecha_fin_trabajo: Optional[datetime] = None
     fecha_cierre: Optional[datetime] = None
 
     model_config = {"from_attributes": True}

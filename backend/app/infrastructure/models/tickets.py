@@ -78,6 +78,8 @@ class Ticket(Base):
     fecha_creacion: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
+    fecha_inicio_trabajo: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    fecha_fin_trabajo: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     fecha_cierre: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     cliente: Mapped["Cliente"] = relationship(back_populates="tickets")

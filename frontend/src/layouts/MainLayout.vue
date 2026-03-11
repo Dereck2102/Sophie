@@ -14,6 +14,7 @@ const pageTitles: Record<string, string> = {
   '/proyectos': 'Proyectos & Asesoría',
   '/boveda': 'Bóveda de Credenciales',
   '/usuarios': 'Gestión de Usuarios',
+  '/perfil': 'Mi Perfil',
 }
 
 const pageTitle = () => {

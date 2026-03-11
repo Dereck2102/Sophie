@@ -33,6 +33,21 @@ class UsuarioUpdate(BaseModel):
     rol: Optional[RolEnum] = None
 
 
+class UsuarioSelfUpdate(BaseModel):
+    """Schema for users updating their own profile."""
+    nombre_completo: Optional[str] = None
+    email: Optional[EmailStr] = None
+    current_password: Optional[str] = None
+    new_password: Optional[str] = None
+
+    @field_validator("new_password")
+    @classmethod
+    def new_password_min_length(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None and len(v) < 8:
+            raise ValueError("Password must be at least 8 characters")
+        return v
+
+
 class UsuarioOut(UsuarioBase):
     id_usuario: int
     activo: bool

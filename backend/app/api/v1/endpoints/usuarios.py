@@ -8,9 +8,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, require_roles
 from app.core.database import get_db
-from app.core.security import hash_password
+from app.core.security import hash_password, verify_password
 from app.infrastructure.models.usuario import RolEnum, Usuario
-from app.schemas.usuario import UsuarioCreate, UsuarioOut, UsuarioUpdate
+from app.schemas.usuario import UsuarioCreate, UsuarioOut, UsuarioSelfUpdate, UsuarioUpdate
 
 router = APIRouter(prefix="/usuarios", tags=["Usuarios"])
 
@@ -48,6 +48,32 @@ async def create_usuario(
 async def get_me(
     current_user: Annotated[Usuario, Depends(get_current_user)],
 ) -> Usuario:
+    return current_user
+
+
+@router.patch("/me", response_model=UsuarioOut)
+async def update_my_profile(
+    body: UsuarioSelfUpdate,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[Usuario, Depends(get_current_user)],
+) -> Usuario:
+    if body.nombre_completo is not None:
+        current_user.nombre_completo = body.nombre_completo
+    if body.email is not None:
+        current_user.email = body.email
+    if body.new_password is not None:
+        if not body.current_password:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="current_password is required to set a new password",
+            )
+        if not verify_password(body.current_password, current_user.password_hash):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="La contraseña actual es incorrecta",
+            )
+        current_user.password_hash = hash_password(body.new_password)
+    await db.flush()
     return current_user
 
 

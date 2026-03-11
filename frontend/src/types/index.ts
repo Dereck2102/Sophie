@@ -93,6 +93,8 @@ export interface Ticket {
   titulo: string
   descripcion?: string
   fecha_creacion: string
+  fecha_inicio_trabajo?: string
+  fecha_fin_trabajo?: string
   fecha_cierre?: string
 }
 

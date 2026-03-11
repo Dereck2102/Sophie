@@ -16,13 +16,17 @@ from app.infrastructure.models.cliente import (
     Empresa,
     TipoClienteEnum,
 )
+from app.infrastructure.models.tickets import Ticket
 from app.infrastructure.models.usuario import RolEnum, Usuario
+from app.infrastructure.models.ventas import Cotizacion
 from app.schemas.cliente import (
     ClienteCreate,
     ClienteOut,
     ClienteUpdate,
     EventoClienteOut,
 )
+from app.schemas.tickets import TicketOut
+from app.schemas.ventas import CotizacionOut
 
 router = APIRouter(prefix="/clientes", tags=["CRM - Clientes"])
 
@@ -155,3 +159,32 @@ async def get_cliente_timeline(
         .order_by(EventoCliente.fecha.desc())
     )
     return list(result.scalars().all())
+
+
+@router.get("/{id_cliente}/tickets", response_model=List[TicketOut])
+async def get_cliente_tickets(
+    id_cliente: int,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[Usuario, Depends(get_current_user)],
+) -> list[Ticket]:
+    result = await db.execute(
+        select(Ticket)
+        .where(Ticket.id_cliente == id_cliente)
+        .order_by(Ticket.fecha_creacion.desc())
+    )
+    return list(result.scalars().all())
+
+
+@router.get("/{id_cliente}/cotizaciones", response_model=List[CotizacionOut])
+async def get_cliente_cotizaciones(
+    id_cliente: int,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[Usuario, Depends(get_current_user)],
+) -> list[Cotizacion]:
+    result = await db.execute(
+        select(Cotizacion)
+        .where(Cotizacion.id_cliente == id_cliente)
+        .order_by(Cotizacion.fecha_creacion.desc())
+    )
+    return list(result.scalars().all())
+

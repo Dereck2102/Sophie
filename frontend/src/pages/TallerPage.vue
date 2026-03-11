@@ -126,6 +126,10 @@ function closeDetail(): void {
   stopTimer()
   elapsedSeconds.value = 0
   actionError.value = null
+  // Revoke all object URLs to prevent memory leaks
+  fotoPreviews.value.forEach((url) => URL.revokeObjectURL(url))
+  fotoFiles.value = []
+  fotoPreviews.value = []
 }
 
 function handleScan(): void {

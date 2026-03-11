@@ -70,7 +70,7 @@ async def update_my_profile(
         if not verify_password(body.current_password, current_user.password_hash):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="La contraseña actual es incorrecta",
+                detail="No se pudo actualizar la contraseña. Verifica tus credenciales.",
             )
         current_user.password_hash = hash_password(body.new_password)
     await db.flush()

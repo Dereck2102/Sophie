@@ -17,6 +17,8 @@ export type EstadoTicket = 'abierto' | 'en_progreso' | 'esperando_cliente' | 're
 export type TipoTicket = 'reparacion' | 'incidencia_it'
 export type PrioridadTicket = 'baja' | 'media' | 'alta' | 'critica'
 export type EstadoSerie = 'disponible' | 'vendido' | 'en_reparacion' | 'baja'
+export type EstadoProyecto = 'propuesta' | 'en_progreso' | 'pausado' | 'completado' | 'cancelado'
+export type EstadoTarea = 'pendiente' | 'en_progreso' | 'completado'
 
 export interface Usuario {
   id_usuario: number
@@ -116,6 +118,29 @@ export interface EventoCliente {
   tipo_evento: string
   descripcion: string
   fecha: string
+}
+
+export interface Tarea {
+  id_tarea: number
+  id_proyecto: number
+  titulo: string
+  descripcion?: string
+  estado: EstadoTarea
+  horas_estimadas?: number
+  horas_reales: number
+  fecha_creacion: string
+}
+
+export interface Proyecto {
+  id_proyecto: number
+  id_cliente: number
+  nombre: string
+  descripcion?: string
+  estado: EstadoProyecto
+  presupuesto?: number
+  fecha_inicio?: string
+  fecha_fin?: string
+  fecha_creacion: string
 }
 
 export interface TokenResponse {

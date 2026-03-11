@@ -30,7 +30,7 @@ withDefaults(
       variant === 'secondary' && 'bg-gray-200 text-gray-800 hover:bg-gray-300 focus:ring-gray-400',
       variant === 'danger' && 'bg-red-500 text-white hover:bg-red-600 focus:ring-red-400',
       variant === 'success' && 'bg-cyan-700 text-white hover:bg-cyan-800 focus:ring-cyan-500',
-      variant === 'ghost' && 'bg-transparent text-gray-600 hover:bg-gray-100 focus:ring-gray-300',
+      variant === 'ghost' && 'bg-transparent text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 focus:ring-gray-300',
     ]"
   >
     <svg v-if="loading" class="animate-spin -ml-1 mr-2 h-4 w-4" fill="none" viewBox="0 0 24 24">

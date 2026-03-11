@@ -66,7 +66,7 @@ const filteredRows = computed(() =>
     .map((p) => ({
       ...p,
       id: p.id_producto,
-      precio_venta: `S/ ${Number(p.precio_venta).toFixed(2)}`,
+      precio_venta: `$${Number(p.precio_venta).toFixed(2)}`,
     }))
 )
 

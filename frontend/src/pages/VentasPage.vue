@@ -58,7 +58,7 @@ const lineSubtotal = (item: LineItem) =>
   item.cantidad * item.precio_unitario * (1 - item.descuento / 100)
 
 const formSubtotal = computed(() => form.value.items.reduce((s, i) => s + lineSubtotal(i), 0))
-const formImpuesto = computed(() => formSubtotal.value * 0.18)
+const formImpuesto = computed(() => formSubtotal.value * 0.12)
 const formTotal = computed(() => formSubtotal.value + formImpuesto.value)
 
 const columns = [
@@ -99,8 +99,8 @@ const filteredRows = computed(() =>
     .map((c) => ({
       ...c,
       id: c.id_cotizacion,
-      total: `S/ ${Number(c.total).toFixed(2)}`,
-      fecha_creacion: new Date(c.fecha_creacion).toLocaleDateString('es-PE'),
+      total: `$${Number(c.total).toFixed(2)}`,
+      fecha_creacion: new Date(c.fecha_creacion).toLocaleDateString('en-US'),
     }))
 )
 
@@ -323,7 +323,7 @@ function resetForm(): void {
               class="w-full text-left px-3 py-2 text-sm hover:bg-blue-50 transition-colors flex items-center justify-between"
             >
               <span>{{ p.nombre }} <span class="text-gray-400 text-xs">({{ p.codigo }})</span></span>
-              <span class="text-blue-600 font-medium">S/ {{ p.precio_venta.toFixed(2) }}</span>
+              <span class="text-blue-600 font-medium">${{ p.precio_venta.toFixed(2) }}</span>
             </button>
           </div>
         </div>
@@ -353,7 +353,7 @@ function resetForm(): void {
                 <td class="px-3 py-2">
                   <input v-model.number="item.descuento" type="number" min="0" max="100" class="w-16 text-right px-1 py-1 border rounded text-xs focus:ring-1 focus:ring-blue-500 outline-none" />
                 </td>
-                <td class="px-3 py-2 text-right font-medium">S/ {{ lineSubtotal(item).toFixed(2) }}</td>
+                <td class="px-3 py-2 text-right font-medium">${{ lineSubtotal(item).toFixed(2) }}</td>
                 <td class="px-3 py-2">
                   <button type="button" @click="removeItem(idx)" class="text-red-400 hover:text-red-600"><Trash2 :size="14" /></button>
                 </td>
@@ -362,17 +362,17 @@ function resetForm(): void {
             <tfoot class="bg-gray-50 text-sm">
               <tr>
                 <td colspan="4" class="px-3 py-2 text-right text-gray-600">Subtotal</td>
-                <td class="px-3 py-2 text-right font-semibold">S/ {{ formSubtotal.toFixed(2) }}</td>
+                <td class="px-3 py-2 text-right font-semibold">${{ formSubtotal.toFixed(2) }}</td>
                 <td></td>
               </tr>
               <tr>
-                <td colspan="4" class="px-3 py-2 text-right text-gray-600">IGV (18%)</td>
-                <td class="px-3 py-2 text-right font-semibold">S/ {{ formImpuesto.toFixed(2) }}</td>
+                <td colspan="4" class="px-3 py-2 text-right text-gray-600">IVA (12%)</td>
+                <td class="px-3 py-2 text-right font-semibold">${{ formImpuesto.toFixed(2) }}</td>
                 <td></td>
               </tr>
               <tr class="text-base">
                 <td colspan="4" class="px-3 py-2 text-right font-bold text-gray-800">Total</td>
-                <td class="px-3 py-2 text-right font-bold text-blue-700">S/ {{ formTotal.toFixed(2) }}</td>
+                <td class="px-3 py-2 text-right font-bold text-blue-700">${{ formTotal.toFixed(2) }}</td>
                 <td></td>
               </tr>
             </tfoot>

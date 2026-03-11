@@ -43,7 +43,7 @@ const statCards = [
   {
     label: 'Ventas este Mes', key: 'revenue_mes' as keyof DashboardStats,
     icon: TrendingUp, color: 'text-emerald-600', bg: 'bg-emerald-50',
-    link: '/ventas', format: (v: number) => `S/ ${v.toLocaleString('es-PE', { minimumFractionDigits: 2 })}`
+    link: '/ventas', format: (v: number) => `$${v.toLocaleString('en-US', { minimumFractionDigits: 2 })}`
   },
   {
     label: 'Cotizaciones (mes)', key: 'cotizaciones_mes' as keyof DashboardStats,
@@ -136,7 +136,7 @@ onMounted(async () => {
           Bienvenido, {{ auth.user?.nombre_completo ?? auth.user?.username }} 👋
         </h1>
         <p class="text-gray-500 text-sm mt-1">
-          {{ new Date().toLocaleDateString('es-PE', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }) }}
+          {{ new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }) }}
         </p>
       </div>
     </div>

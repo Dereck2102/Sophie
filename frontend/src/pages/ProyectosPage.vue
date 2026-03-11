@@ -44,8 +44,8 @@ const rows = computed(() =>
   proyectos.value.map((p) => ({
     ...p,
     id: p.id_proyecto,
-    presupuesto: p.presupuesto ? `S/ ${Number(p.presupuesto).toFixed(2)}` : '—',
-    fecha_creacion: new Date(p.fecha_creacion).toLocaleDateString('es-PE'),
+    presupuesto: p.presupuesto ? `$${Number(p.presupuesto).toFixed(2)}` : '—',
+    fecha_creacion: new Date(p.fecha_creacion).toLocaleDateString('en-US'),
   }))
 )
 

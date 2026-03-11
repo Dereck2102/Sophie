@@ -46,9 +46,11 @@ const estadoVariant: Record<string, 'warning' | 'info' | 'success' | 'default'> 
 
 onMounted(async () => {
   try {
-    const [ticketRes] = await Promise.all([
+    const [statsRes, ticketRes] = await Promise.all([
+      api.get<DashboardStats>('/api/v1/dashboard/stats'),
       api.get<Ticket[]>('/api/v1/tickets/', { params: { limit: 5 } }),
     ])
+    stats.value = statsRes.data
     recentTickets.value = ticketRes.data
   } catch {
     // silently fail

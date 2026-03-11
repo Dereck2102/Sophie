@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Annotated, List
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -57,8 +57,8 @@ async def create_orden(
         Usuario, Depends(require_roles(RolEnum.COMPRADOR, RolEnum.ADMIN))
     ],
 ) -> OrdenCompra:
-    count_result = await db.execute(select(OrdenCompra))
-    count = len(list(count_result.scalars().all()))
+    count_result = await db.execute(select(func.count(OrdenCompra.id_orden)))
+    count = count_result.scalar_one() or 0
     numero = _next_numero_orden(count)
 
     total = 0.0

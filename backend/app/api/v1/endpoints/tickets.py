@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from typing import Annotated, List, Optional
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -60,8 +60,8 @@ async def create_ticket(
     db: Annotated[AsyncSession, Depends(get_db)],
     current_user: Annotated[Usuario, Depends(get_current_user)],
 ) -> Ticket:
-    count_result = await db.execute(select(Ticket))
-    count = len(list(count_result.scalars().all()))
+    count_result = await db.execute(select(func.count(Ticket.id_ticket)))
+    count = count_result.scalar_one() or 0
     numero = _next_ticket_numero(count)
 
     ticket = Ticket(

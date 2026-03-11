@@ -15,6 +15,13 @@ class TicketCreate(BaseModel):
     prioridad: PrioridadEnum = PrioridadEnum.MEDIA
     titulo: str
     descripcion: Optional[str] = None
+    # Equipment details for repair tickets (used on creation)
+    equipo_descripcion: Optional[str] = None
+    marca_equipo: Optional[str] = None
+    modelo_equipo: Optional[str] = None
+    numero_serie_equipo: Optional[str] = None
+    accesorios_recibidos: Optional[str] = None
+    email_cliente: Optional[str] = None
 
 
 class TicketUpdate(BaseModel):
@@ -44,18 +51,27 @@ class TicketOut(BaseModel):
 
 class ReparacionUpdate(BaseModel):
     equipo_descripcion: Optional[str] = None
+    marca_equipo: Optional[str] = None
+    modelo_equipo: Optional[str] = None
     numero_serie_equipo: Optional[str] = None
+    accesorios_recibidos: Optional[str] = None
     diagnostico: Optional[str] = None
     costo_reparacion: Optional[float] = None
+    email_cliente: Optional[str] = None
 
 
 class ReparacionOut(BaseModel):
     id_ticket: int
     equipo_descripcion: Optional[str] = None
+    marca_equipo: Optional[str] = None
+    modelo_equipo: Optional[str] = None
     numero_serie_equipo: Optional[str] = None
+    accesorios_recibidos: Optional[str] = None
     diagnostico: Optional[str] = None
     fotos_urls: Optional[str] = None
     costo_reparacion: Optional[float] = None
+    token_seguimiento: Optional[str] = None
+    email_cliente: Optional[str] = None
     repuestos: List["RepuestoUsadoOut"] = []
 
     model_config = {"from_attributes": True}
@@ -97,5 +113,27 @@ class SLACreate(BaseModel):
 class SLAOut(SLACreate):
     id_sla: int
     activo: bool
+
+    model_config = {"from_attributes": True}
+
+
+class OrdenTrabajoPublicOut(BaseModel):
+    """Public schema for client tracking - no authentication required."""
+    ticket_numero: str
+    ticket_titulo: str
+    ticket_descripcion: Optional[str] = None
+    ticket_estado: str
+    ticket_prioridad: str
+    ticket_fecha_creacion: datetime
+    ticket_fecha_inicio: Optional[datetime] = None
+    ticket_fecha_fin: Optional[datetime] = None
+    equipo_descripcion: Optional[str] = None
+    marca_equipo: Optional[str] = None
+    modelo_equipo: Optional[str] = None
+    numero_serie_equipo: Optional[str] = None
+    accesorios_recibidos: Optional[str] = None
+    diagnostico: Optional[str] = None
+    costo_reparacion: Optional[float] = None
+    repuestos: List[RepuestoUsadoOut] = []
 
     model_config = {"from_attributes": True}

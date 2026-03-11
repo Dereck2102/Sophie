@@ -10,6 +10,12 @@ const routes: RouteRecordRaw[] = [
     meta: { public: true },
   },
   {
+    path: '/orden/:token',
+    name: 'OrdenTrabajo',
+    component: () => import('../pages/OrdenTrabajoPage.vue'),
+    meta: { public: true },
+  },
+  {
     path: '/',
     component: () => import('../layouts/MainLayout.vue'),
     meta: { requiresAuth: true },
@@ -23,6 +29,7 @@ const routes: RouteRecordRaw[] = [
       { path: 'proyectos', name: 'Proyectos', component: () => import('../pages/ProyectosPage.vue') },
       { path: 'boveda', name: 'Boveda', component: () => import('../pages/BovedaPage.vue') },
       { path: 'usuarios', name: 'Usuarios', component: () => import('../pages/UsuariosPage.vue'), meta: { adminOnly: true } },
+      { path: 'configuracion', name: 'Configuracion', component: () => import('../pages/ConfigPage.vue'), meta: { adminOnly: true } },
       { path: 'perfil', name: 'Perfil', component: () => import('../pages/PerfilPage.vue') },
     ],
   },

@@ -304,7 +304,7 @@ async function handleCreateTicket(): Promise<void> {
                 <p class="text-xs text-gray-400 mt-0.5">{{ formatDate(cot.fecha_creacion) }}</p>
               </div>
               <div class="flex items-center gap-3 ml-3">
-                <span class="text-sm font-semibold text-gray-800">S/ {{ Number(cot.total).toFixed(2) }}</span>
+                <span class="text-sm font-semibold text-gray-800">${{ Number(cot.total).toFixed(2) }}</span>
                 <Badge :variant="estadoCotVariant[cot.estado] ?? 'default'">{{ cot.estado }}</Badge>
               </div>
             </div>

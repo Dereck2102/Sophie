@@ -20,16 +20,16 @@ const emit = defineEmits<{ close: [] }>()
         <div class="absolute inset-0 bg-black/50" @click="emit('close')" />
         <div
           :class="[
-            'relative bg-white rounded-xl shadow-xl w-full max-h-[90vh] overflow-y-auto',
+            'relative bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full max-h-[90vh] overflow-y-auto',
             size === 'sm' && 'max-w-sm',
             size === 'md' && 'max-w-md',
             size === 'lg' && 'max-w-lg',
             size === 'xl' && 'max-w-2xl',
           ]"
         >
-          <div v-if="title" class="flex items-center justify-between px-6 py-4 border-b border-gray-100">
-            <h3 class="text-lg font-semibold text-gray-800">{{ title }}</h3>
-            <button @click="emit('close')" class="text-gray-400 hover:text-gray-600 transition-colors">
+          <div v-if="title" class="flex items-center justify-between px-6 py-4 border-b border-gray-100 dark:border-gray-700">
+            <h3 class="text-lg font-semibold text-gray-800 dark:text-gray-100">{{ title }}</h3>
+            <button @click="emit('close')" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors">
               <X :size="20" />
             </button>
           </div>

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import {
   Users, ShoppingCart, Wrench, AlertCircle, TrendingUp, FolderOpen,
@@ -43,7 +43,7 @@ const statCards = [
   {
     label: 'Ventas este Mes', key: 'revenue_mes' as keyof DashboardStats,
     icon: TrendingUp, color: 'text-emerald-600', bg: 'bg-emerald-50',
-    link: '/ventas', format: (v: number) => `S/ ${v.toLocaleString('es-PE', { minimumFractionDigits: 2 })}`
+    link: '/ventas', format: (v: number) => `$${v.toLocaleString('en-US', { minimumFractionDigits: 2 })}`
   },
   {
     label: 'Cotizaciones (mes)', key: 'cotizaciones_mes' as keyof DashboardStats,
@@ -105,7 +105,7 @@ const cotizacionTotal = computed(() => Object.values(cotizacionStats.value).redu
 
 interface CotizacionSummary { estado: string }
 
-onMounted(async () => {
+async function loadData(): Promise<void> {
   try {
     const [statsRes, ticketRes, cotRes] = await Promise.all([
       api.get<DashboardStats>('/api/v1/dashboard/stats'),
@@ -124,6 +124,20 @@ onMounted(async () => {
   } finally {
     loading.value = false
   }
+}
+
+let refreshTimer: ReturnType<typeof setInterval> | null = null
+
+/** Refresh interval for dashboard KPIs — balance between freshness and API load */
+const DASHBOARD_REFRESH_MS = 60_000
+
+onMounted(async () => {
+  await loadData()
+  refreshTimer = setInterval(loadData, DASHBOARD_REFRESH_MS)
+})
+
+onUnmounted(() => {
+  if (refreshTimer) clearInterval(refreshTimer)
 })
 </script>
 
@@ -136,7 +150,7 @@ onMounted(async () => {
           Bienvenido, {{ auth.user?.nombre_completo ?? auth.user?.username }} 👋
         </h1>
         <p class="text-gray-500 text-sm mt-1">
-          {{ new Date().toLocaleDateString('es-PE', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }) }}
+          {{ new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }) }}
         </p>
       </div>
     </div>

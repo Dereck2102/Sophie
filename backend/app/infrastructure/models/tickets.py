@@ -99,10 +99,15 @@ class ReparacionTaller(Base):
         Integer, ForeignKey("ticket.id_ticket", ondelete="CASCADE"), primary_key=True
     )
     equipo_descripcion: Mapped[str | None] = mapped_column(Text)
+    marca_equipo: Mapped[str | None] = mapped_column(String(100))
+    modelo_equipo: Mapped[str | None] = mapped_column(String(100))
     numero_serie_equipo: Mapped[str | None] = mapped_column(String(100))
+    accesorios_recibidos: Mapped[str | None] = mapped_column(Text)
     diagnostico: Mapped[str | None] = mapped_column(Text)
-    fotos_urls: Mapped[str | None] = mapped_column(Text)  # JSON array of URLs
+    fotos_urls: Mapped[str | None] = mapped_column(Text)  # JSON array of base64 or URLs
     costo_reparacion: Mapped[float | None] = mapped_column(Numeric(12, 2))
+    token_seguimiento: Mapped[str | None] = mapped_column(String(64), unique=True, index=True)
+    email_cliente: Mapped[str | None] = mapped_column(String(255))
 
     ticket: Mapped["Ticket"] = relationship(back_populates="reparacion")
     repuestos: Mapped[list["RepuestoUsado"]] = relationship(back_populates="reparacion")

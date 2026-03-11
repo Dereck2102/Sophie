@@ -126,6 +126,10 @@ export interface Tarea {
   titulo: string
   descripcion?: string
   estado: EstadoTarea
+  prioridad: string
+  id_asignado?: number
+  fecha_vencimiento?: string
+  etiquetas?: string
   horas_estimadas?: number
   horas_reales: number
   fecha_creacion: string
@@ -141,6 +145,48 @@ export interface Proyecto {
   fecha_inicio?: string
   fecha_fin?: string
   fecha_creacion: string
+}
+
+export interface RepuestoUsado {
+  id_repuesto: number
+  id_producto: number
+  id_serie?: number
+  cantidad: number
+  precio_unitario: number
+}
+
+export interface Reparacion {
+  id_ticket: number
+  equipo_descripcion?: string
+  marca_equipo?: string
+  modelo_equipo?: string
+  numero_serie_equipo?: string
+  accesorios_recibidos?: string
+  diagnostico?: string
+  fotos_urls?: string
+  costo_reparacion?: number
+  token_seguimiento?: string
+  email_cliente?: string
+  repuestos: RepuestoUsado[]
+}
+
+export interface OrdenTrabajoPublic {
+  ticket_numero: string
+  ticket_titulo: string
+  ticket_descripcion?: string
+  ticket_estado: string
+  ticket_prioridad: string
+  ticket_fecha_creacion: string
+  ticket_fecha_inicio?: string
+  ticket_fecha_fin?: string
+  equipo_descripcion?: string
+  marca_equipo?: string
+  modelo_equipo?: string
+  numero_serie_equipo?: string
+  accesorios_recibidos?: string
+  diagnostico?: string
+  costo_reparacion?: number
+  repuestos: RepuestoUsado[]
 }
 
 export interface TokenResponse {

@@ -12,26 +12,30 @@ import {
   UserCog,
   ChevronLeft,
   ChevronRight,
+  Settings,
 } from 'lucide-vue-next'
 import { useAuthStore } from '../../stores/auth'
+import { useI18n } from 'vue-i18n'
 
 const auth = useAuthStore()
 const route = useRoute()
+const { t } = useI18n()
 const collapsed = ref(false)
 
-const baseNavItems = [
-  { path: '/', label: 'Dashboard', icon: LayoutDashboard, adminOnly: false },
-  { path: '/crm', label: 'CRM', icon: Users, adminOnly: false },
-  { path: '/ventas', label: 'Ventas', icon: ShoppingCart, adminOnly: false },
-  { path: '/compras', label: 'Compras', icon: Package, adminOnly: false },
-  { path: '/taller', label: 'Taller', icon: Wrench, adminOnly: false },
-  { path: '/proyectos', label: 'Proyectos', icon: Code2, adminOnly: false },
-  { path: '/boveda', label: 'Bóveda', icon: Lock, adminOnly: false },
-  { path: '/usuarios', label: 'Usuarios', icon: UserCog, adminOnly: true },
-]
+const navItems = computed(() => [
+  { path: '/', label: t('nav.dashboard'), icon: LayoutDashboard, adminOnly: false },
+  { path: '/crm', label: t('nav.crm'), icon: Users, adminOnly: false },
+  { path: '/ventas', label: t('nav.ventas'), icon: ShoppingCart, adminOnly: false },
+  { path: '/compras', label: t('nav.compras'), icon: Package, adminOnly: false },
+  { path: '/taller', label: t('nav.taller'), icon: Wrench, adminOnly: false },
+  { path: '/proyectos', label: t('nav.proyectos'), icon: Code2, adminOnly: false },
+  { path: '/boveda', label: t('nav.boveda'), icon: Lock, adminOnly: false },
+  { path: '/usuarios', label: t('nav.usuarios'), icon: UserCog, adminOnly: true },
+  { path: '/configuracion', label: t('nav.configuracion'), icon: Settings, adminOnly: true },
+])
 
-const navItems = computed(() =>
-  baseNavItems.filter((item) => !item.adminOnly || auth.user?.rol === 'admin')
+const filteredNavItems = computed(() =>
+  navItems.value.filter((item) => !item.adminOnly || auth.user?.rol === 'admin')
 )
 
 function isActive(path: string): boolean {
@@ -75,7 +79,7 @@ function isActive(path: string): boolean {
     <!-- Nav Items -->
     <nav class="flex-1 px-2 py-4 space-y-1 overflow-y-auto">
       <router-link
-        v-for="item in navItems"
+        v-for="item in filteredNavItems"
         :key="item.path"
         :to="item.path"
         :class="[

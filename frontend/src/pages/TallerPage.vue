@@ -1,18 +1,22 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, computed } from 'vue'
+import { useRoute } from 'vue-router'
 import { Plus, ScanLine, Camera, Trash2, AlertTriangle, Play, CheckSquare, Clock, X, ImageIcon, Printer, Link2, Copy, Check } from 'lucide-vue-next'
 import Card from '../components/ui/Card.vue'
 import Table from '../components/ui/Table.vue'
 import Badge from '../components/ui/Badge.vue'
 import Button from '../components/ui/Button.vue'
 import Modal from '../components/ui/Modal.vue'
+import { useClienteStore } from '../stores/clientes'
 import { useTicketStore } from '../stores/tickets'
 import { useAuthStore } from '../stores/auth'
 import api from '../services/api'
-import type { Ticket, Reparacion } from '../types'
+import type { Ticket, Reparacion, Cliente, Usuario, Proyecto } from '../types'
 
 const ticketStore = useTicketStore()
+const clienteStore = useClienteStore()
 const auth = useAuthStore()
+const route = useRoute()
 
 const isTecnico = computed(() => auth.user?.rol === 'tecnico_taller' || auth.user?.rol === 'tecnico_it')
 const canCreate = computed(() => auth.user?.rol === 'admin' || auth.user?.rol === 'tecnico_taller')
@@ -27,6 +31,8 @@ const scanInput = ref<HTMLInputElement | null>(null)
 const repuestos = ref<{ nombre: string; cantidad: number; precio: number }[]>([])
 const fotoFiles = ref<File[]>([])
 const fotoPreviews = ref<string[]>([])
+const createFotoFiles = ref<File[]>([])
+const createFotoPreviews = ref<string[]>([])
 const nuevoRepuesto = ref({ nombre: '', cantidad: 1, precio: 0 })
 const actionLoading = ref(false)
 const actionError = ref<string | null>(null)
@@ -34,12 +40,15 @@ const saving = ref(false)
 const formError = ref<string | null>(null)
 const linkCopied = ref(false)
 const reparacionLoading = ref(false)
+const assignableUsers = ref<Usuario[]>([])
+const proyectos = ref<Proyecto[]>([])
 
 // New ticket form
 function initialFormState() {
   return {
     tipo: 'reparacion',
     id_cliente: 0,
+    id_proyecto: null as number | null,
     id_tecnico: null as number | null,
     prioridad: 'media',
     titulo: '',
@@ -53,6 +62,39 @@ function initialFormState() {
   }
 }
 const form = ref(initialFormState())
+
+const selectedCreateCliente = computed<Cliente | undefined>(() =>
+  clienteStore.clientes.find((cliente) => cliente.id_cliente === form.value.id_cliente)
+)
+
+const assignableOptions = computed(() =>
+  assignableUsers.value.filter((usuario) => [
+    'tecnico_taller',
+    'tecnico_it',
+    'consultor_senior',
+    'admin',
+  ].includes(usuario.rol))
+)
+
+const clientProjects = computed(() => {
+  if (!form.value.id_cliente) return []
+  return proyectos.value.filter((proyecto) => proyecto.id_cliente === form.value.id_cliente)
+})
+
+const clientTickets = computed(() => {
+  if (!form.value.id_cliente) return []
+  return ticketStore.tickets.filter((t) => t.id_cliente === form.value.id_cliente)
+})
+
+const persistedFotos = computed(() => {
+  if (!reparacion.value?.fotos_urls) return [] as string[]
+  try {
+    const parsed = JSON.parse(reparacion.value.fotos_urls)
+    return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === 'string') : []
+  } catch {
+    return []
+  }
+})
 
 // Elapsed timer
 const elapsedSeconds = ref(0)
@@ -108,8 +150,39 @@ const trackingUrl = computed(() => {
   return `${window.location.origin}/orden/${reparacion.value.token_seguimiento}`
 })
 
-onMounted(() => {
-  ticketStore.fetchTickets()
+onMounted(async () => {
+  await Promise.all([
+    ticketStore.fetchTickets(),
+    clienteStore.fetchClientes(),
+    api.get<Proyecto[]>('/api/v1/proyectos/').then((response) => {
+      proyectos.value = response.data
+    }).catch(() => {
+      proyectos.value = []
+    }),
+    api.get<Usuario[]>('/api/v1/usuarios/asignables').then((response) => {
+      assignableUsers.value = response.data
+    }).catch(() => {
+      assignableUsers.value = []
+    }),
+  ])
+
+  const clienteId = Number(route.query.clienteId)
+  const proyectoId = Number(route.query.proyectoId)
+  if (Number.isFinite(clienteId) && clienteId > 0) {
+    form.value.id_cliente = clienteId
+    if (typeof route.query.titulo === 'string') {
+      form.value.titulo = route.query.titulo
+    }
+    if (typeof route.query.descripcion === 'string') {
+      form.value.descripcion = route.query.descripcion
+    }
+    if (route.query.openCreate === '1') {
+      showCreateModal.value = true
+    }
+  }
+  if (Number.isFinite(proyectoId) && proyectoId > 0) {
+    form.value.id_proyecto = proyectoId
+  }
 })
 
 onUnmounted(() => {
@@ -168,6 +241,32 @@ async function openDetail(row: Record<string, unknown>): Promise<void> {
   }
 }
 
+async function openExistingTicket(ticket: Ticket): Promise<void> {
+  showCreateModal.value = false
+  selectedTicket.value = ticket
+  showDetail.value = true
+  repuestos.value = []
+  fotoFiles.value = []
+  fotoPreviews.value = []
+  scannedCode.value = ''
+  reparacion.value = null
+  startTimer(ticket)
+  setTimeout(() => scanInput.value?.focus(), 100)
+
+  // Load repair details
+  if (ticket.tipo === 'reparacion') {
+    reparacionLoading.value = true
+    try {
+      const { data } = await api.get<Reparacion>(`/api/v1/tickets/${ticket.id_ticket}/reparacion`)
+      reparacion.value = data
+    } catch {
+      // not yet created or no permissions — ignore
+    } finally {
+      reparacionLoading.value = false
+    }
+  }
+}
+
 function closeDetail(): void {
   showDetail.value = false
   stopTimer()
@@ -217,6 +316,24 @@ function removeFoto(idx: number): void {
   fotoPreviews.value.splice(idx, 1)
 }
 
+function handleCreateFotoUpload(event: Event): void {
+  const input = event.target as HTMLInputElement
+  if (input.files) {
+    Array.from(input.files).forEach((file) => {
+      createFotoFiles.value.push(file)
+      createFotoPreviews.value.push(URL.createObjectURL(file))
+    })
+    input.value = ''
+  }
+}
+
+function removeCreateFoto(idx: number): void {
+  const url = createFotoPreviews.value[idx]
+  if (url) URL.revokeObjectURL(url)
+  createFotoFiles.value.splice(idx, 1)
+  createFotoPreviews.value.splice(idx, 1)
+}
+
 async function handleStart(): Promise<void> {
   if (!selectedTicket.value) return
   actionLoading.value = true
@@ -242,7 +359,7 @@ async function handleFinish(): Promise<void> {
     selectedTicket.value = updated
     stopTimer()
     if (fotoFiles.value.length > 0) {
-      await ticketStore.uploadFotos(updated.id_ticket, fotoFiles.value)
+      reparacion.value = await ticketStore.uploadFotos(updated.id_ticket, fotoFiles.value)
     }
   } catch (e: unknown) {
     const err = e as { response?: { data?: { detail?: string } } }
@@ -263,6 +380,7 @@ async function handleCreate(): Promise<void> {
     const payload = {
       tipo: form.value.tipo,
       id_cliente: Number(form.value.id_cliente),
+      id_proyecto: form.value.id_proyecto || undefined,
       id_tecnico: form.value.id_tecnico || undefined,
       prioridad: form.value.prioridad,
       titulo: form.value.titulo,
@@ -274,7 +392,10 @@ async function handleCreate(): Promise<void> {
       accesorios_recibidos: form.value.accesorios_recibidos || undefined,
       email_cliente: form.value.email_cliente || undefined,
     }
-    await ticketStore.createTicket(payload)
+    const created = await ticketStore.createTicket(payload)
+    if (createFotoFiles.value.length > 0) {
+      await ticketStore.uploadFotos(created.id_ticket, createFotoFiles.value)
+    }
     showCreateModal.value = false
     resetForm()
   } catch (e: unknown) {
@@ -288,6 +409,9 @@ async function handleCreate(): Promise<void> {
 function resetForm(): void {
   form.value = initialFormState()
   formError.value = null
+  createFotoPreviews.value.forEach((url) => URL.revokeObjectURL(url))
+  createFotoFiles.value = []
+  createFotoPreviews.value = []
 }
 
 function printPage(): void {
@@ -353,12 +477,63 @@ const ticketIsFinished = computed(() => !!selectedTicket.value?.fecha_fin_trabaj
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <!-- Client + Technician -->
           <div>
-            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">ID Cliente *</label>
-            <input v-model.number="form.id_cliente" required type="number" min="1" class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none dark:bg-gray-700 dark:text-gray-100" />
+            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Cliente o empresa *</label>
+            <select v-model.number="form.id_cliente" required class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white dark:bg-gray-700 dark:text-gray-100">
+              <option :value="0">Selecciona un cliente</option>
+              <option v-for="cliente in clienteStore.clientes" :key="cliente.id_cliente" :value="cliente.id_cliente">
+                {{ cliente.empresa?.razon_social ?? cliente.cliente_b2c?.nombre_completo }}
+              </option>
+            </select>
+            <p v-if="selectedCreateCliente" class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              {{ selectedCreateCliente.tipo_cliente }} · {{ selectedCreateCliente.estado }}
+            </p>
           </div>
+
           <div>
-            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">ID Técnico Asignado</label>
-            <input v-model.number="form.id_tecnico" type="number" min="1" placeholder="Opcional" class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none dark:bg-gray-700 dark:text-gray-100" />
+            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Técnico o encargado</label>
+            <select v-model.number="form.id_tecnico" class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white dark:bg-gray-700 dark:text-gray-100">
+              <option :value="null">Sin asignar todavía</option>
+              <option v-for="usuario in assignableOptions" :key="usuario.id_usuario" :value="usuario.id_usuario">
+                {{ usuario.nombre_completo ?? usuario.username }} ({{ usuario.rol.replace('_', ' ') }})
+              </option>
+            </select>
+          </div>
+
+          <!-- Existing client tickets (NEW) -->
+          <div v-if="form.id_cliente && clientTickets.length > 0" class="sm:col-span-2 bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
+            <div class="flex items-center gap-2 mb-3">
+              <CheckSquare :size="16" class="text-blue-600 dark:text-blue-400" />
+              <h3 class="text-sm font-semibold text-blue-900 dark:text-blue-200">Tickets existentes del cliente</h3>
+            </div>
+            <div class="space-y-2">
+              <button
+                v-for="ticket in clientTickets"
+                :key="ticket.id_ticket"
+                type="button"
+                @click="openExistingTicket(ticket)"
+                class="w-full flex items-center justify-between p-3 bg-white dark:bg-gray-800 border border-blue-200 dark:border-blue-700 rounded-lg hover:bg-blue-50 dark:hover:bg-gray-700 transition-colors text-left"
+              >
+                <div class="flex-1 min-w-0">
+                  <p class="text-sm font-medium text-gray-800 dark:text-gray-200">{{ ticket.titulo }}</p>
+                  <p class="text-xs text-gray-500 dark:text-gray-400">{{ ticket.numero }} · {{ new Date(ticket.fecha_creacion).toLocaleDateString() }}</p>
+                </div>
+                <Badge :variant="ticket.estado === 'abierto' ? 'warning' : 'default'" class="text-xs">
+                  {{ ticket.estado }}
+                </Badge>
+              </button>
+            </div>
+            <p class="text-xs text-blue-600 dark:text-blue-400 mt-2">Haz clic para abrir un ticket existente en lugar de crear uno nuevo</p>
+          </div>
+
+          <div class="sm:col-span-2">
+            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Proyecto relacionado</label>
+            <select v-model.number="form.id_proyecto" :disabled="!form.id_cliente" class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white disabled:bg-gray-100 dark:bg-gray-700 dark:disabled:bg-gray-800 dark:text-gray-100">
+              <option :value="null">Sin proyecto asociado</option>
+              <option v-for="proyecto in clientProjects" :key="proyecto.id_proyecto" :value="proyecto.id_proyecto">
+                {{ proyecto.nombre }}
+              </option>
+            </select>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Solo aparecen proyectos del cliente seleccionado.</p>
           </div>
 
           <!-- Title + Priority -->
@@ -385,6 +560,32 @@ const ticketIsFinished = computed(() => !!selectedTicket.value?.fecha_fin_trabaj
         <div>
           <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Descripción del problema</label>
           <textarea v-model="form.descripcion" rows="2" class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none resize-none dark:bg-gray-700 dark:text-gray-100" placeholder="Describe detalladamente el problema reportado por el cliente..." />
+        </div>
+
+        <div class="border border-gray-200 dark:border-gray-600 rounded-xl p-4 space-y-3">
+          <div class="flex items-center gap-2 text-sm font-semibold text-gray-700 dark:text-gray-300">
+            <Camera :size="16" />
+            Evidencia inicial del equipo
+          </div>
+          <label class="block w-full border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-xl p-4 text-center cursor-pointer hover:border-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors">
+            <input type="file" multiple accept="image/*" class="hidden" @change="handleCreateFotoUpload" />
+            <div class="flex flex-col items-center gap-1 text-sm text-gray-500 dark:text-gray-400">
+              <ImageIcon :size="24" class="text-gray-400" />
+              Adjuntar fotos del equipo al momento de ingreso
+            </div>
+          </label>
+          <div v-if="createFotoPreviews.length > 0" class="grid grid-cols-3 gap-2">
+            <div
+              v-for="(preview, idx) in createFotoPreviews"
+              :key="preview"
+              class="relative rounded-lg overflow-hidden aspect-square bg-gray-100 dark:bg-gray-700"
+            >
+              <img :src="preview" :alt="`Foto inicial ${idx + 1}`" class="w-full h-full object-cover" />
+              <button type="button" @click="removeCreateFoto(idx)" class="absolute top-1 right-1 bg-red-500 text-white rounded-full p-0.5">
+                <X :size="12" />
+              </button>
+            </div>
+          </div>
         </div>
 
         <!-- Equipment Details -->
@@ -527,9 +728,9 @@ const ticketIsFinished = computed(() => !!selectedTicket.value?.fecha_fin_trabaj
             <div class="flex items-center gap-2 mb-2 text-gray-700 dark:text-gray-300">
               <Camera :size="18" />
               <span class="font-semibold text-sm">Fotos del Equipo</span>
-              <span v-if="fotoFiles.length < 3" class="text-xs text-amber-600 flex items-center gap-1">
+              <span v-if="fotoFiles.length === 0 && persistedFotos.length === 0" class="text-xs text-amber-600 flex items-center gap-1">
                 <AlertTriangle :size="12" />
-                Mín. 3 fotos
+                Aún sin evidencia cargada
               </span>
             </div>
             <label class="block w-full border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-xl p-4 text-center cursor-pointer hover:border-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors">
@@ -555,6 +756,18 @@ const ticketIsFinished = computed(() => !!selectedTicket.value?.fecha_fin_trabaj
                   <X :size="12" />
                 </button>
               </div>
+            </div>
+            <div v-if="persistedFotos.length > 0" class="mt-3 grid grid-cols-3 gap-2">
+              <a
+                v-for="(foto, idx) in persistedFotos"
+                :key="`${idx}-${foto.slice(0, 20)}`"
+                :href="foto"
+                target="_blank"
+                rel="noreferrer"
+                class="block rounded-lg overflow-hidden aspect-square bg-gray-100 dark:bg-gray-700"
+              >
+                <img :src="foto" :alt="`Foto registrada ${idx + 1}`" class="w-full h-full object-cover" />
+              </a>
             </div>
           </div>
 

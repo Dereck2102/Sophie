@@ -16,6 +16,7 @@ from app.infrastructure.models.cliente import (
     Empresa,
     TipoClienteEnum,
 )
+from app.infrastructure.models.proyectos import Proyecto
 from app.infrastructure.models.tickets import Ticket
 from app.infrastructure.models.usuario import RolEnum, Usuario
 from app.infrastructure.models.ventas import Cotizacion
@@ -139,10 +140,30 @@ async def delete_cliente(
     db: Annotated[AsyncSession, Depends(get_db)],
     current_user: Annotated[Usuario, Depends(require_roles(RolEnum.ADMIN))],
 ) -> None:
-    result = await db.execute(select(Cliente).where(Cliente.id_cliente == id_cliente))
+    result = await db.execute(
+        select(Cliente)
+        .options(selectinload(Cliente.empresa), selectinload(Cliente.cliente_b2c), selectinload(Cliente.eventos))
+        .where(Cliente.id_cliente == id_cliente)
+    )
     cliente = result.scalar_one_or_none()
     if not cliente:
         raise HTTPException(status_code=404, detail="Cliente not found")
+
+    tickets_count = await db.scalar(
+        select(Ticket.id_ticket).where(Ticket.id_cliente == id_cliente).limit(1)
+    )
+    cotizacion_count = await db.scalar(
+        select(Cotizacion.id_cotizacion).where(Cotizacion.id_cliente == id_cliente).limit(1)
+    )
+    proyecto_count = await db.scalar(
+        select(Proyecto.id_proyecto).where(Proyecto.id_cliente == id_cliente).limit(1)
+    )
+    if tickets_count or cotizacion_count or proyecto_count:
+        raise HTTPException(
+            status_code=400,
+            detail="No se puede eliminar un cliente con tickets, cotizaciones o proyectos asociados. Desactívalo si ya tiene historial operativo.",
+        )
+
     await db.delete(cliente)
     await db.flush()
 
@@ -183,6 +204,7 @@ async def get_cliente_cotizaciones(
 ) -> list[Cotizacion]:
     result = await db.execute(
         select(Cotizacion)
+        .options(selectinload(Cotizacion.detalles))
         .where(Cotizacion.id_cliente == id_cliente)
         .order_by(Cotizacion.fecha_creacion.desc())
     )

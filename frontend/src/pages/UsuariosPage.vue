@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
-import { Plus, Search, UserCog, ShieldCheck } from 'lucide-vue-next'
+import { Plus, Search, UserCog, ShieldCheck, Trash2 } from 'lucide-vue-next'
 import Card from '../components/ui/Card.vue'
 import Table from '../components/ui/Table.vue'
 import Badge from '../components/ui/Badge.vue'
@@ -14,8 +14,10 @@ const usuarioStore = useUsuarioStore()
 const searchQuery = ref('')
 const showCreateModal = ref(false)
 const showEditModal = ref(false)
+const showDeleteModal = ref(false)
 const selectedUser = ref<Usuario | null>(null)
 const saving = ref(false)
+const deleting = ref(false)
 const formError = ref<string | null>(null)
 
 const roles: RolEnum[] = [
@@ -62,6 +64,7 @@ const columns = [
   { key: 'email', label: 'Email' },
   { key: 'rol', label: 'Rol', class: 'w-40' },
   { key: 'activo', label: 'Estado', class: 'w-24' },
+  { key: 'acciones', label: '', class: 'w-20' },
 ]
 
 const filteredRows = computed(() =>
@@ -140,6 +143,31 @@ function resetCreateForm(): void {
   createForm.value = createFormDefaults()
   formError.value = null
 }
+
+function confirmDelete(row: Record<string, unknown>): void {
+  const user = usuarioStore.usuarios.find((u) => u.id_usuario === row.id_usuario)
+  if (!user) return
+  selectedUser.value = user
+  formError.value = null
+  showDeleteModal.value = true
+}
+
+async function handleDelete(): Promise<void> {
+  if (!selectedUser.value) return
+  deleting.value = true
+  formError.value = null
+  try {
+    await usuarioStore.deleteUsuario(selectedUser.value.id_usuario)
+    showDeleteModal.value = false
+    showEditModal.value = false
+    selectedUser.value = null
+  } catch (e: unknown) {
+    const err = e as { response?: { data?: { detail?: string } } }
+    formError.value = err.response?.data?.detail ?? 'Error al eliminar usuario'
+  } finally {
+    deleting.value = false
+  }
+}
 </script>
 
 <template>
@@ -193,6 +221,15 @@ function resetCreateForm(): void {
         </template>
         <template #nombre_completo="{ value }">
           <span class="text-gray-600">{{ value || '—' }}</span>
+        </template>
+        <template #acciones="{ row }">
+          <button
+            @click.stop="confirmDelete(row as Record<string, unknown>)"
+            class="p-2 text-red-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+            title="Eliminar usuario"
+          >
+            <Trash2 :size="14" />
+          </button>
         </template>
       </Table>
     </Card>
@@ -321,6 +358,15 @@ function resetCreateForm(): void {
           <Button
             variant="secondary"
             type="button"
+            class="mr-auto"
+            @click="showDeleteModal = true"
+          >
+            <Trash2 :size="14" class="mr-2" />
+            Eliminar
+          </Button>
+          <Button
+            variant="secondary"
+            type="button"
             @click="showEditModal = false; selectedUser = null; formError = null"
           >
             Cancelar
@@ -328,6 +374,24 @@ function resetCreateForm(): void {
           <Button type="submit" :loading="saving">Guardar Cambios</Button>
         </div>
       </form>
+    </Modal>
+
+    <Modal
+      :open="showDeleteModal"
+      title="Eliminar Usuario"
+      size="sm"
+      @close="showDeleteModal = false; formError = null"
+    >
+      <div class="space-y-4">
+        <p class="text-sm text-gray-600">
+          Esta acción eliminará la cuenta <strong>{{ selectedUser?.username }}</strong>. Úsala solo cuando ya no deba existir en el sistema.
+        </p>
+        <p v-if="formError" class="text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg">{{ formError }}</p>
+        <div class="flex justify-end gap-3">
+          <Button variant="secondary" type="button" @click="showDeleteModal = false">Cancelar</Button>
+          <Button :loading="deleting" @click="handleDelete">Eliminar Usuario</Button>
+        </div>
+      </div>
     </Modal>
   </div>
 </template>

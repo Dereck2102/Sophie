@@ -38,7 +38,9 @@ class Cliente(Base):
     )
     cotizaciones: Mapped[list["Cotizacion"]] = relationship(back_populates="cliente")
     tickets: Mapped[list["Ticket"]] = relationship(back_populates="cliente")
-    eventos: Mapped[list["EventoCliente"]] = relationship(back_populates="cliente")
+    eventos: Mapped[list["EventoCliente"]] = relationship(
+        back_populates="cliente", cascade="all, delete-orphan"
+    )
 
 
 class Empresa(Base):

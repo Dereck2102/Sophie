@@ -32,7 +32,7 @@ services:
       DATABASE_URL: postgresql+asyncpg://sophie_user:sophie_pass@postgres:5432/sophie_db
       SECRET_KEY: dev_secret_key_change_in_production
       MFA_ISSUER: "SOPHIE - Big Solutions"
-      VAULT_ENCRYPTION_KEY: dev_vault_key_32_bytes_change_it
+      VAULT_SECRET_KEY: MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=
       CORS_ORIGINS: '["http://localhost:3000", "http://localhost", "http://localhost:5173"]'
     depends_on:
       postgres:
@@ -44,6 +44,7 @@ services:
   frontend:
     build: ./frontend
     container_name: sophie-frontend
+    command: sh -c "npm ci && npm run dev -- --host 0.0.0.0"
     ports:
       - "5173:5173"
     environment:

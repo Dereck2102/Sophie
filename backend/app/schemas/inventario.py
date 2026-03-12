@@ -29,6 +29,7 @@ class InventarioCreate(BaseModel):
     descripcion: Optional[str] = None
     categoria: CategoriaInventarioEnum
     requiere_serie: bool = False
+    stock_actual: int = 0
     stock_minimo: int = 0
     precio_venta: float
     costo_adquisicion: float = 0
@@ -36,11 +37,16 @@ class InventarioCreate(BaseModel):
 
 
 class InventarioUpdate(BaseModel):
+    codigo: Optional[str] = None
     nombre: Optional[str] = None
     descripcion: Optional[str] = None
+    categoria: Optional[CategoriaInventarioEnum] = None
+    requiere_serie: Optional[bool] = None
+    stock_actual: Optional[int] = None
     precio_venta: Optional[float] = None
     costo_adquisicion: Optional[float] = None
     stock_minimo: Optional[int] = None
+    id_proveedor: Optional[int] = None
 
 
 class InventarioOut(BaseModel):
@@ -53,6 +59,7 @@ class InventarioOut(BaseModel):
     stock_actual: int
     stock_minimo: int
     precio_venta: float
+    costo_adquisicion: float
     id_proveedor: Optional[int] = None
 
     model_config = {"from_attributes": True}

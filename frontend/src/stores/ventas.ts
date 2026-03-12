@@ -35,5 +35,10 @@ export const useVentasStore = defineStore('ventas', () => {
     await fetchCotizaciones()
   }
 
-  return { cotizaciones, loading, fetchCotizaciones, createCotizacion, updateEstado, facturar }
+  async function deleteCotizacion(id: number): Promise<void> {
+    await api.delete(`/api/v1/ventas/cotizaciones/${id}`)
+    cotizaciones.value = cotizaciones.value.filter((c) => c.id_cotizacion !== id)
+  }
+
+  return { cotizaciones, loading, fetchCotizaciones, createCotizacion, updateEstado, facturar, deleteCotizacion }
 })

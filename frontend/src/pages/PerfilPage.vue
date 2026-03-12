@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
-import { UserCircle, Lock, Bell, CheckCircle, AlertCircle } from 'lucide-vue-next'
+import { UserCircle, Lock, Bell, CheckCircle, AlertCircle, Users, Package, Settings } from 'lucide-vue-next'
 import Card from '../components/ui/Card.vue'
 import Button from '../components/ui/Button.vue'
 import { useAuthStore } from '../stores/auth'
@@ -47,6 +47,12 @@ const userInitials = computed(() => {
     .join('')
     .toUpperCase()
 })
+
+const adminShortcuts = [
+  { label: 'Gestionar usuarios', route: '/usuarios', icon: Users, description: 'Editar roles, activar o eliminar cuentas' },
+  { label: 'Controlar inventario', route: '/compras', icon: Package, description: 'Ajustar stock, costos y catálogo' },
+  { label: 'Configuración', route: '/configuracion', icon: Settings, description: 'Parámetros globales del sistema' },
+]
 
 async function saveProfile(): Promise<void> {
   profileSaving.value = true
@@ -261,6 +267,21 @@ async function changePassword(): Promise<void> {
             Activa la autenticación de dos factores (MFA) desde el endpoint <code class="bg-amber-100 px-1 rounded">/api/v1/auth/mfa/setup</code> para proteger mejor tu cuenta.
           </p>
         </div>
+      </div>
+    </Card>
+
+    <Card v-if="auth.user?.rol === 'admin'" title="Herramientas de Administración">
+      <div class="grid gap-3 sm:grid-cols-3">
+        <router-link
+          v-for="shortcut in adminShortcuts"
+          :key="shortcut.route"
+          :to="shortcut.route"
+          class="rounded-xl border border-gray-200 px-4 py-3 hover:border-blue-300 hover:bg-blue-50 transition-colors"
+        >
+          <component :is="shortcut.icon" :size="18" class="text-blue-600" />
+          <p class="mt-3 text-sm font-semibold text-gray-900">{{ shortcut.label }}</p>
+          <p class="mt-1 text-xs text-gray-500">{{ shortcut.description }}</p>
+        </router-link>
       </div>
     </Card>
   </div>

@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.v1 import api_router
 from app.core.config import get_settings
-from app.core.database import engine
+from app.core.database import ensure_development_schema, engine
 from app.infrastructure.models import *  # noqa: F401,F403 - register all models
 
 settings = get_settings()
@@ -20,6 +20,7 @@ async def lifespan(app: FastAPI):
 
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+    await ensure_development_schema()
     yield
 
 

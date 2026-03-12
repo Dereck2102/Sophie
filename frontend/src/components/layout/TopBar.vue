@@ -1,20 +1,29 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { Search, Bell, LogOut, Moon, Sun, Globe } from 'lucide-vue-next'
+import { Search, Bell, LogOut, Moon, Sun, Globe, TriangleAlert, Info, ShieldAlert } from 'lucide-vue-next'
 import { useAuthStore } from '../../stores/auth'
 import { useThemeStore } from '../../stores/theme'
 import { useI18n } from 'vue-i18n'
+import { useNotificationStore } from '../../stores/notifications'
 
 const auth = useAuthStore()
 const themeStore = useThemeStore()
+const notificationStore = useNotificationStore()
 const router = useRouter()
 const { locale, t } = useI18n()
 const searchQuery = ref('')
+const showNotifications = ref(false)
 
 defineProps<{ title?: string }>()
 
 const isDark = computed(() => themeStore.mode === 'dark' || (themeStore.mode === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches))
+
+const hasNotifications = computed(() => notificationStore.unreadCount > 0)
+
+onMounted(() => {
+  notificationStore.fetchNotifications(true)
+})
 
 function toggleTheme(): void {
   themeStore.setMode(isDark.value ? 'light' : 'dark')
@@ -29,6 +38,24 @@ function toggleLanguage(): void {
 async function handleLogout(): Promise<void> {
   auth.logout()
   await router.push('/login')
+}
+
+async function toggleNotifications(): Promise<void> {
+  showNotifications.value = !showNotifications.value
+  if (showNotifications.value) {
+    await notificationStore.fetchNotifications(true)
+  }
+}
+
+async function openNotification(route: string): Promise<void> {
+  showNotifications.value = false
+  await router.push(route)
+}
+
+function notificationIcon(severity: 'info' | 'warning' | 'critical') {
+  if (severity === 'critical') return TriangleAlert
+  if (severity === 'warning') return ShieldAlert
+  return Info
 }
 </script>
 
@@ -69,20 +96,49 @@ async function handleLogout(): Promise<void> {
       </button>
 
       <!-- Notifications -->
-      <button class="relative p-2 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors">
-        <Bell :size="20" />
-        <span class="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full"></span>
-      </button>
-      <div class="w-px h-6 bg-gray-200 dark:bg-gray-700" />
-      <router-link
-        to="/perfil"
-        class="flex items-center gap-2 px-3 py-2 text-sm text-gray-600 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-lg transition-colors"
+      <div class="relative">
+      <button
+        @click="toggleNotifications"
+        class="relative p-2 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
       >
-        <div class="w-6 h-6 bg-blue-600 rounded-full flex items-center justify-center text-white text-xs font-bold uppercase">
-          {{ auth.user?.username?.slice(0, 1) ?? 'U' }}
+        <Bell :size="20" />
+        <span v-if="hasNotifications" class="absolute top-1 right-1 min-w-4 h-4 px-1 bg-red-500 rounded-full text-[10px] leading-4 text-white text-center">
+          {{ notificationStore.unreadCount }}
+        </span>
+      </button>
+      <div v-if="showNotifications" class="absolute right-0 mt-2 w-96 max-w-[calc(100vw-2rem)] bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl shadow-xl z-50 overflow-hidden">
+        <div class="px-4 py-3 border-b border-gray-100 dark:border-gray-700 flex items-center justify-between">
+          <div>
+            <p class="text-sm font-semibold text-gray-800 dark:text-gray-100">Notificaciones</p>
+            <p class="text-xs text-gray-500 dark:text-gray-400">Alertas operativas del ERP</p>
+          </div>
+          <button @click="notificationStore.fetchNotifications(true)" class="text-xs text-blue-600 hover:text-blue-700">Actualizar</button>
         </div>
-        <span class="hidden md:inline max-w-[120px] truncate">{{ auth.user?.nombre_completo ?? auth.user?.username }}</span>
-      </router-link>
+        <div v-if="notificationStore.loading" class="px-4 py-6 text-sm text-gray-500 dark:text-gray-400">
+          Cargando alertas...
+        </div>
+        <div v-else-if="notificationStore.items.length === 0" class="px-4 py-6 text-sm text-gray-500 dark:text-gray-400">
+          No hay alertas pendientes.
+        </div>
+        <div v-else class="max-h-96 overflow-y-auto divide-y divide-gray-100 dark:divide-gray-800">
+          <button
+            v-for="item in notificationStore.items"
+            :key="item.id"
+            @click="openNotification(item.route)"
+            class="w-full px-4 py-3 text-left hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors flex gap-3"
+          >
+            <component :is="notificationIcon(item.severity)" :size="18" :class="[
+              'mt-0.5 shrink-0',
+              item.severity === 'critical' ? 'text-red-500' : item.severity === 'warning' ? 'text-amber-500' : 'text-blue-500',
+            ]" />
+            <div>
+              <p class="text-sm font-medium text-gray-800 dark:text-gray-100">{{ item.title }}</p>
+              <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">{{ item.description }}</p>
+            </div>
+          </button>
+        </div>
+      </div>
+      </div>
       <div class="w-px h-6 bg-gray-200 dark:bg-gray-700" />
       <button
         @click="handleLogout"

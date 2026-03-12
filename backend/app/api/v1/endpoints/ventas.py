@@ -92,7 +92,7 @@ async def create_cotizacion(
             )
         )
 
-    impuesto = round(subtotal * 0.18, 2)
+    impuesto = round(subtotal * 0.15, 2)
     cotizacion.subtotal = subtotal
     cotizacion.impuesto = impuesto
     cotizacion.total = round(subtotal + impuesto, 2)
@@ -224,3 +224,28 @@ async def facturar_cotizacion(
     )
     await db.flush()
     return venta
+
+
+@router.delete("/cotizaciones/{id_cotizacion}", response_model=None, status_code=status.HTTP_204_NO_CONTENT)
+async def delete_cotizacion(
+    id_cotizacion: int,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[
+        Usuario, Depends(require_roles(RolEnum.VENDEDOR, RolEnum.ADMIN))
+    ],
+) -> None:
+    result = await db.execute(
+        select(Cotizacion)
+        .options(selectinload(Cotizacion.detalles), selectinload(Cotizacion.venta))
+        .where(Cotizacion.id_cotizacion == id_cotizacion)
+    )
+    cotizacion = result.scalar_one_or_none()
+    if not cotizacion:
+        raise HTTPException(status_code=404, detail="Cotizacion not found")
+    if cotizacion.estado == EstadoCotizacionEnum.FACTURADA or cotizacion.venta is not None:
+        raise HTTPException(
+            status_code=400,
+            detail="No se puede eliminar una cotización ya facturada",
+        )
+    await db.delete(cotizacion)
+    await db.flush()

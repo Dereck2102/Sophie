@@ -32,7 +32,7 @@ class EventoCliente(Base):
 
     id_evento: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     id_cliente: Mapped[int] = mapped_column(
-        Integer, ForeignKey("cliente.id_cliente"), nullable=False
+        Integer, ForeignKey("cliente.id_cliente", ondelete="CASCADE"), nullable=False
     )
     tipo_evento: Mapped[str] = mapped_column(String(60), nullable=False)
     descripcion: Mapped[str] = mapped_column(Text, nullable=False)

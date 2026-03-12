@@ -89,6 +89,7 @@ export interface Ticket {
   numero: string
   tipo: TipoTicket
   id_cliente: number
+  id_proyecto?: number
   id_tecnico?: number
   prioridad: PrioridadTicket
   estado: EstadoTicket
@@ -110,7 +111,16 @@ export interface Inventario {
   stock_actual: number
   stock_minimo: number
   precio_venta: number
+  costo_adquisicion: number
   id_proveedor?: number
+}
+
+export interface InventarioSerie {
+  id_serie: number
+  id_producto: number
+  numero_serie: string
+  estado: EstadoSerie
+  fecha_ingreso: string
 }
 
 export interface EventoCliente {

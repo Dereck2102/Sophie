@@ -17,9 +17,12 @@ const inventarioStore = useInventarioStore()
 
 const showCreateModal = ref(false)
 const showFacturarModal = ref(false)
+const showDeleteModal = ref(false)
 const facturarId = ref<number | null>(null)
+const deleteId = ref<number | null>(null)
 const numeroFactura = ref('')
 const saving = ref(false)
+const deleting = ref(false)
 const formError = ref<string | null>(null)
 const clienteSearch = ref('')
 const productoSearch = ref('')
@@ -58,7 +61,7 @@ const lineSubtotal = (item: LineItem) =>
   item.cantidad * item.precio_unitario * (1 - item.descuento / 100)
 
 const formSubtotal = computed(() => form.value.items.reduce((s, i) => s + lineSubtotal(i), 0))
-const formImpuesto = computed(() => formSubtotal.value * 0.12)
+const formImpuesto = computed(() => formSubtotal.value * 0.15)
 const formTotal = computed(() => formSubtotal.value + formImpuesto.value)
 
 const columns = [
@@ -177,6 +180,12 @@ function openFacturar(id: number): void {
   showFacturarModal.value = true
 }
 
+function openDelete(id: number): void {
+  deleteId.value = id
+  formError.value = null
+  showDeleteModal.value = true
+}
+
 async function handleFacturar(): Promise<void> {
   if (!facturarId.value || !numeroFactura.value) return
   saving.value = true
@@ -189,6 +198,22 @@ async function handleFacturar(): Promise<void> {
     formError.value = err.response?.data?.detail ?? 'Error al facturar'
   } finally {
     saving.value = false
+  }
+}
+
+async function handleDelete(): Promise<void> {
+  if (!deleteId.value) return
+  deleting.value = true
+  formError.value = null
+  try {
+    await ventasStore.deleteCotizacion(deleteId.value)
+    showDeleteModal.value = false
+    deleteId.value = null
+  } catch (e: unknown) {
+    const err = e as { response?: { data?: { detail?: string } } }
+    formError.value = err.response?.data?.detail ?? 'Error al eliminar cotización'
+  } finally {
+    deleting.value = false
   }
 }
 
@@ -261,6 +286,14 @@ function resetForm(): void {
             >
               <option v-for="s in ['borrador','enviada','aprobada','rechazada']" :key="s" :value="s">{{ estadoLabels[s] }}</option>
             </select>
+            <button
+              v-if="String((row as Record<string,unknown>).estado) !== 'facturada'"
+              @click.stop="openDelete(Number((row as Record<string,unknown>).id_cotizacion))"
+              class="p-1.5 text-xs bg-red-50 text-red-600 rounded-lg hover:bg-red-100 transition-colors"
+              title="Eliminar cotización"
+            >
+              <Trash2 :size="13" />
+            </button>
           </div>
         </template>
       </Table>
@@ -366,7 +399,7 @@ function resetForm(): void {
                 <td></td>
               </tr>
               <tr>
-                <td colspan="4" class="px-3 py-2 text-right text-gray-600">IVA (12%)</td>
+                <td colspan="4" class="px-3 py-2 text-right text-gray-600">IVA (15%)</td>
                 <td class="px-3 py-2 text-right font-semibold">${{ formImpuesto.toFixed(2) }}</td>
                 <td></td>
               </tr>
@@ -409,6 +442,17 @@ function resetForm(): void {
         <div class="flex justify-end gap-3">
           <Button variant="secondary" type="button" @click="showFacturarModal = false">Cancelar</Button>
           <Button :loading="saving" @click="handleFacturar">Facturar</Button>
+        </div>
+      </div>
+    </Modal>
+
+    <Modal :open="showDeleteModal" title="Eliminar Cotización" size="sm" @close="showDeleteModal = false; formError = null">
+      <div class="space-y-4">
+        <p class="text-sm text-gray-600">Se eliminará la cotización seleccionada si todavía no fue facturada.</p>
+        <p v-if="formError" class="text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg">{{ formError }}</p>
+        <div class="flex justify-end gap-3">
+          <Button variant="secondary" type="button" @click="showDeleteModal = false">Cancelar</Button>
+          <Button :loading="deleting" @click="handleDelete">Eliminar Cotización</Button>
         </div>
       </div>
     </Modal>

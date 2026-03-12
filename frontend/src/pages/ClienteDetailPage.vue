@@ -1,18 +1,20 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ArrowLeft, Building2, User, Mail, Phone, Clock, Plus, Wrench, FileText } from 'lucide-vue-next'
+import { ArrowLeft, Building2, User, Mail, Phone, Clock, Plus, Wrench, FileText, Pencil, Trash2 } from 'lucide-vue-next'
 import Card from '../components/ui/Card.vue'
 import Badge from '../components/ui/Badge.vue'
 import Button from '../components/ui/Button.vue'
 import Modal from '../components/ui/Modal.vue'
 import { useClienteStore } from '../stores/clientes'
+import { useAuthStore } from '../stores/auth'
 import api from '../services/api'
 import type { Cliente, EventoCliente, Ticket, Cotizacion } from '../types'
 
 const route = useRoute()
 const router = useRouter()
 const clienteStore = useClienteStore()
+const auth = useAuthStore()
 
 const cliente = ref<Cliente | null>(null)
 const timeline = ref<EventoCliente[]>([])
@@ -20,18 +22,43 @@ const tickets = ref<Ticket[]>([])
 const cotizaciones = ref<Cotizacion[]>([])
 const loading = ref(true)
 const activeTab = ref<'info' | 'tickets' | 'cotizaciones'>('info')
+const showEditModal = ref(false)
+const showDeleteModal = ref(false)
+const clienteSaving = ref(false)
+const deletingCliente = ref(false)
+const clienteError = ref<string | null>(null)
 
 const id = Number(route.params.id)
 
 // Quick create ticket state
 const showTicketModal = ref(false)
-const ticketForm = ref({ titulo: '', descripcion: '', tipo: 'incidencia_it' as const, prioridad: 'media' as const })
+const ticketForm = ref({ titulo: '', descripcion: '', prioridad: 'media' as const })
 const ticketSaving = ref(false)
 const ticketError = ref<string | null>(null)
 
 const clienteName = computed(() =>
   cliente.value?.empresa?.razon_social ?? cliente.value?.cliente_b2c?.nombre_completo ?? 'Cliente'
 )
+
+const canManageCliente = computed(() => auth.user?.rol === 'admin' || auth.user?.rol === 'vendedor')
+
+const editForm = ref({
+  estado: 'activo' as Cliente['estado'],
+  empresa: {
+    razon_social: '',
+    contacto_principal: '',
+    telefono: '',
+    email: '',
+    direccion: '',
+    sector: '',
+  },
+  cliente_b2c: {
+    nombre_completo: '',
+    telefono: '',
+    email: '',
+    direccion: '',
+  },
+})
 
 const priorityVariant: Record<string, 'danger' | 'warning' | 'info' | 'default'> = {
   critica: 'danger', alta: 'warning', media: 'info', baja: 'default',
@@ -53,6 +80,26 @@ function formatDate(d: string): string {
   })
 }
 
+function syncEditForm(): void {
+  editForm.value = {
+    estado: cliente.value?.estado ?? 'activo',
+    empresa: {
+      razon_social: cliente.value?.empresa?.razon_social ?? '',
+      contacto_principal: cliente.value?.empresa?.contacto_principal ?? '',
+      telefono: cliente.value?.empresa?.telefono ?? '',
+      email: cliente.value?.empresa?.email ?? '',
+      direccion: cliente.value?.empresa?.direccion ?? '',
+      sector: cliente.value?.empresa?.sector ?? '',
+    },
+    cliente_b2c: {
+      nombre_completo: cliente.value?.cliente_b2c?.nombre_completo ?? '',
+      telefono: cliente.value?.cliente_b2c?.telefono ?? '',
+      email: cliente.value?.cliente_b2c?.email ?? '',
+      direccion: cliente.value?.cliente_b2c?.direccion ?? '',
+    },
+  }
+}
+
 onMounted(async () => {
   const [clienteData, timelineData, ticketsData, cotizacionesData] = await Promise.all([
     clienteStore.fetchCliente(id),
@@ -64,6 +111,7 @@ onMounted(async () => {
   timeline.value = timelineData
   tickets.value = ticketsData
   cotizaciones.value = cotizacionesData
+  syncEditForm()
   loading.value = false
 })
 
@@ -73,7 +121,7 @@ async function handleCreateTicket(): Promise<void> {
   try {
     const { data } = await api.post<Ticket>('/api/v1/tickets/', {
       id_cliente: id,
-      tipo: ticketForm.value.tipo,
+      tipo: 'incidencia_it',
       titulo: ticketForm.value.titulo,
       descripcion: ticketForm.value.descripcion || undefined,
       prioridad: ticketForm.value.prioridad,
@@ -86,13 +134,82 @@ async function handleCreateTicket(): Promise<void> {
       fecha: new Date().toISOString(),
     })
     showTicketModal.value = false
-    ticketForm.value = { titulo: '', descripcion: '', tipo: 'incidencia_it', prioridad: 'media' }
+    ticketForm.value = { titulo: '', descripcion: '', prioridad: 'media' }
     activeTab.value = 'tickets'
   } catch (e: unknown) {
     const err = e as { response?: { data?: { detail?: string } } }
     ticketError.value = err.response?.data?.detail ?? 'Error al crear ticket'
   } finally {
     ticketSaving.value = false
+  }
+}
+
+async function openTallerIngreso(): Promise<void> {
+  await router.push({
+    path: '/taller',
+    query: {
+      clienteId: String(id),
+      openCreate: '1',
+      titulo: `Ingreso a taller · ${clienteName.value}`,
+    },
+  })
+}
+
+function openEditCliente(): void {
+  syncEditForm()
+  clienteError.value = null
+  showEditModal.value = true
+}
+
+async function handleEditCliente(): Promise<void> {
+  if (!cliente.value) return
+  clienteSaving.value = true
+  clienteError.value = null
+  try {
+    const payload = cliente.value.tipo_cliente === 'B2B'
+      ? {
+          estado: editForm.value.estado,
+          empresa: {
+            razon_social: editForm.value.empresa.razon_social || undefined,
+            contacto_principal: editForm.value.empresa.contacto_principal || undefined,
+            telefono: editForm.value.empresa.telefono || undefined,
+            email: editForm.value.empresa.email || undefined,
+            direccion: editForm.value.empresa.direccion || undefined,
+            sector: editForm.value.empresa.sector || undefined,
+          },
+        }
+      : {
+          estado: editForm.value.estado,
+          cliente_b2c: {
+            nombre_completo: editForm.value.cliente_b2c.nombre_completo || undefined,
+            telefono: editForm.value.cliente_b2c.telefono || undefined,
+            email: editForm.value.cliente_b2c.email || undefined,
+            direccion: editForm.value.cliente_b2c.direccion || undefined,
+          },
+        }
+
+    cliente.value = await clienteStore.updateCliente(cliente.value.id_cliente, payload)
+    showEditModal.value = false
+  } catch (e: unknown) {
+    const err = e as { response?: { data?: { detail?: string } } }
+    clienteError.value = err.response?.data?.detail ?? 'Error al actualizar cliente'
+  } finally {
+    clienteSaving.value = false
+  }
+}
+
+async function handleDeleteCliente(): Promise<void> {
+  if (!cliente.value) return
+  deletingCliente.value = true
+  clienteError.value = null
+  try {
+    await clienteStore.deleteCliente(cliente.value.id_cliente)
+    await router.push('/crm')
+  } catch (e: unknown) {
+    const err = e as { response?: { data?: { detail?: string } } }
+    clienteError.value = err.response?.data?.detail ?? 'Error al eliminar cliente'
+  } finally {
+    deletingCliente.value = false
   }
 }
 </script>
@@ -111,9 +228,21 @@ async function handleCreateTicket(): Promise<void> {
         </div>
       </div>
       <div class="flex gap-2">
+        <Button v-if="canManageCliente" size="sm" variant="secondary" @click="openEditCliente">
+          <Pencil :size="14" class="mr-1" />
+          Editar Cliente
+        </Button>
+        <Button v-if="canManageCliente && auth.user?.rol === 'admin'" size="sm" variant="secondary" @click="showDeleteModal = true">
+          <Trash2 :size="14" class="mr-1" />
+          Eliminar
+        </Button>
         <Button size="sm" variant="secondary" @click="showTicketModal = true">
+          <Plus :size="14" class="mr-1" />
+          Nuevo Ticket IT
+        </Button>
+        <Button size="sm" variant="secondary" @click="openTallerIngreso">
           <Wrench :size="14" class="mr-1" />
-          Nuevo Ticket
+          Ingresar a Taller
         </Button>
         <Button size="sm" @click="router.push('/ventas')">
           <FileText :size="14" class="mr-1" />
@@ -255,9 +384,14 @@ async function handleCreateTicket(): Promise<void> {
         <Card :padding="false">
           <div class="flex items-center justify-between px-5 py-4 border-b border-gray-100">
             <h3 class="font-semibold text-gray-800">Tickets de {{ clienteName }}</h3>
-            <Button size="sm" @click="showTicketModal = true">
-              <Plus :size="13" class="mr-1" /> Nuevo Ticket
-            </Button>
+            <div class="flex gap-2">
+              <Button size="sm" variant="secondary" @click="showTicketModal = true">
+                <Plus :size="13" class="mr-1" /> Ticket IT
+              </Button>
+              <Button size="sm" @click="openTallerIngreso">
+                <Wrench :size="13" class="mr-1" /> Taller
+              </Button>
+            </div>
           </div>
           <div v-if="tickets.length === 0" class="text-center py-10 text-gray-400 text-sm">
             No hay tickets para este cliente
@@ -316,21 +450,13 @@ async function handleCreateTicket(): Promise<void> {
     <div v-else-if="!loading" class="text-center py-16 text-gray-400">Cliente no encontrado</div>
 
     <!-- Quick Ticket Modal -->
-    <Modal :open="showTicketModal" title="Nuevo Ticket" size="md" @close="showTicketModal = false; ticketError = null">
+    <Modal :open="showTicketModal" title="Nuevo Ticket IT" size="md" @close="showTicketModal = false; ticketError = null">
       <form @submit.prevent="handleCreateTicket" class="space-y-4">
         <div>
           <label class="block text-sm font-medium text-gray-700 mb-1">Título *</label>
           <input v-model="ticketForm.titulo" required type="text" class="w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
         </div>
-        <div class="grid grid-cols-2 gap-4">
-          <div>
-            <label class="block text-sm font-medium text-gray-700 mb-1">Tipo</label>
-            <select v-model="ticketForm.tipo" class="w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white">
-              <option value="incidencia_it">Incidencia IT</option>
-              <option value="reparacion">Reparación</option>
-            </select>
-          </div>
-          <div>
+        <div>
             <label class="block text-sm font-medium text-gray-700 mb-1">Prioridad</label>
             <select v-model="ticketForm.prioridad" class="w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white">
               <option value="baja">Baja</option>
@@ -338,18 +464,99 @@ async function handleCreateTicket(): Promise<void> {
               <option value="alta">Alta</option>
               <option value="critica">Crítica</option>
             </select>
-          </div>
         </div>
         <div>
           <label class="block text-sm font-medium text-gray-700 mb-1">Descripción</label>
           <textarea v-model="ticketForm.descripcion" rows="3" class="w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none resize-none" />
         </div>
+        <p class="text-xs text-gray-500 bg-gray-50 px-3 py-2 rounded-lg">
+          Si el cliente entrega un equipo físico para reparación, usa "Ingresar a Taller" para registrar el ingreso con responsable y evidencia.
+        </p>
         <p v-if="ticketError" class="text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg">{{ ticketError }}</p>
         <div class="flex justify-end gap-3">
           <Button variant="secondary" type="button" @click="showTicketModal = false">Cancelar</Button>
           <Button type="submit" :loading="ticketSaving">Crear Ticket</Button>
         </div>
       </form>
+    </Modal>
+
+    <Modal :open="showEditModal" :title="`Editar ${clienteName}`" size="lg" @close="showEditModal = false; clienteError = null">
+      <form v-if="cliente" @submit.prevent="handleEditCliente" class="space-y-4">
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">Estado</label>
+          <select v-model="editForm.estado" class="w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white">
+            <option value="activo">Activo</option>
+            <option value="prospecto">Prospecto</option>
+            <option value="inactivo">Inactivo</option>
+          </select>
+        </div>
+
+        <div v-if="cliente.tipo_cliente === 'B2B'" class="grid grid-cols-2 gap-4">
+          <div class="col-span-2">
+            <label class="block text-sm font-medium text-gray-700 mb-1">Razón Social</label>
+            <input v-model="editForm.empresa.razon_social" type="text" class="w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Contacto Principal</label>
+            <input v-model="editForm.empresa.contacto_principal" type="text" class="w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Teléfono</label>
+            <input v-model="editForm.empresa.telefono" type="text" class="w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Email</label>
+            <input v-model="editForm.empresa.email" type="email" class="w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Sector</label>
+            <input v-model="editForm.empresa.sector" type="text" class="w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
+          </div>
+          <div class="col-span-2">
+            <label class="block text-sm font-medium text-gray-700 mb-1">Dirección</label>
+            <textarea v-model="editForm.empresa.direccion" rows="2" class="w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none resize-none" />
+          </div>
+        </div>
+
+        <div v-else class="grid grid-cols-2 gap-4">
+          <div class="col-span-2">
+            <label class="block text-sm font-medium text-gray-700 mb-1">Nombre Completo</label>
+            <input v-model="editForm.cliente_b2c.nombre_completo" type="text" class="w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Teléfono</label>
+            <input v-model="editForm.cliente_b2c.telefono" type="text" class="w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Email</label>
+            <input v-model="editForm.cliente_b2c.email" type="email" class="w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
+          </div>
+          <div class="col-span-2">
+            <label class="block text-sm font-medium text-gray-700 mb-1">Dirección</label>
+            <textarea v-model="editForm.cliente_b2c.direccion" rows="2" class="w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none resize-none" />
+          </div>
+        </div>
+
+        <p v-if="clienteError" class="text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg">{{ clienteError }}</p>
+
+        <div class="flex justify-end gap-3">
+          <Button variant="secondary" type="button" @click="showEditModal = false">Cancelar</Button>
+          <Button type="submit" :loading="clienteSaving">Guardar Cambios</Button>
+        </div>
+      </form>
+    </Modal>
+
+    <Modal :open="showDeleteModal" title="Eliminar Cliente" size="sm" @close="showDeleteModal = false; clienteError = null">
+      <div class="space-y-4">
+        <p class="text-sm text-gray-600">
+          Esta acción eliminará definitivamente el cliente <strong>{{ clienteName }}</strong>.
+        </p>
+        <p v-if="clienteError" class="text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg">{{ clienteError }}</p>
+        <div class="flex justify-end gap-3">
+          <Button variant="secondary" type="button" @click="showDeleteModal = false">Cancelar</Button>
+          <Button :loading="deletingCliente" @click="handleDeleteCliente">Eliminar Cliente</Button>
+        </div>
+      </div>
     </Modal>
   </div>
 </template>

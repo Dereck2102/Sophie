@@ -14,6 +14,8 @@ from sqlalchemy.orm import selectinload
 from app.api.deps import get_current_user, require_roles
 from app.core.database import get_db
 from app.infrastructure.models.auditoria import EventoCliente
+from app.infrastructure.models.cliente import Cliente
+from app.infrastructure.models.proyectos import Proyecto
 from app.infrastructure.models.tickets import (
     IncidenciaIT,
     ReparacionTaller,
@@ -39,6 +41,13 @@ from app.schemas.tickets import (
 )
 
 router = APIRouter(prefix="/tickets", tags=["Soporte Técnico"])
+
+_VALID_ASSIGNEE_ROLES = {
+    RolEnum.TECNICO_TALLER,
+    RolEnum.TECNICO_IT,
+    RolEnum.CONSULTOR_SENIOR,
+    RolEnum.ADMIN,
+}
 
 
 def _next_ticket_numero(count: int) -> str:
@@ -102,6 +111,37 @@ async def create_ticket(
     db: Annotated[AsyncSession, Depends(get_db)],
     current_user: Annotated[Usuario, Depends(get_current_user)],
 ) -> Ticket:
+    client_result = await db.execute(
+        select(Cliente).where(Cliente.id_cliente == body.id_cliente)
+    )
+    cliente = client_result.scalar_one_or_none()
+    if not cliente:
+        raise HTTPException(status_code=404, detail="Cliente not found")
+
+    if body.id_tecnico is not None:
+        user_result = await db.execute(
+            select(Usuario).where(Usuario.id_usuario == body.id_tecnico)
+        )
+        tecnico = user_result.scalar_one_or_none()
+        if not tecnico or tecnico.rol not in _VALID_ASSIGNEE_ROLES:
+            raise HTTPException(
+                status_code=400,
+                detail="Solo se pueden asignar técnicos o encargados válidos",
+            )
+
+    if body.id_proyecto is not None:
+        proyecto_result = await db.execute(
+            select(Proyecto).where(Proyecto.id_proyecto == body.id_proyecto)
+        )
+        proyecto = proyecto_result.scalar_one_or_none()
+        if not proyecto:
+            raise HTTPException(status_code=404, detail="Proyecto not found")
+        if proyecto.id_cliente != body.id_cliente:
+            raise HTTPException(
+                status_code=400,
+                detail="El proyecto seleccionado no pertenece al cliente del ticket",
+            )
+
     count_result = await db.execute(select(func.count(Ticket.id_ticket)))
     count = count_result.scalar_one() or 0
     numero = _next_ticket_numero(count)
@@ -189,6 +229,20 @@ async def update_ticket(
         ticket.fecha_cierre = datetime.now(timezone.utc)
     await db.flush()
     return ticket
+
+
+@router.delete("/{id_ticket}", response_model=None, status_code=status.HTTP_204_NO_CONTENT)
+async def delete_ticket(
+    id_ticket: int,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[Usuario, Depends(require_roles(RolEnum.ADMIN))],
+) -> None:
+    result = await db.execute(select(Ticket).where(Ticket.id_ticket == id_ticket))
+    ticket = result.scalar_one_or_none()
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+    await db.delete(ticket)
+    await db.flush()
 
 
 def _assert_ticket_assignee(ticket: Ticket, current_user: Usuario) -> None:

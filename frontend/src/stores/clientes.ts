@@ -45,10 +45,15 @@ export const useClienteStore = defineStore('clientes', () => {
     return data
   }
 
+  async function deleteCliente(id: number): Promise<void> {
+    await api.delete(`/api/v1/clientes/${id}`)
+    clientes.value = clientes.value.filter((c) => c.id_cliente !== id)
+  }
+
   async function fetchTimeline(id: number): Promise<EventoCliente[]> {
     const { data } = await api.get<EventoCliente[]>(`/api/v1/clientes/${id}/timeline`)
     return data
   }
 
-  return { clientes, loading, error, fetchClientes, fetchCliente, createCliente, updateCliente, fetchTimeline }
+  return { clientes, loading, error, fetchClientes, fetchCliente, createCliente, updateCliente, deleteCliente, fetchTimeline }
 })

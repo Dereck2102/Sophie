@@ -50,5 +50,10 @@ export const useUsuarioStore = defineStore('usuarios', () => {
     return data
   }
 
-  return { usuarios, loading, error, fetchUsuarios, createUsuario, updateUsuario }
+  async function deleteUsuario(id: number): Promise<void> {
+    await api.delete(`/api/v1/usuarios/${id}`)
+    usuarios.value = usuarios.value.filter((u) => u.id_usuario !== id)
+  }
+
+  return { usuarios, loading, error, fetchUsuarios, createUsuario, updateUsuario, deleteUsuario }
 })

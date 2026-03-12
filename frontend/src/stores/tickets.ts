@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import api from '../services/api'
-import type { Ticket } from '../types'
+import type { Reparacion, Ticket } from '../types'
 
 export const useTicketStore = defineStore('tickets', () => {
   const tickets = ref<Ticket[]>([])
@@ -44,13 +44,19 @@ export const useTicketStore = defineStore('tickets', () => {
     return data
   }
 
-  async function uploadFotos(id: number, files: File[]): Promise<void> {
+  async function uploadFotos(id: number, files: File[]): Promise<Reparacion> {
     const form = new FormData()
     files.forEach((f) => form.append('files', f))
-    await api.post(`/api/v1/tickets/${id}/reparacion/fotos`, form, {
+    const { data } = await api.post<Reparacion>(`/api/v1/tickets/${id}/reparacion/fotos`, form, {
       headers: { 'Content-Type': 'multipart/form-data' },
     })
+    return data
   }
 
-  return { tickets, loading, fetchTickets, createTicket, updateTicket, startTicket, finishTicket, uploadFotos }
+  async function deleteTicket(id: number): Promise<void> {
+    await api.delete(`/api/v1/tickets/${id}`)
+    tickets.value = tickets.value.filter((t) => t.id_ticket !== id)
+  }
+
+  return { tickets, loading, fetchTickets, createTicket, updateTicket, startTicket, finishTicket, uploadFotos, deleteTicket }
 })

@@ -64,6 +64,9 @@ class Ticket(Base):
     id_cliente: Mapped[int] = mapped_column(
         Integer, ForeignKey("cliente.id_cliente"), nullable=False
     )
+    id_proyecto: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("proyecto.id_proyecto", ondelete="SET NULL")
+    )
     id_tecnico: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("usuario.id_usuario")
     )
@@ -83,6 +86,7 @@ class Ticket(Base):
     fecha_cierre: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     cliente: Mapped["Cliente"] = relationship(back_populates="tickets")
+    proyecto: Mapped["Proyecto | None"] = relationship("Proyecto")
     tecnico: Mapped["Usuario | None"] = relationship()
     reparacion: Mapped["ReparacionTaller | None"] = relationship(
         back_populates="ticket", uselist=False, cascade="all, delete-orphan"

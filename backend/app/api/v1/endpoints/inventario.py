@@ -3,14 +3,16 @@ from __future__ import annotations
 from typing import Annotated, List
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.api.deps import get_current_user, require_roles
 from app.core.database import get_db
+from app.infrastructure.models.compras import DetalleOrdenCompra
 from app.infrastructure.models.inventario import Inventario, InventarioSerie
 from app.infrastructure.models.usuario import RolEnum, Usuario
+from app.infrastructure.models.ventas import DetalleCotizacion
 from app.schemas.inventario import (
     InventarioCreate,
     InventarioOut,
@@ -84,6 +86,35 @@ async def update_producto(
         setattr(producto, k, v)
     await db.flush()
     return producto
+
+
+@router.delete("/{id_producto}", response_model=None, status_code=status.HTTP_204_NO_CONTENT)
+async def delete_producto(
+    id_producto: int,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[
+        Usuario, Depends(require_roles(RolEnum.COMPRADOR, RolEnum.ADMIN))
+    ],
+) -> None:
+    result = await db.execute(
+        select(Inventario).where(Inventario.id_producto == id_producto)
+    )
+    producto = result.scalar_one_or_none()
+    if not producto:
+        raise HTTPException(status_code=404, detail="Product not found")
+
+    await db.execute(
+        delete(DetalleCotizacion).where(DetalleCotizacion.id_producto == id_producto)
+    )
+    await db.execute(
+        delete(DetalleOrdenCompra).where(DetalleOrdenCompra.id_producto == id_producto)
+    )
+    await db.execute(
+        delete(InventarioSerie).where(InventarioSerie.id_producto == id_producto)
+    )
+
+    await db.delete(producto)
+    await db.flush()
 
 
 @router.get("/{id_producto}/series", response_model=List[SerieOut])

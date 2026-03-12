@@ -182,6 +182,20 @@ async def update_tarea(
     return tarea
 
 
+@router.delete("/tareas/{id_tarea}", response_model=None, status_code=status.HTTP_204_NO_CONTENT)
+async def delete_tarea(
+    id_tarea: int,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[Usuario, Depends(get_current_user)],
+) -> None:
+    result = await db.execute(select(Tarea).where(Tarea.id_tarea == id_tarea))
+    tarea = result.scalar_one_or_none()
+    if not tarea:
+        raise HTTPException(status_code=404, detail="Tarea not found")
+    await db.delete(tarea)
+    await db.flush()
+
+
 # ── Registros de Tiempo ──────────────────────────────────────────────────────
 
 

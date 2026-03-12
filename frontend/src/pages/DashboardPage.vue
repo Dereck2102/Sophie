@@ -3,7 +3,7 @@ import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import {
   Users, ShoppingCart, Wrench, AlertCircle, TrendingUp, FolderOpen,
-  ArrowRight, Clock, XCircle
+  ArrowRight, Clock, XCircle, UserCog, Settings, Lock
 } from 'lucide-vue-next'
 import Card from '../components/ui/Card.vue'
 import Badge from '../components/ui/Badge.vue'
@@ -89,6 +89,11 @@ const quickActions = computed(() => {
   }
   if (rol === 'admin' || rol === 'comprador') {
     actions.push({ label: 'Gestionar Stock', icon: AlertCircle, path: '/compras', color: 'bg-red-600 hover:bg-red-700' })
+  }
+  if (rol === 'admin') {
+    actions.push({ label: 'Administrar Usuarios', icon: UserCog, path: '/usuarios', color: 'bg-slate-700 hover:bg-slate-800' })
+    actions.push({ label: 'Bóveda y Accesos', icon: Lock, path: '/boveda', color: 'bg-indigo-700 hover:bg-indigo-800' })
+    actions.push({ label: 'Configuración ERP', icon: Settings, path: '/configuracion', color: 'bg-gray-700 hover:bg-gray-800' })
   }
   return actions
 })

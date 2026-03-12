@@ -72,7 +72,7 @@ class DetalleCotizacion(Base):
         Integer, ForeignKey("cotizacion.id_cotizacion", ondelete="CASCADE"), nullable=False
     )
     id_producto: Mapped[int] = mapped_column(
-        Integer, ForeignKey("inventario.id_producto"), nullable=False
+        Integer, ForeignKey("inventario.id_producto", ondelete="CASCADE"), nullable=False
     )
     cantidad: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     precio_unitario: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False)

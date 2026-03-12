@@ -14,6 +14,13 @@ from app.schemas.usuario import UsuarioCreate, UsuarioOut, UsuarioSelfUpdate, Us
 
 router = APIRouter(prefix="/usuarios", tags=["Usuarios"])
 
+_ASSIGNABLE_ROLES = (
+    RolEnum.TECNICO_TALLER,
+    RolEnum.TECNICO_IT,
+    RolEnum.CONSULTOR_SENIOR,
+    RolEnum.ADMIN,
+)
+
 
 @router.get("/", response_model=List[UsuarioOut])
 async def list_usuarios(
@@ -49,6 +56,19 @@ async def get_me(
     current_user: Annotated[Usuario, Depends(get_current_user)],
 ) -> Usuario:
     return current_user
+
+
+@router.get("/asignables", response_model=List[UsuarioOut])
+async def list_assignable_users(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[Usuario, Depends(get_current_user)],
+) -> list[Usuario]:
+    result = await db.execute(
+        select(Usuario)
+        .where(Usuario.activo.is_(True), Usuario.rol.in_(_ASSIGNABLE_ROLES))
+        .order_by(Usuario.nombre_completo, Usuario.username)
+    )
+    return list(result.scalars().all())
 
 
 @router.patch("/me", response_model=UsuarioOut)
@@ -105,3 +125,23 @@ async def update_usuario(
         setattr(user, k, v)
     await db.flush()
     return user
+
+
+@router.delete("/{id_usuario}", response_model=None, status_code=status.HTTP_204_NO_CONTENT)
+async def delete_usuario(
+    id_usuario: int,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[Usuario, Depends(require_roles(RolEnum.ADMIN))],
+) -> None:
+    if current_user.id_usuario == id_usuario:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No puedes eliminar tu propia cuenta administradora desde esta vista",
+        )
+
+    result = await db.execute(select(Usuario).where(Usuario.id_usuario == id_usuario))
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="Usuario not found")
+    await db.delete(user)
+    await db.flush()

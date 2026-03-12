@@ -64,7 +64,7 @@ export default {
     products: 'Products',
     notes: 'Notes',
     subtotal: 'Subtotal',
-    tax: 'VAT (12%)',
+    tax: 'VAT (15%)',
     total: 'Total',
     number: 'Number',
     date: 'Date',

@@ -98,7 +98,7 @@ function isActive(path: string): boolean {
 
     <!-- User info -->
     <div class="border-t border-gray-700 p-4">
-      <div v-if="!collapsed" class="flex items-center gap-3">
+      <router-link v-if="!collapsed" to="/perfil" class="flex items-center gap-3 rounded-lg hover:bg-gray-800 px-2 py-2 transition-colors">
         <div class="w-8 h-8 bg-gray-600 rounded-full flex items-center justify-center text-xs font-bold uppercase">
           {{ auth.user?.username?.slice(0, 2) ?? 'US' }}
         </div>
@@ -106,12 +106,12 @@ function isActive(path: string): boolean {
           <p class="text-sm font-medium truncate">{{ auth.user?.nombre_completo ?? auth.user?.username }}</p>
           <p class="text-xs text-gray-400 truncate capitalize">{{ auth.user?.rol?.replace('_', ' ') }}</p>
         </div>
-      </div>
-      <div v-else class="flex justify-center">
+      </router-link>
+      <router-link v-else to="/perfil" class="flex justify-center rounded-lg hover:bg-gray-800 px-2 py-2 transition-colors">
         <div class="w-8 h-8 bg-gray-600 rounded-full flex items-center justify-center text-xs font-bold uppercase">
           {{ auth.user?.username?.slice(0, 2) ?? 'US' }}
         </div>
-      </div>
+      </router-link>
     </div>
   </aside>
 </template>

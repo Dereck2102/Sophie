@@ -11,6 +11,7 @@ from app.infrastructure.models.tickets import EstadoTicketEnum, PrioridadEnum, T
 class TicketCreate(BaseModel):
     tipo: TipoTicketEnum
     id_cliente: int
+    id_proyecto: Optional[int] = None
     id_tecnico: Optional[int] = None
     prioridad: PrioridadEnum = PrioridadEnum.MEDIA
     titulo: str
@@ -36,6 +37,7 @@ class TicketOut(BaseModel):
     numero: str
     tipo: TipoTicketEnum
     id_cliente: int
+    id_proyecto: Optional[int] = None
     id_tecnico: Optional[int] = None
     prioridad: PrioridadEnum
     estado: EstadoTicketEnum

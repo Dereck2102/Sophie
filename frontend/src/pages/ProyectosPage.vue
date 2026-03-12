@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
-import { Plus, FolderOpen, ChevronRight, CheckSquare, Clock, Circle, ArrowLeft, User, Calendar, Flag, Tag } from 'lucide-vue-next'
+import { useRouter } from 'vue-router'
+import { Plus, FolderOpen, ChevronRight, CheckSquare, Clock, Circle, ArrowLeft, User, Calendar, Flag, Tag, Trash2 } from 'lucide-vue-next'
 import Card from '../components/ui/Card.vue'
 import Badge from '../components/ui/Badge.vue'
 import Button from '../components/ui/Button.vue'
 import Modal from '../components/ui/Modal.vue'
 import api from '../services/api'
+import { useClienteStore } from '../stores/clientes'
 import { useUsuarioStore } from '../stores/usuarios'
 import type { Proyecto, Tarea, EstadoProyecto, EstadoTarea } from '../types'
 
@@ -21,6 +23,8 @@ const showTareaDetailModal = ref(false)
 const saving = ref(false)
 const formError = ref<string | null>(null)
 
+const router = useRouter()
+const clienteStore = useClienteStore()
 const usuariosStore = useUsuarioStore()
 
 function initialTareaFormState() {
@@ -47,6 +51,10 @@ const form = ref({
 })
 
 const tareaForm = ref(initialTareaFormState())
+
+const selectedCliente = computed(() =>
+  clienteStore.clientes.find((cliente) => cliente.id_cliente === form.value.id_cliente)
+)
 
 const estadoVariant: Record<EstadoProyecto, 'default' | 'info' | 'success' | 'warning' | 'danger'> = {
   propuesta: 'info', en_progreso: 'warning', pausado: 'default', completado: 'success', cancelado: 'danger',
@@ -92,6 +100,11 @@ function getUserName(id?: number | null): string {
   return u ? (u.nombre_completo ?? u.username) : `#${id}`
 }
 
+function getClientName(id: number): string {
+  const cliente = clienteStore.clientes.find((item) => item.id_cliente === id)
+  return cliente?.empresa?.razon_social ?? cliente?.cliente_b2c?.nombre_completo ?? `Cliente #${id}`
+}
+
 function isOverdue(tarea: Tarea): boolean {
   if (!tarea.fecha_vencimiento) return false
   return new Date(tarea.fecha_vencimiento) < new Date() && tarea.estado !== 'completado'
@@ -112,6 +125,7 @@ onMounted(async () => {
   try {
     const [proyRes] = await Promise.all([
       api.get<Proyecto[]>('/api/v1/proyectos/'),
+      clienteStore.fetchClientes(),
       usuariosStore.fetchUsuarios(),
     ])
     proyectos.value = proyRes.data
@@ -141,6 +155,20 @@ async function updateTareaEstado(id: number, estado: EstadoTarea): Promise<void>
     if (idx >= 0) tareas.value[idx] = data
   } catch {
     // silently ignore
+  }
+}
+
+async function deleteTarea(id: number): Promise<void> {
+  if (!window.confirm('¿Estás seguro de que quieres eliminar esta tarea?')) {
+    return
+  }
+  try {
+    await api.delete(`/api/v1/proyectos/tareas/${id}`)
+    tareas.value = tareas.value.filter((t) => t.id_tarea !== id)
+    showTareaDetailModal.value = false
+  } catch (e: unknown) {
+    const err = e as { response?: { data?: { detail?: string } } }
+    alert(err.response?.data?.detail ?? 'Error al eliminar tarea')
   }
 }
 
@@ -214,6 +242,20 @@ function openTareaDetail(tarea: Tarea): void {
   selectedTarea.value = tarea
   showTareaDetailModal.value = true
 }
+
+async function openTallerFromProyecto(): Promise<void> {
+  if (!selectedProject.value) return
+  await router.push({
+    path: '/taller',
+    query: {
+      clienteId: String(selectedProject.value.id_cliente),
+      proyectoId: String(selectedProject.value.id_proyecto),
+      openCreate: '1',
+      titulo: `Ingreso a taller · ${selectedProject.value.nombre}`,
+      descripcion: `Solicitud vinculada al proyecto ${selectedProject.value.nombre}`,
+    },
+  })
+}
 </script>
 
 <template>
@@ -232,11 +274,15 @@ function openTareaDetail(tarea: Tarea): void {
             {{ selectedProject ? selectedProject.nombre : 'Proyectos & Asesoría' }}
           </h1>
           <p class="text-gray-500 dark:text-gray-400 text-sm mt-1">
-            {{ selectedProject ? `Cliente #${selectedProject.id_cliente} · ${estadoLabel[selectedProject.estado]}` : 'Gestión de proyectos de software y ciberseguridad' }}
+            {{ selectedProject ? `${getClientName(selectedProject.id_cliente)} · ${estadoLabel[selectedProject.estado]}` : 'Gestión de proyectos de software y ciberseguridad' }}
           </p>
         </div>
       </div>
       <div class="flex gap-2">
+        <Button v-if="selectedProject" size="sm" variant="secondary" @click="openTallerFromProyecto">
+          <Plus :size="14" class="mr-1" />
+          Ticket de Taller
+        </Button>
         <Button v-if="selectedProject" size="sm" variant="secondary" @click="showTareaModal = true">
           <Plus :size="14" class="mr-1" />
           Nueva Tarea
@@ -272,7 +318,7 @@ function openTareaDetail(tarea: Tarea): void {
                 <p class="text-sm font-semibold text-gray-800 dark:text-gray-200">{{ row.nombre }}</p>
                 <Badge :variant="estadoVariant[row.estado as EstadoProyecto] ?? 'default'" >{{ estadoLabel[row.estado as EstadoProyecto] ?? row.estado }}</Badge>
               </div>
-              <p class="text-xs text-gray-400 mt-1">Cliente #{{ row.id_cliente }} · Creado {{ row.fecha_creacion }}</p>
+              <p class="text-xs text-gray-400 mt-1">{{ getClientName(Number(row.id_cliente)) }} · Creado {{ row.fecha_creacion }}</p>
             </div>
             <div class="flex items-center gap-3 ml-4">
               <span class="text-sm font-medium text-gray-700 dark:text-gray-300">{{ row.presupuesto }}</span>
@@ -386,8 +432,16 @@ function openTareaDetail(tarea: Tarea): void {
       <form @submit.prevent="handleCreate" class="space-y-4">
         <div class="grid grid-cols-2 gap-4">
           <div>
-            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">ID Cliente *</label>
-            <input v-model.number="form.id_cliente" required type="number" min="1" class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none dark:bg-gray-700 dark:text-gray-100" />
+            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Cliente *</label>
+            <select v-model.number="form.id_cliente" required class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white dark:bg-gray-700 dark:text-gray-100">
+              <option :value="0">Selecciona un cliente</option>
+              <option v-for="cliente in clienteStore.clientes" :key="cliente.id_cliente" :value="cliente.id_cliente">
+                {{ cliente.empresa?.razon_social ?? cliente.cliente_b2c?.nombre_completo }}
+              </option>
+            </select>
+            <p v-if="selectedCliente" class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              {{ selectedCliente.tipo_cliente }} · {{ selectedCliente.estado }}
+            </p>
           </div>
           <div>
             <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Estado</label>
@@ -535,17 +589,30 @@ function openTareaDetail(tarea: Tarea): void {
           </div>
         </div>
 
-        <div class="flex justify-end gap-2 pt-2">
-          <Button
-            v-for="col in kanbanColumns.filter((c) => c.estado !== selectedTarea?.estado)"
-            :key="col.estado"
-            variant="secondary"
-            size="sm"
-            @click="updateTareaEstado(selectedTarea.id_tarea, col.estado); showTareaDetailModal = false"
-          >
-            → {{ col.label }}
-          </Button>
-          <Button @click="showTareaDetailModal = false">Cerrar</Button>
+        <div class="flex justify-between items-center pt-2">
+          <div>
+            <Button
+              v-if="selectedTarea"
+              variant="danger"
+              size="sm"
+              @click="deleteTarea(selectedTarea.id_tarea)"
+            >
+              <Trash2 :size="14" class="mr-1" />
+              Eliminar
+            </Button>
+          </div>
+          <div class="flex gap-2">
+            <Button
+              v-for="col in kanbanColumns.filter((c) => c.estado !== selectedTarea?.estado)"
+              :key="col.estado"
+              variant="secondary"
+              size="sm"
+              @click="updateTareaEstado(selectedTarea.id_tarea, col.estado); showTareaDetailModal = false"
+            >
+              → {{ col.label }}
+            </Button>
+            <Button @click="showTareaDetailModal = false">Cerrar</Button>
+          </div>
         </div>
       </div>
     </Modal>

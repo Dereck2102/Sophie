@@ -53,7 +53,7 @@ class DetalleOrdenCompra(Base):
         Integer, ForeignKey("orden_compra.id_orden", ondelete="CASCADE"), nullable=False
     )
     id_producto: Mapped[int] = mapped_column(
-        Integer, ForeignKey("inventario.id_producto"), nullable=False
+        Integer, ForeignKey("inventario.id_producto", ondelete="CASCADE"), nullable=False
     )
     cantidad_pedida: Mapped[int] = mapped_column(Integer, nullable=False)
     cantidad_recibida: Mapped[int] = mapped_column(Integer, default=0)

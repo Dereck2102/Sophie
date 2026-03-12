@@ -42,7 +42,6 @@ class ProyectoOut(BaseModel):
 
 
 class TareaCreate(BaseModel):
-    id_proyecto: int
     titulo: str
     descripcion: Optional[str] = None
     estado: str = "pendiente"

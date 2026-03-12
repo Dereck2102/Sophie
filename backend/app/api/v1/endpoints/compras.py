@@ -134,6 +134,31 @@ async def update_orden(
     return orden
 
 
+@router.delete("/ordenes/{id_orden}", response_model=None, status_code=status.HTTP_204_NO_CONTENT)
+async def delete_orden(
+    id_orden: int,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[
+        Usuario, Depends(require_roles(RolEnum.COMPRADOR, RolEnum.ADMIN))
+    ],
+) -> None:
+    result = await db.execute(
+        select(OrdenCompra)
+        .options(selectinload(OrdenCompra.detalles))
+        .where(OrdenCompra.id_orden == id_orden)
+    )
+    orden = result.scalar_one_or_none()
+    if not orden:
+        raise HTTPException(status_code=404, detail="Orden not found")
+    if orden.estado == EstadoOrdenEnum.RECIBIDA:
+        raise HTTPException(
+            status_code=400,
+            detail="No se puede eliminar una orden que ya fue recibida.",
+        )
+    await db.delete(orden)
+    await db.flush()
+
+
 @router.post("/ordenes/{id_orden}/recibir", response_model=OrdenCompraOut)
 async def recibir_orden(
     id_orden: int,

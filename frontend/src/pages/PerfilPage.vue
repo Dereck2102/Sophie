@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
-import { UserCircle, Lock, Bell, CheckCircle, AlertCircle, Users, Package, Settings } from 'lucide-vue-next'
+import { UserCircle, Lock, Bell, CheckCircle, AlertCircle, Users, Package, Settings, Camera, ShieldCheck } from 'lucide-vue-next'
 import Card from '../components/ui/Card.vue'
 import Button from '../components/ui/Button.vue'
 import { useAuthStore } from '../stores/auth'
 import api from '../services/api'
-import type { Usuario } from '../types'
+import type { EmailVerificationTokenResponse, Usuario } from '../types'
 
 const auth = useAuthStore()
 
@@ -13,6 +13,7 @@ const auth = useAuthStore()
 const profileForm = ref({
   nombre_completo: auth.user?.nombre_completo ?? '',
   email: auth.user?.email ?? '',
+  foto_perfil_url: auth.user?.foto_perfil_url ?? '',
 })
 const profileSaving = ref(false)
 const profileSuccess = ref(false)
@@ -27,6 +28,11 @@ const passwordForm = ref({
 const passwordSaving = ref(false)
 const passwordSuccess = ref(false)
 const passwordError = ref<string | null>(null)
+const verificationToken = ref('')
+const verificationTokenExpires = ref<string | null>(null)
+const verificationLoading = ref(false)
+const verificationError = ref<string | null>(null)
+const verificationSuccess = ref<string | null>(null)
 
 const roleLabels: Record<string, string> = {
   admin: 'Administrador',
@@ -62,6 +68,7 @@ async function saveProfile(): Promise<void> {
     const { data } = await api.patch<Usuario>('/api/v1/usuarios/me', {
       nombre_completo: profileForm.value.nombre_completo || undefined,
       email: profileForm.value.email,
+      foto_perfil_url: profileForm.value.foto_perfil_url || undefined,
     })
     auth.user = data
     profileSuccess.value = true
@@ -97,13 +104,80 @@ async function changePassword(): Promise<void> {
     passwordSaving.value = false
   }
 }
+
+function handleProfilePhotoUpload(event: Event): void {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.item(0)
+  if (!file) return
+  if (!file.type.startsWith('image/')) {
+    profileError.value = 'Selecciona una imagen válida'
+    return
+  }
+  if (file.size > 1_500_000) {
+    profileError.value = 'La imagen supera 1.5MB'
+    return
+  }
+  const reader = new FileReader()
+  reader.onload = () => {
+    const result = reader.result
+    if (typeof result === 'string') {
+      profileForm.value.foto_perfil_url = result
+      profileError.value = null
+    }
+  }
+  reader.readAsDataURL(file)
+}
+
+async function requestVerificationToken(): Promise<void> {
+  verificationLoading.value = true
+  verificationError.value = null
+  verificationSuccess.value = null
+  try {
+    const { data } = await api.post<EmailVerificationTokenResponse>('/api/v1/auth/email/verification-token')
+    verificationToken.value = data.token
+    verificationTokenExpires.value = data.expires_at
+    verificationSuccess.value = 'Token generado correctamente'
+  } catch (e: unknown) {
+    const err = e as { response?: { data?: { detail?: string } } }
+    verificationError.value = err.response?.data?.detail ?? 'No se pudo generar el token'
+  } finally {
+    verificationLoading.value = false
+  }
+}
+
+async function verifyEmailToken(): Promise<void> {
+  if (!verificationToken.value) {
+    verificationError.value = 'Ingresa un token de verificación'
+    return
+  }
+  verificationLoading.value = true
+  verificationError.value = null
+  verificationSuccess.value = null
+  try {
+    await api.post('/api/v1/auth/email/verify', { token: verificationToken.value })
+    await auth.fetchMe()
+    profileForm.value.email = auth.user?.email ?? profileForm.value.email
+    verificationSuccess.value = 'Correo verificado correctamente'
+  } catch (e: unknown) {
+    const err = e as { response?: { data?: { detail?: string } } }
+    verificationError.value = err.response?.data?.detail ?? 'No se pudo verificar el token'
+  } finally {
+    verificationLoading.value = false
+  }
+}
 </script>
 
 <template>
   <div class="space-y-6 max-w-3xl">
     <!-- Header -->
     <div class="flex items-center gap-4">
-      <div class="w-16 h-16 bg-blue-600 rounded-2xl flex items-center justify-center text-white text-xl font-bold">
+      <img
+        v-if="auth.user?.foto_perfil_url"
+        :src="auth.user.foto_perfil_url"
+        alt="Foto de perfil"
+        class="w-16 h-16 rounded-2xl object-cover"
+      />
+      <div v-else class="w-16 h-16 bg-blue-600 rounded-2xl flex items-center justify-center text-white text-xl font-bold">
         {{ userInitials }}
       </div>
       <div>
@@ -157,6 +231,24 @@ async function changePassword(): Promise<void> {
               required
               class="w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
             />
+          </div>
+          <div class="sm:col-span-2">
+            <label class="block text-sm font-medium text-gray-700 mb-1">Foto de Perfil</label>
+            <div class="flex items-center gap-4">
+              <img
+                v-if="profileForm.foto_perfil_url"
+                :src="profileForm.foto_perfil_url"
+                alt="Vista previa"
+                class="w-14 h-14 rounded-xl object-cover border"
+              />
+              <div v-else class="w-14 h-14 rounded-xl border bg-gray-50 flex items-center justify-center text-gray-400">
+                <Camera :size="18" />
+              </div>
+              <label class="inline-flex items-center px-3 py-2 text-sm border rounded-lg cursor-pointer hover:bg-gray-50">
+                <input type="file" accept="image/*" class="hidden" @change="handleProfilePhotoUpload" />
+                Cambiar foto
+              </label>
+            </div>
           </div>
         </div>
 
@@ -267,6 +359,36 @@ async function changePassword(): Promise<void> {
             Activa la autenticación de dos factores (MFA) desde el endpoint <code class="bg-amber-100 px-1 rounded">/api/v1/auth/mfa/setup</code> para proteger mejor tu cuenta.
           </p>
         </div>
+      </div>
+
+      <div v-if="!auth.user?.email_verificado" class="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg space-y-3">
+        <div class="flex items-start gap-2 text-blue-800">
+          <ShieldCheck :size="16" class="mt-0.5" />
+          <div>
+            <p class="text-sm font-medium">Verificación de correo pendiente</p>
+            <p class="text-xs text-blue-700">Genera un token y confírmalo para validar tu correo en la plataforma.</p>
+          </div>
+        </div>
+        <div class="flex flex-wrap items-center gap-2">
+          <Button variant="secondary" :loading="verificationLoading" @click="requestVerificationToken">
+            Generar token
+          </Button>
+          <input
+            v-model="verificationToken"
+            type="text"
+            placeholder="Pega o escribe token"
+            class="px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none min-w-[250px]"
+          />
+          <Button :loading="verificationLoading" @click="verifyEmailToken">Verificar</Button>
+        </div>
+        <p v-if="verificationTokenExpires" class="text-xs text-blue-700">
+          Expira: {{ new Date(verificationTokenExpires).toLocaleString('es-EC') }}
+        </p>
+        <p v-if="verificationSuccess" class="text-xs text-green-700 bg-green-50 border border-green-200 rounded px-2 py-1">{{ verificationSuccess }}</p>
+        <p v-if="verificationError" class="text-xs text-red-700 bg-red-50 border border-red-200 rounded px-2 py-1">{{ verificationError }}</p>
+      </div>
+      <div v-else class="mt-4 p-3 bg-green-50 border border-green-200 rounded-lg text-sm text-green-700">
+        Correo verificado correctamente.
       </div>
     </Card>
 

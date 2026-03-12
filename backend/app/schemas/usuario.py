@@ -37,6 +37,7 @@ class UsuarioSelfUpdate(BaseModel):
     """Schema for users updating their own profile."""
     nombre_completo: Optional[str] = None
     email: Optional[EmailStr] = None
+    foto_perfil_url: Optional[str] = None
     current_password: Optional[str] = None
     new_password: Optional[str] = None
 
@@ -45,6 +46,12 @@ class UsuarioSelfUpdate(BaseModel):
     def new_password_min_length(cls, v: Optional[str]) -> Optional[str]:
         if v is not None and len(v) < 8:
             raise ValueError("Password must be at least 8 characters")
+        if v is not None:
+            has_upper = any(ch.isupper() for ch in v)
+            has_lower = any(ch.islower() for ch in v)
+            has_digit = any(ch.isdigit() for ch in v)
+            if not (has_upper and has_lower and has_digit):
+                raise ValueError("Password must include uppercase, lowercase, and number")
         return v
 
 
@@ -52,6 +59,8 @@ class UsuarioOut(UsuarioBase):
     id_usuario: int
     activo: bool
     mfa_habilitado: bool
+    foto_perfil_url: Optional[str] = None
+    email_verificado: bool
     fecha_creacion: datetime
 
     model_config = {"from_attributes": True}
@@ -81,3 +90,12 @@ class MFAVerifyRequest(BaseModel):
 
 class RefreshRequest(BaseModel):
     refresh_token: str
+
+
+class EmailVerificationTokenOut(BaseModel):
+    token: str
+    expires_at: datetime
+
+
+class EmailVerificationRequest(BaseModel):
+    token: str

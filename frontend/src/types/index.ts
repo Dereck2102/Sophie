@@ -28,7 +28,14 @@ export interface Usuario {
   nombre_completo?: string
   activo: boolean
   mfa_habilitado: boolean
+  foto_perfil_url?: string
+  email_verificado: boolean
   fecha_creacion: string
+}
+
+export interface EmailVerificationTokenResponse {
+  token: string
+  expires_at: string
 }
 
 export interface Empresa {

@@ -83,7 +83,7 @@ const clientProjects = computed(() => {
 
 const clientTickets = computed(() => {
   if (!form.value.id_cliente) return []
-  return ticketStore.tickets.filter((t) => t.id_cliente === form.value.id_cliente)
+  return ticketStore.tickets.filter((t) => t.id_cliente === form.value.id_cliente && t.tipo === 'reparacion')
 })
 
 const persistedFotos = computed(() => {
@@ -107,6 +107,7 @@ const columns = [
   { key: 'estado', label: 'Estado', class: 'w-36' },
   { key: 'tiempo', label: 'Tiempo', class: 'w-28' },
   { key: 'fecha_creacion', label: 'Fecha', class: 'w-36' },
+  { key: 'acciones', label: 'Acciones', class: 'w-36' },
 ]
 
 const priorityVariant: Record<string, 'danger' | 'warning' | 'info' | 'default'> = {
@@ -334,6 +335,19 @@ function removeCreateFoto(idx: number): void {
   createFotoPreviews.value.splice(idx, 1)
 }
 
+async function handleDeleteTicket(id: number): Promise<void> {
+  if (!window.confirm('¿Eliminar este ticket? Esta acción no se puede deshacer.')) return
+  try {
+    await ticketStore.deleteTicket(id)
+    if (selectedTicket.value?.id_ticket === id) {
+      closeDetail()
+    }
+  } catch (e: unknown) {
+    const err = e as { response?: { data?: { detail?: string } } }
+    actionError.value = err.response?.data?.detail ?? 'Error al eliminar el ticket'
+  }
+}
+
 async function handleStart(): Promise<void> {
   if (!selectedTicket.value) return
   actionLoading.value = true
@@ -467,6 +481,15 @@ const ticketIsFinished = computed(() => !!selectedTicket.value?.fecha_fin_trabaj
             <Clock :size="12" />
             {{ value }}
           </span>
+        </template>
+        <template #acciones="{ row }">
+          <button
+            @click.stop="handleDeleteTicket(Number((row as Record<string, unknown>).id_ticket))"
+            class="px-2 py-1 text-xs bg-red-50 text-red-600 rounded-lg hover:bg-red-100 transition-colors inline-flex items-center gap-1"
+            title="Eliminar ticket"
+          >
+            <Trash2 :size="13" /> Eliminar
+          </button>
         </template>
       </Table>
     </Card>

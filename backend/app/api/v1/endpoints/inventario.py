@@ -104,16 +104,19 @@ async def delete_producto(
         raise HTTPException(status_code=404, detail="Product not found")
 
     await db.execute(
-        delete(DetalleCotizacion).where(DetalleCotizacion.id_producto == id_producto)
+        delete(DetalleCotizacion).where(DetalleCotizacion.id_producto == id_producto).execution_options(synchronize_session=False)
     )
     await db.execute(
-        delete(DetalleOrdenCompra).where(DetalleOrdenCompra.id_producto == id_producto)
+        delete(DetalleOrdenCompra).where(DetalleOrdenCompra.id_producto == id_producto).execution_options(synchronize_session=False)
     )
     await db.execute(
-        delete(InventarioSerie).where(InventarioSerie.id_producto == id_producto)
+        delete(InventarioSerie).where(InventarioSerie.id_producto == id_producto).execution_options(synchronize_session=False)
     )
+    await db.flush()
 
-    await db.delete(producto)
+    await db.execute(
+        delete(Inventario).where(Inventario.id_producto == id_producto).execution_options(synchronize_session=False)
+    )
     await db.flush()
 
 

@@ -116,7 +116,16 @@ async def update_proyecto(
 async def delete_proyecto(
     id_proyecto: int,
     db: Annotated[AsyncSession, Depends(get_db)],
-    current_user: Annotated[Usuario, Depends(require_roles(RolEnum.ADMIN))],
+    current_user: Annotated[
+        Usuario,
+        Depends(
+            require_roles(
+                RolEnum.DESARROLLADOR,
+                RolEnum.CONSULTOR_SENIOR,
+                RolEnum.ADMIN,
+            )
+        ),
+    ],
 ) -> None:
     result = await db.execute(
         select(Proyecto).where(Proyecto.id_proyecto == id_proyecto)

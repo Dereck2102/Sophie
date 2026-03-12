@@ -99,7 +99,13 @@ function isActive(path: string): boolean {
     <!-- User info -->
     <div class="border-t border-gray-700 p-4">
       <router-link v-if="!collapsed" to="/perfil" class="flex items-center gap-3 rounded-lg hover:bg-gray-800 px-2 py-2 transition-colors">
-        <div class="w-8 h-8 bg-gray-600 rounded-full flex items-center justify-center text-xs font-bold uppercase">
+        <img
+          v-if="auth.user?.foto_perfil_url"
+          :src="auth.user.foto_perfil_url"
+          alt="Foto de perfil"
+          class="w-8 h-8 rounded-full object-cover"
+        />
+        <div v-else class="w-8 h-8 bg-gray-600 rounded-full flex items-center justify-center text-xs font-bold uppercase">
           {{ auth.user?.username?.slice(0, 2) ?? 'US' }}
         </div>
         <div class="flex-1 min-w-0">
@@ -108,7 +114,13 @@ function isActive(path: string): boolean {
         </div>
       </router-link>
       <router-link v-else to="/perfil" class="flex justify-center rounded-lg hover:bg-gray-800 px-2 py-2 transition-colors">
-        <div class="w-8 h-8 bg-gray-600 rounded-full flex items-center justify-center text-xs font-bold uppercase">
+        <img
+          v-if="auth.user?.foto_perfil_url"
+          :src="auth.user.foto_perfil_url"
+          alt="Foto de perfil"
+          class="w-8 h-8 rounded-full object-cover"
+        />
+        <div v-else class="w-8 h-8 bg-gray-600 rounded-full flex items-center justify-center text-xs font-bold uppercase">
           {{ auth.user?.username?.slice(0, 2) ?? 'US' }}
         </div>
       </router-link>

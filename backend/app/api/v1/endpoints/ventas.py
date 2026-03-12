@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from typing import Annotated, List
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -133,9 +133,7 @@ async def update_cotizacion(
     id_cotizacion: int,
     body: CotizacionUpdate,
     db: Annotated[AsyncSession, Depends(get_db)],
-    current_user: Annotated[
-        Usuario, Depends(require_roles(RolEnum.VENDEDOR, RolEnum.ADMIN))
-    ],
+    current_user: Annotated[Usuario, Depends(get_current_user)],
 ) -> Cotizacion:
     result = await db.execute(
         select(Cotizacion)
@@ -230,9 +228,7 @@ async def facturar_cotizacion(
 async def delete_cotizacion(
     id_cotizacion: int,
     db: Annotated[AsyncSession, Depends(get_db)],
-    current_user: Annotated[
-        Usuario, Depends(require_roles(RolEnum.VENDEDOR, RolEnum.ADMIN))
-    ],
+    current_user: Annotated[Usuario, Depends(get_current_user)],
 ) -> None:
     result = await db.execute(
         select(Cotizacion)
@@ -242,10 +238,24 @@ async def delete_cotizacion(
     cotizacion = result.scalar_one_or_none()
     if not cotizacion:
         raise HTTPException(status_code=404, detail="Cotizacion not found")
-    if cotizacion.estado == EstadoCotizacionEnum.FACTURADA or cotizacion.venta is not None:
-        raise HTTPException(
-            status_code=400,
-            detail="No se puede eliminar una cotización ya facturada",
-        )
-    await db.delete(cotizacion)
+
+    await db.execute(
+        delete(Venta)
+        .where(Venta.id_cotizacion == id_cotizacion)
+        .execution_options(synchronize_session=False)
+    )
+    await db.flush()
+
+    await db.execute(
+        delete(DetalleCotizacion)
+        .where(DetalleCotizacion.id_cotizacion == id_cotizacion)
+        .execution_options(synchronize_session=False)
+    )
+    await db.flush()
+
+    await db.execute(
+        delete(Cotizacion)
+        .where(Cotizacion.id_cotizacion == id_cotizacion)
+        .execution_options(synchronize_session=False)
+    )
     await db.flush()

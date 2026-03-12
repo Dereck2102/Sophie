@@ -8,5 +8,5 @@ class DashboardStats(BaseModel):
     cotizaciones_mes: int
     tickets_abiertos: int
     productos_bajo_stock: int
-    revenue_mes: float
+    revenue_mes: int
     proyectos_activos: int

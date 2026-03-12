@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from typing import Annotated, List, Optional
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -98,9 +98,10 @@ async def list_tickets(
     limit: int = Query(50, ge=1, le=200),
 ) -> list[Ticket]:
     query = select(Ticket).offset(skip).limit(limit).order_by(Ticket.fecha_creacion.desc())
-    # Technicians only see their own assigned tickets
     if current_user.rol in (RolEnum.TECNICO_TALLER, RolEnum.TECNICO_IT):
-        query = query.where(Ticket.id_tecnico == current_user.id_usuario)
+        query = query.where(
+            or_(Ticket.id_tecnico == current_user.id_usuario, Ticket.id_tecnico.is_(None))
+        )
     result = await db.execute(query)
     return list(result.scalars().all())
 
@@ -235,13 +236,35 @@ async def update_ticket(
 async def delete_ticket(
     id_ticket: int,
     db: Annotated[AsyncSession, Depends(get_db)],
-    current_user: Annotated[Usuario, Depends(require_roles(RolEnum.ADMIN))],
+    current_user: Annotated[Usuario, Depends(get_current_user)],
 ) -> None:
     result = await db.execute(select(Ticket).where(Ticket.id_ticket == id_ticket))
     ticket = result.scalar_one_or_none()
     if not ticket:
         raise HTTPException(status_code=404, detail="Ticket not found")
-    await db.delete(ticket)
+
+    await db.execute(
+        delete(RepuestoUsado)
+        .where(RepuestoUsado.id_ticket == id_ticket)
+        .execution_options(synchronize_session=False)
+    )
+    await db.execute(
+        delete(ReparacionTaller)
+        .where(ReparacionTaller.id_ticket == id_ticket)
+        .execution_options(synchronize_session=False)
+    )
+    await db.execute(
+        delete(IncidenciaIT)
+        .where(IncidenciaIT.id_ticket == id_ticket)
+        .execution_options(synchronize_session=False)
+    )
+    await db.flush()
+
+    await db.execute(
+        delete(Ticket)
+        .where(Ticket.id_ticket == id_ticket)
+        .execution_options(synchronize_session=False)
+    )
     await db.flush()
 
 

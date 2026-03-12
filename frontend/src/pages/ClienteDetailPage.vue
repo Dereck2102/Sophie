@@ -32,7 +32,7 @@ const id = Number(route.params.id)
 
 // Quick create ticket state
 const showTicketModal = ref(false)
-const ticketForm = ref({ titulo: '', descripcion: '', prioridad: 'media' as const })
+const ticketForm = ref({ tipo: 'reparacion' as 'reparacion' | 'incidencia_it', titulo: '', descripcion: '', prioridad: 'media' as const })
 const ticketSaving = ref(false)
 const ticketError = ref<string | null>(null)
 
@@ -121,7 +121,7 @@ async function handleCreateTicket(): Promise<void> {
   try {
     const { data } = await api.post<Ticket>('/api/v1/tickets/', {
       id_cliente: id,
-      tipo: 'incidencia_it',
+      tipo: ticketForm.value.tipo,
       titulo: ticketForm.value.titulo,
       descripcion: ticketForm.value.descripcion || undefined,
       prioridad: ticketForm.value.prioridad,
@@ -134,7 +134,7 @@ async function handleCreateTicket(): Promise<void> {
       fecha: new Date().toISOString(),
     })
     showTicketModal.value = false
-    ticketForm.value = { titulo: '', descripcion: '', prioridad: 'media' }
+    ticketForm.value = { tipo: 'reparacion', titulo: '', descripcion: '', prioridad: 'media' }
     activeTab.value = 'tickets'
   } catch (e: unknown) {
     const err = e as { response?: { data?: { detail?: string } } }
@@ -212,6 +212,46 @@ async function handleDeleteCliente(): Promise<void> {
     deletingCliente.value = false
   }
 }
+
+async function handleDeleteTicket(idTicket: number): Promise<void> {
+  if (!window.confirm('¿Eliminar este ticket?')) return
+  ticketError.value = null
+  try {
+    await api.delete(`/api/v1/tickets/${idTicket}`)
+    tickets.value = tickets.value.filter((ticket) => ticket.id_ticket !== idTicket)
+  } catch (e: unknown) {
+    const err = e as { response?: { data?: { detail?: string } } }
+    ticketError.value = err.response?.data?.detail ?? 'Error al eliminar ticket'
+    activeTab.value = 'tickets'
+  }
+}
+
+async function handleDeleteCotizacion(idCotizacion: number): Promise<void> {
+  if (!window.confirm('¿Eliminar esta cotización?')) return
+  clienteError.value = null
+  try {
+    await api.delete(`/api/v1/ventas/cotizaciones/${idCotizacion}`)
+    cotizaciones.value = cotizaciones.value.filter((cot) => cot.id_cotizacion !== idCotizacion)
+  } catch (e: unknown) {
+    const err = e as { response?: { data?: { detail?: string } } }
+    clienteError.value = err.response?.data?.detail ?? 'Error al eliminar cotización'
+    activeTab.value = 'cotizaciones'
+  }
+}
+
+async function handleAnularCotizacion(idCotizacion: number): Promise<void> {
+  if (!window.confirm('¿Marcar esta cotización como anulada?')) return
+  clienteError.value = null
+  try {
+    const { data } = await api.patch<Cotizacion>(`/api/v1/ventas/cotizaciones/${idCotizacion}`, { estado: 'rechazada' })
+    const idx = cotizaciones.value.findIndex((cot) => cot.id_cotizacion === idCotizacion)
+    if (idx >= 0) cotizaciones.value[idx] = data
+  } catch (e: unknown) {
+    const err = e as { response?: { data?: { detail?: string } } }
+    clienteError.value = err.response?.data?.detail ?? 'Error al anular cotización'
+    activeTab.value = 'cotizaciones'
+  }
+}
 </script>
 
 <template>
@@ -238,7 +278,7 @@ async function handleDeleteCliente(): Promise<void> {
         </Button>
         <Button size="sm" variant="secondary" @click="showTicketModal = true">
           <Plus :size="14" class="mr-1" />
-          Nuevo Ticket IT
+          Nuevo Ticket
         </Button>
         <Button size="sm" variant="secondary" @click="openTallerIngreso">
           <Wrench :size="14" class="mr-1" />
@@ -386,7 +426,7 @@ async function handleDeleteCliente(): Promise<void> {
             <h3 class="font-semibold text-gray-800">Tickets de {{ clienteName }}</h3>
             <div class="flex gap-2">
               <Button size="sm" variant="secondary" @click="showTicketModal = true">
-                <Plus :size="13" class="mr-1" /> Ticket IT
+                <Plus :size="13" class="mr-1" /> Ticket
               </Button>
               <Button size="sm" @click="openTallerIngreso">
                 <Wrench :size="13" class="mr-1" /> Taller
@@ -406,11 +446,21 @@ async function handleDeleteCliente(): Promise<void> {
                 <p class="text-sm font-medium text-gray-800">{{ ticket.titulo }}</p>
                 <p class="text-xs text-gray-400 mt-0.5">{{ ticket.numero }} · {{ ticket.tipo }} · {{ formatDate(ticket.fecha_creacion) }}</p>
               </div>
-              <div class="flex gap-2 ml-3">
+              <div class="flex items-center gap-2 ml-3">
                 <Badge :variant="priorityVariant[ticket.prioridad] ?? 'default'">{{ ticket.prioridad }}</Badge>
                 <Badge :variant="estadoTicketVariant[ticket.estado] ?? 'default'">{{ ticket.estado.replace('_', ' ') }}</Badge>
+                <button
+                  @click.stop="handleDeleteTicket(ticket.id_ticket)"
+                  class="p-1.5 text-xs bg-red-50 text-red-600 rounded-lg hover:bg-red-100 transition-colors"
+                  title="Eliminar ticket"
+                >
+                  <Trash2 :size="13" />
+                </button>
               </div>
             </div>
+          </div>
+          <div v-if="ticketError" class="px-5 pb-4">
+            <p class="text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg">{{ ticketError }}</p>
           </div>
         </Card>
       </div>
@@ -440,8 +490,25 @@ async function handleDeleteCliente(): Promise<void> {
               <div class="flex items-center gap-3 ml-3">
                 <span class="text-sm font-semibold text-gray-800">${{ Number(cot.total).toFixed(2) }}</span>
                 <Badge :variant="estadoCotVariant[cot.estado] ?? 'default'">{{ cot.estado }}</Badge>
+                <button
+                  v-if="cot.estado !== 'rechazada'"
+                  @click.stop="handleAnularCotizacion(cot.id_cotizacion)"
+                  class="px-2 py-1 text-xs bg-amber-50 text-amber-700 rounded-lg hover:bg-amber-100 transition-colors"
+                >
+                  Anular
+                </button>
+                <button
+                  @click.stop="handleDeleteCotizacion(cot.id_cotizacion)"
+                  class="p-1.5 text-xs bg-red-50 text-red-600 rounded-lg hover:bg-red-100 transition-colors"
+                  title="Eliminar cotización"
+                >
+                  <Trash2 :size="13" />
+                </button>
               </div>
             </div>
+          </div>
+          <div v-if="clienteError" class="px-5 pb-4">
+            <p class="text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg">{{ clienteError }}</p>
           </div>
         </Card>
       </div>
@@ -450,8 +517,15 @@ async function handleDeleteCliente(): Promise<void> {
     <div v-else-if="!loading" class="text-center py-16 text-gray-400">Cliente no encontrado</div>
 
     <!-- Quick Ticket Modal -->
-    <Modal :open="showTicketModal" title="Nuevo Ticket IT" size="md" @close="showTicketModal = false; ticketError = null">
+    <Modal :open="showTicketModal" title="Nuevo Ticket" size="md" @close="showTicketModal = false; ticketError = null">
       <form @submit.prevent="handleCreateTicket" class="space-y-4">
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">Tipo de ticket</label>
+          <select v-model="ticketForm.tipo" class="w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white">
+            <option value="reparacion">Reparación (Taller)</option>
+            <option value="incidencia_it">Incidencia IT</option>
+          </select>
+        </div>
         <div>
           <label class="block text-sm font-medium text-gray-700 mb-1">Título *</label>
           <input v-model="ticketForm.titulo" required type="text" class="w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
@@ -470,7 +544,7 @@ async function handleDeleteCliente(): Promise<void> {
           <textarea v-model="ticketForm.descripcion" rows="3" class="w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none resize-none" />
         </div>
         <p class="text-xs text-gray-500 bg-gray-50 px-3 py-2 rounded-lg">
-          Si el cliente entrega un equipo físico para reparación, usa "Ingresar a Taller" para registrar el ingreso con responsable y evidencia.
+          Los tickets de tipo reparación se mostrarán en Taller para seguimiento y ejecución técnica.
         </p>
         <p v-if="ticketError" class="text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg">{{ ticketError }}</p>
         <div class="flex justify-end gap-3">

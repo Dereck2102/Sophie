@@ -7,6 +7,7 @@ import Badge from '../components/ui/Badge.vue'
 import Button from '../components/ui/Button.vue'
 import Modal from '../components/ui/Modal.vue'
 import api from '../services/api'
+import { useAuthStore } from '../stores/auth'
 import { useClienteStore } from '../stores/clientes'
 import { useUsuarioStore } from '../stores/usuarios'
 import type { Proyecto, Tarea, EstadoProyecto, EstadoTarea } from '../types'
@@ -24,8 +25,14 @@ const saving = ref(false)
 const formError = ref<string | null>(null)
 
 const router = useRouter()
+const auth = useAuthStore()
 const clienteStore = useClienteStore()
 const usuariosStore = useUsuarioStore()
+const canDeleteProject = computed(() =>
+  auth.user?.rol === 'admin' ||
+  auth.user?.rol === 'consultor_senior' ||
+  auth.user?.rol === 'desarrollador'
+)
 
 function initialTareaFormState() {
   return {
@@ -256,6 +263,21 @@ async function openTallerFromProyecto(): Promise<void> {
     },
   })
 }
+
+async function handleDeleteProyecto(idProyecto: number): Promise<void> {
+  if (!window.confirm('¿Eliminar este proyecto?')) return
+  try {
+    await api.delete(`/api/v1/proyectos/${idProyecto}`)
+    proyectos.value = proyectos.value.filter((proyecto) => proyecto.id_proyecto !== idProyecto)
+    if (selectedProject.value?.id_proyecto === idProyecto) {
+      selectedProject.value = null
+      tareas.value = []
+    }
+  } catch (e: unknown) {
+    const err = e as { response?: { data?: { detail?: string } } }
+    alert(err.response?.data?.detail ?? 'Error al eliminar proyecto')
+  }
+}
 </script>
 
 <template>
@@ -279,6 +301,10 @@ async function openTallerFromProyecto(): Promise<void> {
         </div>
       </div>
       <div class="flex gap-2">
+        <Button v-if="selectedProject && canDeleteProject" size="sm" variant="danger" @click="handleDeleteProyecto(selectedProject.id_proyecto)">
+          <Trash2 :size="14" class="mr-1" />
+          Eliminar Proyecto
+        </Button>
         <Button v-if="selectedProject" size="sm" variant="secondary" @click="openTallerFromProyecto">
           <Plus :size="14" class="mr-1" />
           Ticket de Taller
@@ -322,6 +348,14 @@ async function openTallerFromProyecto(): Promise<void> {
             </div>
             <div class="flex items-center gap-3 ml-4">
               <span class="text-sm font-medium text-gray-700 dark:text-gray-300">{{ row.presupuesto }}</span>
+              <button
+                v-if="canDeleteProject"
+                @click.stop="handleDeleteProyecto(Number(row.id_proyecto))"
+                class="p-1.5 text-xs bg-red-50 text-red-600 rounded-lg hover:bg-red-100 transition-colors"
+                title="Eliminar proyecto"
+              >
+                <Trash2 :size="13" />
+              </button>
               <ChevronRight :size="16" class="text-gray-400" />
             </div>
           </div>

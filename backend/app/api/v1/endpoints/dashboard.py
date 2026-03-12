@@ -67,7 +67,7 @@ async def get_stats(
             Cotizacion.fecha_creacion >= inicio_mes,
         )
     )
-    revenue_mes = float(revenue_result.scalar_one() or 0)
+    revenue_mes = int(float(revenue_result.scalar_one() or 0))
 
     # Active projects
     proyectos_result = await db.execute(

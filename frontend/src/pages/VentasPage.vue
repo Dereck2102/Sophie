@@ -70,7 +70,7 @@ const columns = [
   { key: 'estado', label: 'Estado', class: 'w-32' },
   { key: 'total', label: 'Total', class: 'w-32' },
   { key: 'fecha_creacion', label: 'Fecha', class: 'w-32' },
-  { key: 'acciones', label: '', class: 'w-24' },
+  { key: 'acciones', label: 'Acciones', class: 'w-72' },
 ]
 
 const estadoVariant: Record<string, 'default' | 'info' | 'success' | 'warning' | 'danger'> = {
@@ -174,6 +174,17 @@ async function handleEstadoChange(id: number, estado: string): Promise<void> {
   await ventasStore.updateEstado(id, estado)
 }
 
+async function handleAnular(id: number): Promise<void> {
+  if (!window.confirm('¿Anular esta cotización?')) return
+  formError.value = null
+  try {
+    await ventasStore.updateEstado(id, 'rechazada')
+  } catch (e: unknown) {
+    const err = e as { response?: { data?: { detail?: string } } }
+    formError.value = err.response?.data?.detail ?? 'Error al anular cotización'
+  }
+}
+
 function openFacturar(id: number): void {
   facturarId.value = id
   numeroFactura.value = `FAC-${String(id).padStart(6, '0')}`
@@ -268,14 +279,16 @@ function resetForm(): void {
           </div>
         </template>
         <template #acciones="{ row }">
-          <div class="flex gap-1">
+          <div class="flex gap-2 items-center">
             <button
               v-if="String((row as Record<string,unknown>).estado) !== 'facturada'"
               @click.stop="openFacturar(Number((row as Record<string,unknown>).id_cotizacion))"
-              class="p-1.5 text-xs bg-cyan-600 text-white rounded-lg hover:bg-cyan-700 transition-colors"
+              class="px-2 py-1 text-xs bg-cyan-600 text-white rounded-lg hover:bg-cyan-700 transition-colors"
               title="Facturar"
             >
-              <Receipt :size="13" />
+              <span class="inline-flex items-center gap-1">
+                <Receipt :size="13" /> Facturar
+              </span>
             </button>
             <select
               v-if="String((row as Record<string,unknown>).estado) !== 'facturada'"
@@ -287,12 +300,21 @@ function resetForm(): void {
               <option v-for="s in ['borrador','enviada','aprobada','rechazada']" :key="s" :value="s">{{ estadoLabels[s] }}</option>
             </select>
             <button
-              v-if="String((row as Record<string,unknown>).estado) !== 'facturada'"
+              v-if="String((row as Record<string,unknown>).estado) !== 'rechazada'"
+              @click.stop="handleAnular(Number((row as Record<string,unknown>).id_cotizacion))"
+              class="px-2 py-1 text-xs bg-amber-50 text-amber-700 rounded-lg hover:bg-amber-100 transition-colors"
+              title="Anular cotización"
+            >
+              Anular
+            </button>
+            <button
               @click.stop="openDelete(Number((row as Record<string,unknown>).id_cotizacion))"
-              class="p-1.5 text-xs bg-red-50 text-red-600 rounded-lg hover:bg-red-100 transition-colors"
+              class="px-2 py-1 text-xs bg-red-50 text-red-600 rounded-lg hover:bg-red-100 transition-colors"
               title="Eliminar cotización"
             >
-              <Trash2 :size="13" />
+              <span class="inline-flex items-center gap-1">
+                <Trash2 :size="13" /> Eliminar
+              </span>
             </button>
           </div>
         </template>

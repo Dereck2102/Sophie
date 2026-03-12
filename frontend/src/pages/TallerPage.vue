@@ -19,7 +19,7 @@ const auth = useAuthStore()
 const route = useRoute()
 
 const isTecnico = computed(() => auth.user?.rol === 'tecnico_taller' || auth.user?.rol === 'tecnico_it')
-const canCreate = computed(() => auth.user?.rol === 'admin' || auth.user?.rol === 'tecnico_taller')
+const canCreate = computed(() => auth.user?.rol === 'superadmin' || auth.user?.rol === 'admin' || auth.user?.rol === 'tecnico_taller')
 
 const selectedTicket = ref<Ticket | null>(null)
 const reparacion = ref<Reparacion | null>(null)
@@ -72,6 +72,7 @@ const assignableOptions = computed(() =>
     'tecnico_taller',
     'tecnico_it',
     'consultor_senior',
+    'superadmin',
     'admin',
   ].includes(usuario.rol))
 )

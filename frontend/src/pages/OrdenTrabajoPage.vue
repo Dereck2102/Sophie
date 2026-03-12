@@ -3,12 +3,13 @@ import { ref, onMounted, computed } from 'vue'
 import { useRoute } from 'vue-router'
 import { Wrench, CheckCircle, Clock, AlertCircle, Cpu, FileText } from 'lucide-vue-next'
 import api from '../services/api'
-import type { OrdenTrabajoPublic } from '../types'
+import type { ConfiguracionSistema, OrdenTrabajoPublic } from '../types'
 
 const route = useRoute()
 const token = route.params.token as string
 
 const orden = ref<OrdenTrabajoPublic | null>(null)
+const branding = ref<ConfiguracionSistema | null>(null)
 const loading = ref(true)
 const error = ref<string | null>(null)
 
@@ -48,10 +49,17 @@ function formatUSD(v?: number | null): string {
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(v)
 }
 
+const companyName = computed(() => branding.value?.nombre_empresa || branding.value?.nombre_instancia || 'SOPHIE')
+const reportFooter = computed(() => branding.value?.reporte_footer || 'Para consultas adicionales, contacta con el taller directamente.')
+
 onMounted(async () => {
   try {
-    const { data } = await api.get<OrdenTrabajoPublic>(`/api/v1/tickets/seguimiento/${token}`)
-    orden.value = data
+    const [ordenResponse, brandingResponse] = await Promise.all([
+      api.get<OrdenTrabajoPublic>(`/api/v1/tickets/seguimiento/${token}`),
+      api.get<ConfiguracionSistema>('/api/v1/admin/settings/public'),
+    ])
+    orden.value = ordenResponse.data
+    branding.value = brandingResponse.data
   } catch {
     error.value = 'No se encontró la orden de trabajo. Verifica el enlace.'
   } finally {
@@ -65,11 +73,18 @@ onMounted(async () => {
     <div class="max-w-2xl mx-auto">
       <!-- Header -->
       <div class="text-center mb-8">
-        <div class="inline-flex items-center justify-center w-16 h-16 bg-blue-600 rounded-2xl mb-4">
+        <img
+          v-if="branding?.logo_empresa_url"
+          :src="branding.logo_empresa_url"
+          :alt="companyName"
+          class="mx-auto h-16 w-16 rounded-2xl object-cover border border-gray-200 mb-4"
+        />
+        <div v-else class="inline-flex items-center justify-center w-16 h-16 bg-blue-600 rounded-2xl mb-4">
           <Wrench class="text-white" :size="32" />
         </div>
-        <h1 class="text-2xl font-bold text-gray-900">SOPHIE</h1>
+        <h1 class="text-2xl font-bold text-gray-900">{{ companyName }}</h1>
         <p class="text-gray-500 text-sm mt-1">Seguimiento de Orden de Trabajo</p>
+        <p v-if="branding?.ruc_empresa" class="text-gray-400 text-xs mt-1">RUC: {{ branding.ruc_empresa }}</p>
       </div>
 
       <!-- Loading -->
@@ -213,8 +228,8 @@ onMounted(async () => {
 
         <!-- Footer -->
         <div class="text-center text-xs text-gray-400 py-4">
-          <p>SOPHIE ERP/CRM — Big Solutions</p>
-          <p class="mt-1">Para consultas adicionales, contacta con el taller directamente.</p>
+          <p>{{ companyName }}</p>
+          <p class="mt-1">{{ reportFooter }}</p>
         </div>
       </div>
     </div>

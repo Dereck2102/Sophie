@@ -35,7 +35,10 @@ const verificationError = ref<string | null>(null)
 const verificationSuccess = ref<string | null>(null)
 
 const roleLabels: Record<string, string> = {
+  superadmin: 'Superadministrador',
   admin: 'Administrador',
+  ejecutivo: 'Ejecutivo',
+  administrativo_contable: 'Administrativo Contable',
   vendedor: 'Vendedor',
   tecnico_taller: 'Técnico Taller',
   tecnico_it: 'Técnico IT',
@@ -58,7 +61,11 @@ const adminShortcuts = [
   { label: 'Gestionar usuarios', route: '/usuarios', icon: Users, description: 'Editar roles, activar o eliminar cuentas' },
   { label: 'Controlar inventario', route: '/compras', icon: Package, description: 'Ajustar stock, costos y catálogo' },
   { label: 'Configuración', route: '/configuracion', icon: Settings, description: 'Parámetros globales del sistema' },
+  { label: 'Auditoría', route: '/auditoria', icon: ShieldCheck, description: 'Revisar trazabilidad y actividad global' },
 ]
+
+const isAdminArea = computed(() => ['admin', 'superadmin'].includes(auth.user?.rol ?? ''))
+const visibleAdminShortcuts = computed(() => adminShortcuts.filter((shortcut) => auth.user?.rol === 'superadmin' || shortcut.route !== '/auditoria'))
 
 async function saveProfile(): Promise<void> {
   profileSaving.value = true
@@ -392,10 +399,10 @@ async function verifyEmailToken(): Promise<void> {
       </div>
     </Card>
 
-    <Card v-if="auth.user?.rol === 'admin'" title="Herramientas de Administración">
+    <Card v-if="isAdminArea" title="Herramientas de Administración">
       <div class="grid gap-3 sm:grid-cols-3">
         <router-link
-          v-for="shortcut in adminShortcuts"
+          v-for="shortcut in visibleAdminShortcuts"
           :key="shortcut.route"
           :to="shortcut.route"
           class="rounded-xl border border-gray-200 px-4 py-3 hover:border-blue-300 hover:bg-blue-50 transition-colors"

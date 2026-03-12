@@ -12,6 +12,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, get_client_ip
+from app.core.access import get_effective_access
 from app.core.database import get_db
 from app.core.config import get_settings
 from app.core.security import (
@@ -25,7 +26,7 @@ from app.core.security import (
     verify_totp,
 )
 from app.infrastructure.models.auditoria import LogAuditoria
-from app.infrastructure.models.usuario import Usuario
+from app.infrastructure.models.usuario import RolEnum, Usuario
 from app.schemas.usuario import (
     LoginRequest,
     MFASetupOut,
@@ -68,7 +69,15 @@ async def login(
             )
         mfa_verified = True
 
-    token_data = {"sub": str(user.id_usuario), "rol": user.rol.value, "mfa_verified": mfa_verified}
+    access = get_effective_access(user)
+    token_data = {
+        "sub": str(user.id_usuario),
+        "rol": user.rol.value,
+        "mfa_verified": mfa_verified,
+        "permissions": access["permissions"],
+        "views": access["views"],
+        "tools": access["tools"],
+    }
     access_token = create_access_token(token_data)
     refresh_token = create_refresh_token(token_data)
 
@@ -123,7 +132,15 @@ async def refresh_token(
     if not user or not user.activo:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
 
-    token_data = {"sub": str(user.id_usuario), "rol": user.rol.value, "mfa_verified": payload.get("mfa_verified", False)}
+    access = get_effective_access(user)
+    token_data = {
+        "sub": str(user.id_usuario),
+        "rol": user.rol.value,
+        "mfa_verified": payload.get("mfa_verified", False),
+        "permissions": access["permissions"],
+        "views": access["views"],
+        "tools": access["tools"],
+    }
     access_token = create_access_token(token_data)
     new_refresh = create_refresh_token(token_data)
 
@@ -184,7 +201,7 @@ async def register_first_admin(
     body: UsuarioCreate,
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> Usuario:
-    """Creates the first admin user. Subsequent users must be created by an admin."""
+    """Creates the first bootstrap superadmin user. Subsequent users must be created by an admin."""
     result = await db.execute(select(Usuario))
     existing = result.scalars().first()
     if existing:
@@ -196,8 +213,9 @@ async def register_first_admin(
         username=body.username,
         email=body.email,
         password_hash=hash_password(body.password),
-        rol=body.rol,
+        rol=RolEnum.SUPERADMIN,
         nombre_completo=body.nombre_completo,
+        email_verificado=True,
     )
     db.add(user)
     await db.flush()
@@ -227,7 +245,15 @@ async def verify_email_token(
         raise HTTPException(status_code=400, detail="No hay token de verificación activo")
     if current_user.email_verificacion_token != body.token:
         raise HTTPException(status_code=400, detail="Token de verificación inválido")
-    if current_user.email_verificacion_expira < datetime.now(timezone.utc):
+
+    expires_at = current_user.email_verificacion_expira
+    if expires_at.tzinfo is not None:
+        expires_at_utc = expires_at.astimezone(timezone.utc).replace(tzinfo=None)
+    else:
+        expires_at_utc = expires_at
+    now_utc = datetime.now(timezone.utc).replace(tzinfo=None)
+
+    if expires_at_utc < now_utc:
         raise HTTPException(status_code=400, detail="El token ha expirado")
 
     current_user.email_verificado = True

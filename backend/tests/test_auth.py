@@ -15,7 +15,7 @@ async def test_health(client: AsyncClient) -> None:
 
 @pytest.mark.asyncio
 async def test_register_first_admin(client: AsyncClient) -> None:
-    """POST /api/v1/auth/register should create the first admin user."""
+    """POST /api/v1/auth/register should bootstrap the first superadmin user."""
     resp = await client.post(
         "/api/v1/auth/register",
         json={
@@ -29,7 +29,7 @@ async def test_register_first_admin(client: AsyncClient) -> None:
     assert resp.status_code == 201
     data = resp.json()
     assert data["username"] == "admin"
-    assert data["rol"] == "admin"
+    assert data["rol"] == "superadmin"
     assert "password_hash" not in data
 
 
@@ -125,3 +125,128 @@ async def test_get_me(client: AsyncClient) -> None:
     )
     assert resp.status_code == 200
     assert resp.json()["username"] == "meuser"
+
+
+@pytest.mark.asyncio
+async def test_refresh_uses_cookie_when_body_missing(client: AsyncClient) -> None:
+    await client.post(
+        "/api/v1/auth/register",
+        json={
+            "username": "cookie_refresh",
+            "email": "cookie_refresh@bigsolutions.pe",
+            "password": "CookiePass123!",
+            "rol": "admin",
+        },
+    )
+    login = await client.post(
+        "/api/v1/auth/login",
+        json={"username": "cookie_refresh", "password": "CookiePass123!"},
+    )
+    assert login.status_code == 200
+
+    refresh = await client.post("/api/v1/auth/refresh")
+    assert refresh.status_code == 200
+    assert refresh.json().get("access_token")
+
+
+@pytest.mark.asyncio
+async def test_email_verification_token_flow(client: AsyncClient) -> None:
+    await client.post(
+        "/api/v1/auth/register",
+        json={
+            "username": "mail_verify",
+            "email": "mail_verify@bigsolutions.pe",
+            "password": "MailPass123!",
+            "rol": "admin",
+        },
+    )
+    login = await client.post(
+        "/api/v1/auth/login",
+        json={"username": "mail_verify", "password": "MailPass123!"},
+    )
+    token = login.json()["access_token"]
+    headers = {"Authorization": f"Bearer {token}"}
+
+    req = await client.post("/api/v1/auth/email/verification-token", headers=headers)
+    assert req.status_code == 200
+    verification_token = req.json().get("token")
+    assert verification_token
+
+    verify = await client.post(
+        "/api/v1/auth/email/verify",
+        json={"token": verification_token},
+        headers=headers,
+    )
+    assert verify.status_code == 200
+
+    me = await client.get("/api/v1/usuarios/me", headers=headers)
+    assert me.status_code == 200
+    assert me.json()["email_verificado"] is True
+
+
+@pytest.mark.asyncio
+async def test_update_profile_rejects_invalid_photo_data(client: AsyncClient) -> None:
+    await client.post(
+        "/api/v1/auth/register",
+        json={
+            "username": "photo_invalid",
+            "email": "photo_invalid@bigsolutions.pe",
+            "password": "PhotoPass123!",
+            "rol": "admin",
+        },
+    )
+    login = await client.post(
+        "/api/v1/auth/login",
+        json={"username": "photo_invalid", "password": "PhotoPass123!"},
+    )
+    token = login.json()["access_token"]
+
+    resp = await client.patch(
+        "/api/v1/usuarios/me",
+        json={"foto_perfil_url": "https://example.com/photo.png"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_create_usuario_rejects_duplicate_email(client: AsyncClient) -> None:
+    await client.post(
+        "/api/v1/auth/register",
+        json={
+            "username": "admin_dup",
+            "email": "admin_dup@bigsolutions.pe",
+            "password": "AdminPass123!",
+            "rol": "admin",
+        },
+    )
+    login = await client.post(
+        "/api/v1/auth/login",
+        json={"username": "admin_dup", "password": "AdminPass123!"},
+    )
+    token = login.json()["access_token"]
+    headers = {"Authorization": f"Bearer {token}"}
+
+    create_1 = await client.post(
+        "/api/v1/usuarios/",
+        json={
+            "username": "vendedor_1",
+            "email": "duplicado@bigsolutions.pe",
+            "password": "VendPass123!",
+            "rol": "vendedor",
+        },
+        headers=headers,
+    )
+    assert create_1.status_code == 201
+
+    create_2 = await client.post(
+        "/api/v1/usuarios/",
+        json={
+            "username": "vendedor_2",
+            "email": "duplicado@bigsolutions.pe",
+            "password": "VendPass123!",
+            "rol": "vendedor",
+        },
+        headers=headers,
+    )
+    assert create_2.status_code == 400

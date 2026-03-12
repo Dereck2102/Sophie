@@ -77,22 +77,24 @@ const estadoVariant: Record<string, 'warning' | 'info' | 'success' | 'default'> 
 const quickActions = computed(() => {
   const rol = auth.user?.rol
   const actions = []
-  if (rol === 'admin' || rol === 'vendedor') {
+  if (rol === 'superadmin' || rol === 'admin' || rol === 'vendedor' || rol === 'ejecutivo') {
     actions.push({ label: 'Nueva Cotización', icon: ShoppingCart, path: '/ventas', color: 'bg-blue-600 hover:bg-blue-700' })
     actions.push({ label: 'Nuevo Cliente', icon: Users, path: '/crm', color: 'bg-emerald-600 hover:bg-emerald-700' })
   }
-  if (rol === 'admin' || rol === 'desarrollador' || rol === 'consultor_senior') {
+  if (rol === 'superadmin' || rol === 'admin' || rol === 'desarrollador' || rol === 'consultor_senior') {
     actions.push({ label: 'Nuevo Proyecto', icon: FolderOpen, path: '/proyectos', color: 'bg-purple-600 hover:bg-purple-700' })
   }
-  if (rol === 'admin' || rol === 'tecnico_taller' || rol === 'tecnico_it') {
+  if (rol === 'superadmin' || rol === 'admin' || rol === 'tecnico_taller' || rol === 'tecnico_it') {
     actions.push({ label: 'Ver Mis Tickets', icon: Wrench, path: '/taller', color: 'bg-amber-600 hover:bg-amber-700' })
   }
-  if (rol === 'admin' || rol === 'comprador') {
+  if (rol === 'superadmin' || rol === 'admin' || rol === 'comprador' || rol === 'administrativo_contable') {
     actions.push({ label: 'Gestionar Stock', icon: AlertCircle, path: '/compras', color: 'bg-red-600 hover:bg-red-700' })
   }
-  if (rol === 'admin') {
+  if (rol === 'superadmin' || rol === 'admin') {
     actions.push({ label: 'Administrar Usuarios', icon: UserCog, path: '/usuarios', color: 'bg-slate-700 hover:bg-slate-800' })
     actions.push({ label: 'Bóveda y Accesos', icon: Lock, path: '/boveda', color: 'bg-indigo-700 hover:bg-indigo-800' })
+  }
+  if (rol === 'superadmin') {
     actions.push({ label: 'Configuración ERP', icon: Settings, path: '/configuracion', color: 'bg-gray-700 hover:bg-gray-800' })
   }
   return actions

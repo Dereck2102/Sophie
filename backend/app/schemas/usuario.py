@@ -17,6 +17,11 @@ class UsuarioBase(BaseModel):
 
 class UsuarioCreate(UsuarioBase):
     password: str
+    mfa_habilitado: Optional[bool] = None
+    force_mfa: Optional[bool] = None
+    permisos: Optional[list[str]] = None
+    vistas: Optional[list[str]] = None
+    herramientas: Optional[list[str]] = None
 
     @field_validator("password")
     @classmethod
@@ -31,6 +36,11 @@ class UsuarioUpdate(BaseModel):
     nombre_completo: Optional[str] = None
     activo: Optional[bool] = None
     rol: Optional[RolEnum] = None
+    mfa_habilitado: Optional[bool] = None
+    force_mfa: Optional[bool] = None
+    permisos: Optional[list[str]] = None
+    vistas: Optional[list[str]] = None
+    herramientas: Optional[list[str]] = None
 
 
 class UsuarioSelfUpdate(BaseModel):
@@ -59,8 +69,12 @@ class UsuarioOut(UsuarioBase):
     id_usuario: int
     activo: bool
     mfa_habilitado: bool
+    force_mfa: bool
     foto_perfil_url: Optional[str] = None
     email_verificado: bool
+    permisos: list[str] = []
+    vistas: list[str] = []
+    herramientas: list[str] = []
     fecha_creacion: datetime
 
     model_config = {"from_attributes": True}
@@ -99,3 +113,94 @@ class EmailVerificationTokenOut(BaseModel):
 
 class EmailVerificationRequest(BaseModel):
     token: str
+
+
+class ConfiguracionSistemaOut(BaseModel):
+    nombre_instancia: str
+    nombre_empresa: str
+    ruc_empresa: Optional[str] = None
+    logo_empresa_url: Optional[str] = None
+    timezone: str
+    market: str
+    email_notifications: bool
+    system_notifications: bool
+    session_timeout_minutes: int
+    require_mfa_global: bool
+    max_login_attempts: int
+    color_primario: Optional[str] = None
+    color_secundario: Optional[str] = None
+    reporte_footer: Optional[str] = None
+
+    model_config = {"from_attributes": True}
+
+
+class ConfiguracionSistemaUpdate(BaseModel):
+    nombre_instancia: Optional[str] = None
+    nombre_empresa: Optional[str] = None
+    ruc_empresa: Optional[str] = None
+    logo_empresa_url: Optional[str] = None
+    timezone: Optional[str] = None
+    market: Optional[str] = None
+    email_notifications: Optional[bool] = None
+    system_notifications: Optional[bool] = None
+    session_timeout_minutes: Optional[int] = None
+    require_mfa_global: Optional[bool] = None
+    max_login_attempts: Optional[int] = None
+    color_primario: Optional[str] = None
+    color_secundario: Optional[str] = None
+    reporte_footer: Optional[str] = None
+
+
+class AuditoriaLogOut(BaseModel):
+    id_log: int
+    id_usuario: Optional[int] = None
+    accion: str
+    modulo: str
+    ip_origen: Optional[str] = None
+    detalle: Optional[dict] = None
+    fecha: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class BackupUsuariosOut(BaseModel):
+    generated_at: datetime
+    settings: Optional[ConfiguracionSistemaOut] = None
+    users: list["BackupUsuarioItemOut"]
+
+
+class BackupUsuarioItemOut(BaseModel):
+    username: str
+    email: EmailStr
+    password_hash: str
+    rol: RolEnum
+    nombre_completo: Optional[str] = None
+    activo: bool
+    mfa_habilitado: bool
+    force_mfa: bool
+    foto_perfil_url: Optional[str] = None
+    email_verificado: bool
+    permisos: list[str] = []
+    vistas: list[str] = []
+    herramientas: list[str] = []
+
+
+class BackupUsuarioItemIn(BaseModel):
+    username: str
+    email: EmailStr
+    password_hash: str
+    rol: RolEnum
+    nombre_completo: Optional[str] = None
+    activo: bool = True
+    mfa_habilitado: bool = False
+    force_mfa: bool = False
+    foto_perfil_url: Optional[str] = None
+    email_verificado: bool = False
+    permisos: list[str] = []
+    vistas: list[str] = []
+    herramientas: list[str] = []
+
+
+class BackupUsuariosIn(BaseModel):
+    settings: Optional[ConfiguracionSistemaUpdate] = None
+    users: list[BackupUsuarioItemIn]

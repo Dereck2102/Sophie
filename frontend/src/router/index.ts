@@ -29,7 +29,8 @@ const routes: RouteRecordRaw[] = [
       { path: 'proyectos', name: 'Proyectos', component: () => import('../pages/ProyectosPage.vue') },
       { path: 'boveda', name: 'Boveda', component: () => import('../pages/BovedaPage.vue') },
       { path: 'usuarios', name: 'Usuarios', component: () => import('../pages/UsuariosPage.vue'), meta: { adminOnly: true } },
-      { path: 'configuracion', name: 'Configuracion', component: () => import('../pages/ConfigPage.vue'), meta: { adminOnly: true } },
+      { path: 'configuracion', name: 'Configuracion', component: () => import('../pages/ConfigPage.vue'), meta: { superadminOnly: true } },
+      { path: 'auditoria', name: 'Auditoria', component: () => import('../pages/AuditoriaPage.vue'), meta: { superadminOnly: true } },
       { path: 'perfil', name: 'Perfil', component: () => import('../pages/PerfilPage.vue') },
     ],
   },
@@ -46,7 +47,9 @@ router.beforeEach((to, _from, next) => {
     next({ name: 'Login', query: { redirect: to.fullPath } })
   } else if (to.name === 'Login' && auth.accessToken) {
     next({ name: 'Dashboard' })
-  } else if (to.meta.adminOnly && auth.user && auth.user.rol !== 'admin') {
+  } else if (to.meta.superadminOnly && auth.user && auth.user.rol !== 'superadmin') {
+    next({ name: 'Dashboard' })
+  } else if (to.meta.adminOnly && auth.user && auth.user.rol !== 'admin' && auth.user.rol !== 'superadmin') {
     next({ name: 'Dashboard' })
   } else {
     next()

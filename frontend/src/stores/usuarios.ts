@@ -9,6 +9,11 @@ export interface UsuarioCreate {
   password: string
   rol: Usuario['rol']
   nombre_completo?: string
+  mfa_habilitado?: boolean
+  force_mfa?: boolean
+  permisos?: string[]
+  vistas?: string[]
+  herramientas?: string[]
 }
 
 export interface UsuarioUpdate {
@@ -16,6 +21,11 @@ export interface UsuarioUpdate {
   nombre_completo?: string
   activo?: boolean
   rol?: Usuario['rol']
+  mfa_habilitado?: boolean
+  force_mfa?: boolean
+  permisos?: string[]
+  vistas?: string[]
+  herramientas?: string[]
 }
 
 export const useUsuarioStore = defineStore('usuarios', () => {

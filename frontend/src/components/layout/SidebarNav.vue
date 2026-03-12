@@ -10,6 +10,7 @@ import {
   Code2,
   Lock,
   UserCog,
+  ClipboardList,
   ChevronLeft,
   ChevronRight,
   Settings,
@@ -32,10 +33,15 @@ const navItems = computed(() => [
   { path: '/boveda', label: t('nav.boveda'), icon: Lock, adminOnly: false },
   { path: '/usuarios', label: t('nav.usuarios'), icon: UserCog, adminOnly: true },
   { path: '/configuracion', label: t('nav.configuracion'), icon: Settings, adminOnly: true },
+  { path: '/auditoria', label: 'Auditoría', icon: ClipboardList, adminOnly: true, superadminOnly: true },
 ])
 
 const filteredNavItems = computed(() =>
-  navItems.value.filter((item) => !item.adminOnly || auth.user?.rol === 'admin')
+  navItems.value.filter((item) => {
+    if (item.superadminOnly) return auth.user?.rol === 'superadmin'
+    if (item.adminOnly) return auth.user?.rol === 'admin' || auth.user?.rol === 'superadmin'
+    return true
+  })
 )
 
 function isActive(path: string): boolean {

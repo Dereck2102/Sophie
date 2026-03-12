@@ -8,6 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
+from app.core.access import get_effective_access, has_access_item
 from app.core.security import decode_token
 from app.infrastructure.models.usuario import RolEnum, Usuario
 
@@ -37,6 +38,10 @@ async def get_current_user(
     user = result.scalar_one_or_none()
     if user is None or not user.activo:
         raise credentials_exception
+    access = get_effective_access(user)
+    setattr(user, "effective_permissions", access["permissions"])
+    setattr(user, "effective_views", access["views"])
+    setattr(user, "effective_tools", access["tools"])
     return user
 
 
@@ -59,11 +64,40 @@ def require_roles(*roles: RolEnum):
     async def _checker(
         current_user: Annotated[Usuario, Depends(get_current_user)],
     ) -> Usuario:
-        if current_user.rol not in roles and current_user.rol != RolEnum.ADMIN:
+        if current_user.rol not in roles and current_user.rol not in (RolEnum.ADMIN, RolEnum.SUPERADMIN):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Insufficient permissions",
             )
+        return current_user
+
+    return _checker
+
+
+def require_permissions(*permissions: str):
+    async def _checker(
+        current_user: Annotated[Usuario, Depends(get_current_user)],
+    ) -> Usuario:
+        effective_permissions = getattr(current_user, "effective_permissions", [])
+        if current_user.rol == RolEnum.SUPERADMIN:
+            return current_user
+        missing = [perm for perm in permissions if not has_access_item(effective_permissions, perm)]
+        if missing:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Missing permissions: {', '.join(missing)}",
+            )
+        return current_user
+
+    return _checker
+
+
+def require_superadmin():
+    async def _checker(
+        current_user: Annotated[Usuario, Depends(get_current_user)],
+    ) -> Usuario:
+        if current_user.rol != RolEnum.SUPERADMIN:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Superadmin only")
         return current_user
 
     return _checker

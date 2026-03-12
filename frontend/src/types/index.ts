@@ -1,7 +1,10 @@
 // API Types for SOPHIE ERP/CRM
 
 export type RolEnum =
+  | 'superadmin'
   | 'admin'
+  | 'ejecutivo'
+  | 'administrativo_contable'
   | 'vendedor'
   | 'tecnico_taller'
   | 'tecnico_it'
@@ -28,9 +31,62 @@ export interface Usuario {
   nombre_completo?: string
   activo: boolean
   mfa_habilitado: boolean
+  force_mfa: boolean
   foto_perfil_url?: string
   email_verificado: boolean
+  permisos: string[]
+  vistas: string[]
+  herramientas: string[]
   fecha_creacion: string
+}
+
+export interface ConfiguracionSistema {
+  nombre_instancia: string
+  nombre_empresa: string
+  ruc_empresa?: string
+  logo_empresa_url?: string
+  timezone: string
+  market: string
+  email_notifications: boolean
+  system_notifications: boolean
+  session_timeout_minutes: number
+  require_mfa_global: boolean
+  max_login_attempts: number
+  color_primario?: string
+  color_secundario?: string
+  reporte_footer?: string
+}
+
+export interface AuditoriaLog {
+  id_log: number
+  id_usuario?: number
+  accion: string
+  modulo: string
+  ip_origen?: string
+  detalle?: Record<string, unknown>
+  fecha: string
+}
+
+export interface BackupUsuarioItem {
+  username: string
+  email: string
+  password_hash: string
+  rol: RolEnum
+  nombre_completo?: string
+  activo: boolean
+  mfa_habilitado: boolean
+  force_mfa: boolean
+  foto_perfil_url?: string
+  email_verificado: boolean
+  permisos: string[]
+  vistas: string[]
+  herramientas: string[]
+}
+
+export interface BackupUsuariosPayload {
+  generated_at: string
+  settings?: ConfiguracionSistema
+  users: BackupUsuarioItem[]
 }
 
 export interface EmailVerificationTokenResponse {

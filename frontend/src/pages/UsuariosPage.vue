@@ -21,7 +21,10 @@ const deleting = ref(false)
 const formError = ref<string | null>(null)
 
 const roles: RolEnum[] = [
+  'superadmin',
   'admin',
+  'ejecutivo',
+  'administrativo_contable',
   'vendedor',
   'tecnico_taller',
   'tecnico_it',
@@ -31,7 +34,10 @@ const roles: RolEnum[] = [
 ]
 
 const roleLabels: Record<RolEnum, string> = {
+  superadmin: 'Superadministrador',
   admin: 'Administrador',
+  ejecutivo: 'Ejecutivo',
+  administrativo_contable: 'Administrativo Contable',
   vendedor: 'Vendedor',
   tecnico_taller: 'Técnico Taller',
   tecnico_it: 'Técnico IT',
@@ -46,6 +52,11 @@ const createFormDefaults = () => ({
   password: '',
   rol: 'vendedor' as RolEnum,
   nombre_completo: '',
+  mfa_habilitado: false,
+  force_mfa: false,
+  permisos: '',
+  vistas: '',
+  herramientas: '',
 })
 
 const createForm = ref(createFormDefaults())
@@ -55,6 +66,11 @@ const editForm = ref({
   nombre_completo: '',
   rol: 'vendedor' as RolEnum,
   activo: true,
+  mfa_habilitado: false,
+  force_mfa: false,
+  permisos: '',
+  vistas: '',
+  herramientas: '',
 })
 
 const columns = [
@@ -83,6 +99,17 @@ const filteredRows = computed(() =>
 
 onMounted(() => usuarioStore.fetchUsuarios())
 
+function serializeList(values: string[]): string {
+  return values.join(', ')
+}
+
+function parseList(value: string): string[] {
+  return value
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean)
+}
+
 function openEdit(row: Record<string, unknown>): void {
   const user = usuarioStore.usuarios.find((u) => u.id_usuario === row.id_usuario)
   if (user) {
@@ -92,6 +119,11 @@ function openEdit(row: Record<string, unknown>): void {
       nombre_completo: user.nombre_completo ?? '',
       rol: user.rol,
       activo: user.activo,
+      mfa_habilitado: user.mfa_habilitado,
+      force_mfa: user.force_mfa,
+      permisos: serializeList(user.permisos),
+      vistas: serializeList(user.vistas),
+      herramientas: serializeList(user.herramientas),
     }
     showEditModal.value = true
   }
@@ -107,6 +139,11 @@ async function handleCreate(): Promise<void> {
       password: createForm.value.password,
       rol: createForm.value.rol,
       nombre_completo: createForm.value.nombre_completo || undefined,
+      mfa_habilitado: createForm.value.mfa_habilitado,
+      force_mfa: createForm.value.force_mfa,
+      permisos: parseList(createForm.value.permisos),
+      vistas: parseList(createForm.value.vistas),
+      herramientas: parseList(createForm.value.herramientas),
     })
     showCreateModal.value = false
     resetCreateForm()
@@ -128,6 +165,11 @@ async function handleEdit(): Promise<void> {
       nombre_completo: editForm.value.nombre_completo || undefined,
       rol: editForm.value.rol,
       activo: editForm.value.activo,
+      mfa_habilitado: editForm.value.mfa_habilitado,
+      force_mfa: editForm.value.force_mfa,
+      permisos: parseList(editForm.value.permisos),
+      vistas: parseList(editForm.value.vistas),
+      herramientas: parseList(editForm.value.herramientas),
     })
     showEditModal.value = false
     selectedUser.value = null
@@ -209,8 +251,8 @@ async function handleDelete(): Promise<void> {
         @row-click="openEdit"
       >
         <template #rol="{ value }">
-          <Badge :variant="value === 'admin' ? 'danger' : 'info'">
-            <ShieldCheck v-if="value === 'admin'" :size="11" class="mr-1" />
+          <Badge :variant="value === 'superadmin' ? 'danger' : value === 'admin' ? 'warning' : 'info'">
+            <ShieldCheck v-if="value === 'superadmin' || value === 'admin'" :size="11" class="mr-1" />
             {{ roleLabels[value as RolEnum] ?? value }}
           </Badge>
         </template>
@@ -292,6 +334,45 @@ async function handleDelete(): Promise<void> {
               <option v-for="rol in roles" :key="rol" :value="rol">{{ roleLabels[rol] }}</option>
             </select>
           </div>
+          <div>
+            <label class="flex items-center gap-2 text-sm font-medium text-gray-700">
+              <input v-model="createForm.mfa_habilitado" type="checkbox" class="rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
+              MFA habilitado
+            </label>
+          </div>
+          <div>
+            <label class="flex items-center gap-2 text-sm font-medium text-gray-700">
+              <input v-model="createForm.force_mfa" type="checkbox" class="rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
+              MFA obligatorio
+            </label>
+          </div>
+          <div class="col-span-2">
+            <label class="block text-sm font-medium text-gray-700 mb-1">Permisos</label>
+            <textarea
+              v-model="createForm.permisos"
+              rows="2"
+              placeholder="usuarios:write, auditoria:read"
+              class="w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+            />
+          </div>
+          <div class="col-span-2">
+            <label class="block text-sm font-medium text-gray-700 mb-1">Vistas</label>
+            <textarea
+              v-model="createForm.vistas"
+              rows="2"
+              placeholder="dashboard, usuarios, auditoria"
+              class="w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+            />
+          </div>
+          <div class="col-span-2">
+            <label class="block text-sm font-medium text-gray-700 mb-1">Herramientas</label>
+            <textarea
+              v-model="createForm.herramientas"
+              rows="2"
+              placeholder="backup, restore, export"
+              class="w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+            />
+          </div>
         </div>
 
         <p v-if="formError" class="text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg">{{ formError }}</p>
@@ -349,6 +430,45 @@ async function handleDelete(): Promise<void> {
               <option :value="true">Activo</option>
               <option :value="false">Inactivo</option>
             </select>
+          </div>
+          <div>
+            <label class="flex items-center gap-2 text-sm font-medium text-gray-700">
+              <input v-model="editForm.mfa_habilitado" type="checkbox" class="rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
+              MFA habilitado
+            </label>
+          </div>
+          <div>
+            <label class="flex items-center gap-2 text-sm font-medium text-gray-700">
+              <input v-model="editForm.force_mfa" type="checkbox" class="rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
+              MFA obligatorio
+            </label>
+          </div>
+          <div class="col-span-2">
+            <label class="block text-sm font-medium text-gray-700 mb-1">Permisos</label>
+            <textarea
+              v-model="editForm.permisos"
+              rows="2"
+              placeholder="usuarios:write, auditoria:read"
+              class="w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+            />
+          </div>
+          <div class="col-span-2">
+            <label class="block text-sm font-medium text-gray-700 mb-1">Vistas</label>
+            <textarea
+              v-model="editForm.vistas"
+              rows="2"
+              placeholder="dashboard, usuarios, auditoria"
+              class="w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+            />
+          </div>
+          <div class="col-span-2">
+            <label class="block text-sm font-medium text-gray-700 mb-1">Herramientas</label>
+            <textarea
+              v-model="editForm.herramientas"
+              rows="2"
+              placeholder="backup, restore, export"
+              class="w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+            />
           </div>
         </div>
 

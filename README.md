@@ -23,12 +23,24 @@ docker-compose up --build
 # Nginx Proxy:  http://localhost
 ```
 
+### Bootstrap Inicial
+
+- La base de datos puede iniciarse vacía; el primer registro en `POST /api/v1/auth/register` crea automáticamente la cuenta `superadmin`.
+- Ese primer usuario queda con correo verificado y acceso total a configuración, auditoría y restauración.
+- Las cuentas `superadmin` solo pueden ser gestionadas por otro `superadmin`.
+
 ### Ejecutar Tests
 
 ```bash
 cd backend
 pip install -r requirements.txt pytest pytest-asyncio aiosqlite httpx
 pytest -v
+```
+
+```bash
+cd frontend
+npm install
+npm run build
 ```
 
 ### Estructura del Proyecto
@@ -87,36 +99,75 @@ sophie/
 | **Compras & Proveedores** (órdenes de compra, recepción) | ✅ | ✅ parcial | — |
 | **Proyectos & Asesoría** (proyectos, tareas, tiempo) | ✅ | ✅ | ✅ |
 | **Bóveda de Credenciales** (AES-256-GCM + MFA) | ✅ | ✅ | — |
-| **Usuarios & Roles** (RBAC, admin) | ✅ | — | ✅ |
+| **Usuarios & Roles** (RBAC, superadmin, permisos granulares) | ✅ | ✅ | ✅ |
 | **Dashboard** (estadísticas en tiempo real) | ✅ | ✅ | ✅ |
-| **Auditoría** (log inmutable, acceso bóveda) | ✅ | — | — |
+| **Auditoría** (log global, vista superadmin) | ✅ | ✅ | — |
+| **Configuración Global** (branding, seguridad, backup/restore) | ✅ | ✅ | — |
 
 ### Pendiente / Mejoras Futuras
 
 - [ ] Formulario de creación de cotizaciones en el frontend (VentasPage)
 - [ ] Vista de órdenes de compra en frontend (ComprasPage)
-- [ ] Guardar cambios en el taller realmente llama a la API (TallerPage)
 - [ ] Migraciones Alembic completas para producción
 - [ ] Cobertura de tests para todos los módulos
 - [ ] Notificaciones / alertas por email (Celery + SMTP)
 - [ ] Reportes y exportación PDF/Excel
 - [ ] Modo oscuro en el frontend
 
+### Capacidades Administrativas Nuevas
+
+- `superadmin`: acceso exclusivo a auditoría, configuración global y restauración.
+- Configuración persistente del sistema: nombre de instancia, empresa, RUC, logo, colores, timeout de sesión, MFA global y políticas de acceso.
+- Backup y restore de usuarios/configuración desde el frontend administrativo.
+- Auditoría HTTP global con módulo, acción, usuario, IP, estado y duración.
+- Permisos, vistas y herramientas granulares por usuario además del rol base.
+
+### Credentials Iniciales
+
+**Superadmin Root:**
+- **Username:** `root`
+- **Password:** `RootPass123!`
+- **Role:** `superadmin`
+- **MFA:** Deshabilitado
+- **Status:** Completamente funcional
+
+**Superadmin Damacoria:**
+- **Username:** `damacoria`
+- **Email:** `amacoriadereck@gmail.com`
+- **Password:** `Docedos13`
+- **Role:** `superadmin`
+- **MFA:** Deshabilitado (puede habilitarse después del primer login)
+- **Status:** Completamente funcional
+
 ### Cómo Validar el Sistema
 
 ```bash
-# 1. Backend: Ejecutar la suite de tests (23 tests, ~2s)
+# 1. Backend: Ejecutar la suite de tests
 cd backend && pytest -v
 
-# 2. Swagger UI interactiva (con Docker levantado)
+# 2. Frontend: validar compilación
+cd ../frontend && npm run build
+
+# 3. Swagger UI interactiva (con Docker levantado)
 open http://localhost:8000/docs
 
-# 3. Flujo básico de validación manual:
-#    a. Registrar admin: POST /api/v1/auth/register
-#    b. Login:           POST /api/v1/auth/login
-#    c. Dashboard:       GET  /api/v1/dashboard/stats
-#    d. Crear cliente:   POST /api/v1/clientes/
-#    e. Crear ticket:    POST /api/v1/tickets/
-#    f. Crear proyecto:  POST /api/v1/proyectos/
+# 4. Flujo básico de validación manual:
+#    a. Login como damacoria:        POST /api/v1/auth/login
+#    b. Obtener perfil:             GET  /api/v1/usuarios/me
+#    c. Dashboard:                  GET  /api/v1/dashboard/stats
+#    d. Configuración pública:      GET  /api/v1/admin/settings/public
+#    e. Auditoría:                  GET  /api/v1/admin/auditoria
+#    f. Crear cliente:              POST /api/v1/clientes/
+#    g. Crear ticket:               POST /api/v1/tickets/
+#    h. Configuración privada:      GET  /api/v1/admin/settings/private (solo superadmin)
 ```
+
+---
+
+## 📋 Notas de Deployment
+
+- **Ambiente de Desarrollo:** Las credenciales están registradas en el README. En producción, usar gestión segura de secretos (Vault, AWS Secrets Manager, etc.).
+- **Base de Datos:** PostgreSQL 15 inicialmente sin credenciales persistentes. En producción, usar variables de entorno sensitivas.
+- **JWT Secret:** `dev_secret_key_change_in_production` debe reemplazarse en `docker-compose.yml`.
+- **CORS:** Actualmente permite `localhost:3000`, `localhost`, `localhost:5173`. Ajustar según dominio de producción.
 

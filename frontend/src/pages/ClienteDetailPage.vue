@@ -40,7 +40,7 @@ const clienteName = computed(() =>
   cliente.value?.empresa?.razon_social ?? cliente.value?.cliente_b2c?.nombre_completo ?? 'Cliente'
 )
 
-const canManageCliente = computed(() => auth.user?.rol === 'admin' || auth.user?.rol === 'vendedor')
+const canManageCliente = computed(() => auth.user?.rol === 'superadmin' || auth.user?.rol === 'admin' || auth.user?.rol === 'vendedor')
 
 const editForm = ref({
   estado: 'activo' as Cliente['estado'],
@@ -272,7 +272,7 @@ async function handleAnularCotizacion(idCotizacion: number): Promise<void> {
           <Pencil :size="14" class="mr-1" />
           Editar Cliente
         </Button>
-        <Button v-if="canManageCliente && auth.user?.rol === 'admin'" size="sm" variant="secondary" @click="showDeleteModal = true">
+        <Button v-if="canManageCliente && (auth.user?.rol === 'superadmin' || auth.user?.rol === 'admin')" size="sm" variant="secondary" @click="showDeleteModal = true">
           <Trash2 :size="14" class="mr-1" />
           Eliminar
         </Button>

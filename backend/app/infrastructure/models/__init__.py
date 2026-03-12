@@ -7,6 +7,7 @@ from app.infrastructure.models.tickets import Ticket, ReparacionTaller, Incidenc
 from app.infrastructure.models.boveda import Credencial
 from app.infrastructure.models.auditoria import LogAuditoria, EventoCliente
 from app.infrastructure.models.proyectos import Proyecto, Tarea, MiembroProyecto, RegistroTiempo, EstadoProyectoEnum
+from app.infrastructure.models.sistema import ConfiguracionSistema
 
 __all__ = [
     "Usuario", "RolEnum",
@@ -17,5 +18,6 @@ __all__ = [
     "Ticket", "ReparacionTaller", "IncidenciaIT", "SLA", "RepuestoUsado", "PrioridadEnum", "EstadoTicketEnum", "TipoTicketEnum",
     "Credencial",
     "LogAuditoria", "EventoCliente",
+    "ConfiguracionSistema",
     "Proyecto", "Tarea", "MiembroProyecto", "RegistroTiempo", "EstadoProyectoEnum",
 ]

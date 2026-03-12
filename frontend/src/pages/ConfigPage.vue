@@ -1,239 +1,200 @@
 <script setup lang="ts">
-import { ref } from 'vue'
-import { CheckCircle } from 'lucide-vue-next'
+import { onMounted, ref } from 'vue'
+import { CheckCircle, Download, Upload } from 'lucide-vue-next'
 import Card from '../components/ui/Card.vue'
 import Button from '../components/ui/Button.vue'
-import { useThemeStore, type ThemeMode } from '../stores/theme'
-import { useI18n } from 'vue-i18n'
+import api from '../services/api'
+import type { BackupUsuariosPayload, ConfiguracionSistema } from '../types'
 
-const themeStore = useThemeStore()
-const { t, locale } = useI18n()
+const loading = ref(true)
+const saving = ref(false)
+const restoring = ref(false)
+const success = ref<string | null>(null)
+const error = ref<string | null>(null)
 
-const savedSuccess = ref(false)
-
-const platformConfig = ref({
-  companyName: localStorage.getItem('sophie_company_name') ?? 'SOPHIE ERP/CRM',
-  timezone: localStorage.getItem('sophie_timezone') ?? 'America/Guayaquil',
-  market: localStorage.getItem('sophie_market') ?? 'EC',
-  emailNotifications: localStorage.getItem('sophie_email_notif') !== 'false',
-  systemNotifications: localStorage.getItem('sophie_sys_notif') !== 'false',
-  sessionTimeout: Number(localStorage.getItem('sophie_session_timeout') ?? 30),
-  requireMFA: localStorage.getItem('sophie_require_mfa') === 'true',
-  maxLoginAttempts: Number(localStorage.getItem('sophie_max_login') ?? 5),
+const form = ref<ConfiguracionSistema>({
+  nombre_instancia: 'SOPHIE',
+  nombre_empresa: 'Big Solutions',
+  ruc_empresa: '',
+  logo_empresa_url: '',
+  timezone: 'America/Guayaquil',
+  market: 'EC',
+  email_notifications: true,
+  system_notifications: true,
+  session_timeout_minutes: 30,
+  require_mfa_global: false,
+  max_login_attempts: 5,
+  color_primario: '#2563eb',
+  color_secundario: '#0f172a',
+  reporte_footer: '',
 })
 
-const timezones = [
-  { value: 'America/Guayaquil', label: 'Ecuador (GMT-5)' },
-  { value: 'America/New_York', label: 'Eastern US (GMT-5/-4)' },
-  { value: 'America/Chicago', label: 'Central US (GMT-6/-5)' },
-  { value: 'America/Denver', label: 'Mountain US (GMT-7/-6)' },
-  { value: 'America/Los_Angeles', label: 'Pacific US (GMT-8/-7)' },
-  { value: 'Europe/London', label: 'London (GMT+0/+1)' },
-  { value: 'Europe/Paris', label: 'Paris/Madrid (GMT+1/+2)' },
-  { value: 'Europe/Berlin', label: 'Berlin/Amsterdam (GMT+1/+2)' },
-]
-
-const markets = [
-  { value: 'EC', label: 'Ecuador' },
-  { value: 'US', label: 'United States' },
-  { value: 'EU', label: 'Europe' },
-]
-
-const themes: { value: ThemeMode; labelKey: string }[] = [
-  { value: 'light', labelKey: 'config.themeLight' },
-  { value: 'dark', labelKey: 'config.themeDark' },
-  { value: 'system', labelKey: 'config.themeSystem' },
-]
-
-function setLanguage(lang: string): void {
-  locale.value = lang
-  localStorage.setItem('sophie_locale', lang)
+async function loadSettings(): Promise<void> {
+  loading.value = true
+  error.value = null
+  try {
+    const { data } = await api.get<ConfiguracionSistema>('/api/v1/admin/settings')
+    form.value = data
+  } catch (e: unknown) {
+    const err = e as { response?: { data?: { detail?: string } } }
+    error.value = err.response?.data?.detail ?? 'No se pudo cargar la configuración'
+  } finally {
+    loading.value = false
+  }
 }
 
-function savePlatformConfig(): void {
-  localStorage.setItem('sophie_company_name', platformConfig.value.companyName)
-  localStorage.setItem('sophie_timezone', platformConfig.value.timezone)
-  localStorage.setItem('sophie_market', platformConfig.value.market)
-  localStorage.setItem('sophie_email_notif', String(platformConfig.value.emailNotifications))
-  localStorage.setItem('sophie_sys_notif', String(platformConfig.value.systemNotifications))
-  localStorage.setItem('sophie_session_timeout', String(platformConfig.value.sessionTimeout))
-  localStorage.setItem('sophie_require_mfa', String(platformConfig.value.requireMFA))
-  localStorage.setItem('sophie_max_login', String(platformConfig.value.maxLoginAttempts))
-  savedSuccess.value = true
-  setTimeout(() => { savedSuccess.value = false }, 3000)
+async function saveSettings(): Promise<void> {
+  saving.value = true
+  success.value = null
+  error.value = null
+  try {
+    const { data } = await api.patch<ConfiguracionSistema>('/api/v1/admin/settings', form.value)
+    form.value = data
+    success.value = 'Configuración guardada correctamente'
+  } catch (e: unknown) {
+    const err = e as { response?: { data?: { detail?: string } } }
+    error.value = err.response?.data?.detail ?? 'No se pudo guardar la configuración'
+  } finally {
+    saving.value = false
+  }
 }
+
+async function downloadBackup(): Promise<void> {
+  error.value = null
+  success.value = null
+  try {
+    const { data } = await api.get<BackupUsuariosPayload>('/api/v1/admin/backup/usuarios')
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `sophie-backup-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}.json`
+    link.click()
+    URL.revokeObjectURL(url)
+    success.value = 'Backup descargado correctamente'
+  } catch (e: unknown) {
+    const err = e as { response?: { data?: { detail?: string } } }
+    error.value = err.response?.data?.detail ?? 'No se pudo descargar el backup'
+  }
+}
+
+async function handleRestore(event: Event): Promise<void> {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.item(0)
+  if (!file) return
+  restoring.value = true
+  error.value = null
+  success.value = null
+  try {
+    const raw = await file.text()
+    const payload = JSON.parse(raw)
+    await api.post('/api/v1/admin/restore/usuarios', payload)
+    success.value = 'Backup restaurado correctamente'
+  } catch (e: unknown) {
+    const err = e as { response?: { data?: { detail?: string } } }
+    error.value = err.response?.data?.detail ?? 'No se pudo restaurar el backup'
+  } finally {
+    restoring.value = false
+    input.value = ''
+  }
+}
+
+onMounted(loadSettings)
 </script>
 
 <template>
-  <div class="space-y-6 max-w-4xl">
-    <!-- Header -->
+  <div class="space-y-6 max-w-5xl">
     <div>
-      <h1 class="text-2xl font-bold text-gray-900 dark:text-white">{{ t('config.title') }}</h1>
-      <p class="text-gray-500 dark:text-gray-400 text-sm mt-1">{{ t('config.subtitle') }}</p>
+      <h1 class="text-2xl font-bold text-gray-900 dark:text-white">Configuración Global</h1>
+      <p class="text-gray-500 dark:text-gray-400 text-sm mt-1">Branding, seguridad y continuidad operativa del entorno ZOHOGESTIO.</p>
     </div>
 
-    <!-- Success Banner -->
-    <div v-if="savedSuccess" class="flex items-center gap-2 bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-700 text-green-700 dark:text-green-300 px-4 py-3 rounded-xl text-sm">
-      <CheckCircle :size="16" />
-      {{ t('config.saved') }}
+    <div v-if="success" class="flex items-center gap-2 bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-xl text-sm">
+      <CheckCircle :size="16" /> {{ success }}
+    </div>
+    <div v-if="error" class="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl text-sm">
+      {{ error }}
     </div>
 
-    <!-- Appearance -->
-    <Card :title="t('config.appearance')">
-      <div class="space-y-5">
-        <!-- Theme -->
+    <Card title="Identidad y Branding">
+      <div v-if="loading" class="text-sm text-gray-500">Cargando...</div>
+      <div v-else class="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>
-          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">{{ t('config.theme') }}</label>
-          <div class="flex gap-3">
-            <button
-              v-for="theme in themes"
-              :key="theme.value"
-              @click="themeStore.setMode(theme.value)"
-              :class="[
-                'flex-1 py-2.5 px-4 rounded-xl border-2 text-sm font-medium transition-all',
-                themeStore.mode === theme.value
-                  ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300'
-                  : 'border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:border-gray-300 dark:hover:border-gray-500'
-              ]"
-            >
-              {{ t(theme.labelKey) }}
-            </button>
-          </div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">Nombre de la instancia</label>
+          <input v-model="form.nombre_instancia" type="text" class="w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
         </div>
-
-        <!-- Language -->
         <div>
-          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">{{ t('config.language') }}</label>
-          <div class="flex gap-3">
-            <button
-              @click="setLanguage('es')"
-              :class="[
-                'flex-1 py-2.5 px-4 rounded-xl border-2 text-sm font-medium transition-all',
-                locale === 'es'
-                  ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300'
-                  : 'border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:border-gray-300 dark:hover:border-gray-500'
-              ]"
-            >
-              🇪🇸 {{ t('config.languageES') }}
-            </button>
-            <button
-              @click="setLanguage('en')"
-              :class="[
-                'flex-1 py-2.5 px-4 rounded-xl border-2 text-sm font-medium transition-all',
-                locale === 'en'
-                  ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300'
-                  : 'border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:border-gray-300 dark:hover:border-gray-500'
-              ]"
-            >
-              🇺🇸 {{ t('config.languageEN') }}
-            </button>
-          </div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">Nombre de la empresa</label>
+          <input v-model="form.nombre_empresa" type="text" class="w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">RUC</label>
+          <input v-model="form.ruc_empresa" type="text" class="w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">Logo URL / data URL</label>
+          <input v-model="form.logo_empresa_url" type="text" class="w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">Color primario</label>
+          <input v-model="form.color_primario" type="text" class="w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">Color secundario</label>
+          <input v-model="form.color_secundario" type="text" class="w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
+        </div>
+        <div class="md:col-span-2">
+          <label class="block text-sm font-medium text-gray-700 mb-1">Pie de reporte / impresión</label>
+          <textarea v-model="form.reporte_footer" rows="2" class="w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none resize-none" />
         </div>
       </div>
     </Card>
 
-    <!-- Platform Settings -->
-    <Card :title="t('config.platform')">
-      <div class="space-y-4">
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div>
-            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ t('config.companyName') }}</label>
-            <input
-              v-model="platformConfig.companyName"
-              type="text"
-              class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white dark:bg-gray-700 dark:text-gray-100"
-            />
-          </div>
-
-          <div>
-            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ t('config.market') }}</label>
-            <select
-              v-model="platformConfig.market"
-              class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white dark:bg-gray-700 dark:text-gray-100"
-            >
-              <option v-for="m in markets" :key="m.value" :value="m.value">{{ m.label }}</option>
-            </select>
-          </div>
-
-          <div class="sm:col-span-2">
-            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ t('config.timezone') }}</label>
-            <select
-              v-model="platformConfig.timezone"
-              class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white dark:bg-gray-700 dark:text-gray-100"
-            >
-              <option v-for="tz in timezones" :key="tz.value" :value="tz.value">{{ tz.label }}</option>
-            </select>
-          </div>
+    <Card title="Seguridad del Sistema">
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">Zona horaria</label>
+          <input v-model="form.timezone" type="text" class="w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
         </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">Mercado</label>
+          <input v-model="form.market" type="text" class="w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">Timeout de sesión (min)</label>
+          <input v-model.number="form.session_timeout_minutes" type="number" min="5" class="w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">Máx. intentos de login</label>
+          <input v-model.number="form.max_login_attempts" type="number" min="1" class="w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
+        </div>
+        <label class="flex items-center gap-3 text-sm text-gray-700">
+          <input v-model="form.require_mfa_global" type="checkbox" class="w-4 h-4" /> Requerir MFA globalmente
+        </label>
+        <label class="flex items-center gap-3 text-sm text-gray-700">
+          <input v-model="form.email_notifications" type="checkbox" class="w-4 h-4" /> Notificaciones por email
+        </label>
+        <label class="flex items-center gap-3 text-sm text-gray-700 md:col-span-2">
+          <input v-model="form.system_notifications" type="checkbox" class="w-4 h-4" /> Notificaciones del sistema
+        </label>
       </div>
     </Card>
 
-    <!-- Security Settings -->
-    <Card :title="t('config.security')">
-      <div class="space-y-4">
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div>
-            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ t('config.sessionTimeout') }}</label>
-            <input
-              v-model.number="platformConfig.sessionTimeout"
-              type="number"
-              min="5"
-              max="480"
-              class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white dark:bg-gray-700 dark:text-gray-100"
-            />
-          </div>
-          <div>
-            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ t('config.maxLoginAttempts') }}</label>
-            <input
-              v-model.number="platformConfig.maxLoginAttempts"
-              type="number"
-              min="3"
-              max="10"
-              class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white dark:bg-gray-700 dark:text-gray-100"
-            />
-          </div>
-        </div>
-        <div class="flex items-center gap-3">
-          <input
-            id="requireMFA"
-            v-model="platformConfig.requireMFA"
-            type="checkbox"
-            class="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
-          />
-          <label for="requireMFA" class="text-sm text-gray-700 dark:text-gray-300">{{ t('config.requireMFA') }}</label>
-        </div>
+    <Card title="Continuidad y Respaldo">
+      <div class="flex flex-wrap gap-3">
+        <Button @click="downloadBackup">
+          <Download :size="16" class="mr-2" /> Descargar backup de usuarios
+        </Button>
+        <label class="inline-flex items-center px-4 py-2 rounded-xl border cursor-pointer hover:bg-gray-50 text-sm font-medium">
+          <Upload :size="16" class="mr-2" /> Restaurar backup
+          <input type="file" accept="application/json" class="hidden" @change="handleRestore" />
+        </label>
       </div>
+      <p class="text-xs text-gray-500 mt-3">La restauración reemplaza usuarios y configuración global actual.</p>
     </Card>
 
-    <!-- Notifications -->
-    <Card :title="t('config.notifications')">
-      <div class="space-y-3">
-        <div class="flex items-center gap-3">
-          <input
-            id="emailNotif"
-            v-model="platformConfig.emailNotifications"
-            type="checkbox"
-            class="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
-          />
-          <label for="emailNotif" class="text-sm text-gray-700 dark:text-gray-300">{{ t('config.emailNotifications') }}</label>
-        </div>
-        <div class="flex items-center gap-3">
-          <input
-            id="sysNotif"
-            v-model="platformConfig.systemNotifications"
-            type="checkbox"
-            class="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
-          />
-          <label for="sysNotif" class="text-sm text-gray-700 dark:text-gray-300">{{ t('config.systemNotifications') }}</label>
-        </div>
-      </div>
-    </Card>
-
-    <!-- Save Button -->
     <div class="flex justify-end">
-      <Button @click="savePlatformConfig">
-        {{ t('common.save') }}
-      </Button>
+      <Button :loading="saving || restoring" @click="saveSettings">Guardar configuración</Button>
     </div>
   </div>
 </template>

@@ -2,7 +2,10 @@ from __future__ import annotations
 
 import pytest
 import pytest_asyncio
+import pyotp
 from httpx import AsyncClient
+
+from app.api.v1.endpoints import auth as auth_endpoints
 
 
 @pytest.mark.asyncio
@@ -250,3 +253,101 @@ async def test_create_usuario_rejects_duplicate_email(client: AsyncClient) -> No
         headers=headers,
     )
     assert create_2.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_password_recovery_flow_rotates_password(client: AsyncClient) -> None:
+    await client.post(
+        "/api/v1/auth/register",
+        json={
+            "username": "recover_user",
+            "email": "recover_user@bigsolutions.pe",
+            "password": "RecoverPass123!",
+            "rol": "superadmin",
+        },
+    )
+
+    original_debug = auth_endpoints.settings.DEBUG
+    auth_endpoints.settings.DEBUG = True
+    try:
+        request_resp = await client.post(
+            "/api/v1/auth/password-recovery/request",
+            json={"identifier": "recover_user@bigsolutions.pe"},
+        )
+        assert request_resp.status_code == 200
+        token = request_resp.json().get("recovery_token")
+        assert token
+    finally:
+        auth_endpoints.settings.DEBUG = original_debug
+
+    confirm_resp = await client.post(
+        "/api/v1/auth/password-recovery/confirm",
+        json={"token": token, "new_password": "RecoverPass456!"},
+    )
+    assert confirm_resp.status_code == 200
+
+    old_login = await client.post(
+        "/api/v1/auth/login",
+        json={"username": "recover_user", "password": "RecoverPass123!"},
+    )
+    assert old_login.status_code == 401
+
+    new_login = await client.post(
+        "/api/v1/auth/login",
+        json={"username": "recover_user", "password": "RecoverPass456!"},
+    )
+    assert new_login.status_code == 200
+    assert new_login.json().get("access_token")
+
+
+@pytest.mark.asyncio
+async def test_login_with_mfa_recovery_code(client: AsyncClient) -> None:
+    await client.post(
+        "/api/v1/auth/register",
+        json={
+            "username": "recovery_mfa",
+            "email": "recovery_mfa@bigsolutions.pe",
+            "password": "RecoveryMfa123!",
+            "rol": "superadmin",
+        },
+    )
+    login = await client.post(
+        "/api/v1/auth/login",
+        json={"username": "recovery_mfa", "password": "RecoveryMfa123!"},
+    )
+    token = login.json()["access_token"]
+    headers = {"Authorization": f"Bearer {token}"}
+
+    setup_resp = await client.get("/api/v1/auth/mfa/setup", headers=headers)
+    assert setup_resp.status_code == 200
+    secret = setup_resp.json().get("secret")
+    assert secret
+
+    code = pyotp.TOTP(secret).now()
+    verify_resp = await client.post(
+        "/api/v1/auth/mfa/verify",
+        json={"code": code},
+        headers=headers,
+    )
+    assert verify_resp.status_code == 200
+
+    rotate_resp = await client.post(
+        "/api/v1/auth/mfa/recovery-codes/rotate",
+        json={"current_password": "RecoveryMfa123!"},
+        headers=headers,
+    )
+    assert rotate_resp.status_code == 200
+    recovery_codes = rotate_resp.json().get("codes")
+    assert isinstance(recovery_codes, list)
+    assert len(recovery_codes) == 8
+
+    login_with_recovery = await client.post(
+        "/api/v1/auth/login",
+        json={
+            "username": "recovery_mfa",
+            "password": "RecoveryMfa123!",
+            "recovery_code": recovery_codes[0],
+        },
+    )
+    assert login_with_recovery.status_code == 200
+    assert login_with_recovery.json().get("access_token")

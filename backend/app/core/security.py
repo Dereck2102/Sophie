@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import base64
+import hashlib
 import os
+import secrets
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -56,6 +58,33 @@ def decode_token(token: str) -> dict[str, Any]:
         return payload
     except JWTError as exc:
         raise ValueError("Invalid token") from exc
+
+
+def hash_one_time_secret(raw_value: str) -> str:
+    digest = hashlib.sha256()
+    digest.update(settings.SECRET_KEY.encode())
+    digest.update(b":")
+    digest.update(raw_value.encode())
+    return digest.hexdigest()
+
+
+def generate_recovery_codes(count: int = 8) -> tuple[list[str], list[str]]:
+    plain_codes: list[str] = []
+    hashed_codes: list[str] = []
+    for _ in range(count):
+        code = secrets.token_hex(4).upper()
+        plain_codes.append(code)
+        hashed_codes.append(hash_one_time_secret(code))
+    return plain_codes, hashed_codes
+
+
+def consume_recovery_code(plain_code: str, hashed_codes: list[str] | None) -> tuple[bool, list[str]]:
+    if not hashed_codes:
+        return False, []
+    candidate = hash_one_time_secret(plain_code.strip().upper())
+    updated = [item for item in hashed_codes if item != candidate]
+    consumed = len(updated) != len(hashed_codes)
+    return consumed, updated
 
 
 # ── MFA / TOTP ─────────────────────────────────────────────────────────────

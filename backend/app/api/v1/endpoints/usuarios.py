@@ -36,11 +36,13 @@ def _serialize_user(user: Usuario) -> UsuarioOut:
         email=user.email,
         rol=user.rol,
         nombre_completo=user.nombre_completo,
+        telefono_recuperacion=user.telefono_recuperacion,
         activo=user.activo,
         mfa_habilitado=user.mfa_habilitado,
         force_mfa=user.force_mfa,
         foto_perfil_url=user.foto_perfil_url,
         email_verificado=user.email_verificado,
+        telefono_verificado=user.telefono_verificado,
         permisos=access["permissions"],
         vistas=access["views"],
         herramientas=access["tools"],
@@ -94,6 +96,7 @@ async def _validate_unique_identity(
     *,
     username: str | None = None,
     email: str | None = None,
+    telefono_recuperacion: str | None = None,
     exclude_user_id: int | None = None,
 ) -> None:
     conditions = []
@@ -101,6 +104,8 @@ async def _validate_unique_identity(
         conditions.append(Usuario.username == username)
     if email is not None:
         conditions.append(Usuario.email == email)
+    if telefono_recuperacion is not None:
+        conditions.append(Usuario.telefono_recuperacion == telefono_recuperacion)
     if not conditions:
         return
 
@@ -115,6 +120,8 @@ async def _validate_unique_identity(
             raise HTTPException(status_code=400, detail="El nombre de usuario ya existe")
         if email is not None and user.email == email:
             raise HTTPException(status_code=400, detail="El correo ya está registrado")
+        if telefono_recuperacion is not None and user.telefono_recuperacion == telefono_recuperacion:
+            raise HTTPException(status_code=400, detail="El teléfono de recuperación ya está registrado")
 
 
 def _validate_and_optimize_photo(photo_data_url: str | None) -> str | None:
@@ -152,7 +159,12 @@ async def create_usuario(
     db: Annotated[AsyncSession, Depends(get_db)],
     current_user: Annotated[Usuario, Depends(require_roles(RolEnum.SUPERADMIN))],
 ) -> UsuarioOut:
-    await _validate_unique_identity(db, username=body.username, email=body.email)
+    await _validate_unique_identity(
+        db,
+        username=body.username,
+        email=body.email,
+        telefono_recuperacion=body.telefono_recuperacion,
+    )
     _assert_superadmin_only(current_user, target_role=body.rol)
     _assert_owner_superadmin_policy(
         current_user,
@@ -165,6 +177,7 @@ async def create_usuario(
         password_hash=hash_password(body.password),
         rol=body.rol,
         nombre_completo=body.nombre_completo,
+        telefono_recuperacion=body.telefono_recuperacion,
         mfa_habilitado=body.mfa_habilitado if body.mfa_habilitado is not None else False,
         force_mfa=body.force_mfa if body.force_mfa is not None else False,
         permisos_json=dumps_json_list(getattr(body, "permisos", None)),
@@ -215,6 +228,14 @@ async def update_my_profile(
             current_user.email_verificacion_token = secrets.token_urlsafe(24)
             current_user.email_verificacion_expira = datetime.now(timezone.utc) + timedelta(hours=24)
         current_user.email = body.email
+    if body.telefono_recuperacion is not None:
+        await _validate_unique_identity(
+            db,
+            telefono_recuperacion=body.telefono_recuperacion,
+            exclude_user_id=current_user.id_usuario,
+        )
+        current_user.telefono_recuperacion = body.telefono_recuperacion
+        current_user.telefono_verificado = False
     if body.foto_perfil_url is not None:
         current_user.foto_perfil_url = _validate_and_optimize_photo(body.foto_perfil_url)
     if body.new_password is not None:
@@ -229,6 +250,8 @@ async def update_my_profile(
                 detail="No se pudo actualizar la contraseña. Verifica tus credenciales.",
             )
         current_user.password_hash = hash_password(body.new_password)
+        current_user.refresh_token_version = int(current_user.refresh_token_version or 1) + 1
+        current_user.ultima_rotacion_password = datetime.now(timezone.utc)
     await db.flush()
     return _serialize_user(current_user)
 
@@ -268,6 +291,12 @@ async def update_usuario(
     payload = body.model_dump(exclude_none=True)
     if "email" in payload:
         await _validate_unique_identity(db, email=payload["email"], exclude_user_id=id_usuario)
+    if "telefono_recuperacion" in payload:
+        await _validate_unique_identity(
+            db,
+            telefono_recuperacion=payload["telefono_recuperacion"],
+            exclude_user_id=id_usuario,
+        )
     if "mfa_habilitado" in payload and current_user.rol != RolEnum.SUPERADMIN:
         raise HTTPException(status_code=403, detail="Solo el superadmin puede cambiar MFA directamente")
     if "force_mfa" in payload and current_user.rol != RolEnum.SUPERADMIN:

@@ -1,5 +1,14 @@
 <template>
   <div class="image-upload-wrapper">
+    <input
+      ref="inputRef"
+      type="file"
+      class="hidden"
+      :accept="accept"
+      :disabled="disabled"
+      @change="onFileChange"
+    />
+
     <!-- Preview -->
     <div v-if="currentImage" class="relative group mb-3">
       <img
@@ -11,7 +20,7 @@
       <button
         v-if="!disabled"
         type="button"
-        class="absolute top-1 right-1 bg-red-500 hover:bg-red-600 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
+        class="absolute top-1 right-1 bg-red-500 hover:bg-red-600 text-white rounded-full p-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity"
         @click="clearImage"
       >
         <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -36,18 +45,15 @@
         disabled ? 'opacity-50 cursor-not-allowed' : '',
         dropzoneClass,
       ]"
+      role="button"
+      tabindex="0"
       @dragover.prevent="isDragging = true"
       @dragleave.prevent="isDragging = false"
       @drop.prevent="onDrop"
+      @click="openFilePicker"
+      @keydown.enter.prevent="openFilePicker"
+      @keydown.space.prevent="openFilePicker"
     >
-      <input
-        ref="inputRef"
-        type="file"
-        class="hidden"
-        :accept="accept"
-        :disabled="disabled"
-        @change="onFileChange"
-      />
       <div class="flex flex-col items-center py-4 px-3 text-center">
         <svg class="w-8 h-8 text-gray-400 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
@@ -66,7 +72,7 @@
       v-if="currentImage && !disabled"
       type="button"
       class="mt-2 text-xs text-blue-600 hover:text-blue-800 transition-colors"
-      @click="inputRef?.click()"
+      @click="openFilePicker"
     >
       Cambiar imagen
     </button>
@@ -88,6 +94,7 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { useAuthStore } from '../../stores/auth'
+import api from '../../services/api'
 
 const auth = useAuthStore()
 
@@ -144,8 +151,17 @@ const hintText = computed(() => {
   return limits[props.imageType] ?? limits.default
 })
 
+function buildOptimizeEndpoints(): string[] {
+  const configuredBase = String(api.defaults.baseURL ?? '')
+  const usesVersionedBase = configuredBase.indexOf('/api/v1') !== -1
+  if (usesVersionedBase) {
+    return ['/images/optimize', '/api/v1/images/optimize']
+  }
+  return ['/api/v1/images/optimize', '/images/optimize']
+}
+
 async function processFile(file: File) {
-  if (!file.type.startsWith('image/')) {
+  if (file.type.indexOf('image/') !== 0) {
     error.value = 'Solo se aceptan imágenes (JPG, PNG, WebP)'
     return
   }
@@ -159,28 +175,45 @@ async function processFile(file: File) {
     if (props.imageType) formData.append('image_type', props.imageType)
     if (props.targetWidth) formData.append('target_width', String(props.targetWidth))
 
-    const res = await fetch(`/api/v1/images/optimize`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${auth.accessToken}` },
-      body: formData,
-    })
+    const token = auth.accessToken ?? localStorage.getItem('access_token')
+    const headers = token ? { Authorization: `Bearer ${token}` } : undefined
 
-    if (!res.ok) {
-      const data = await res.json()
-      throw new Error(data.detail ?? `Error ${res.status}`)
+    let result: ImageOptimizeResult | null = null
+    let lastError: unknown = null
+    for (const endpoint of buildOptimizeEndpoints()) {
+      try {
+        const response = await api.post<ImageOptimizeResult>(endpoint, formData, { headers })
+        result = response.data
+        break
+      } catch (attemptError: unknown) {
+        lastError = attemptError
+        const err = attemptError as { response?: { status?: number } }
+        if (err.response?.status !== 404) {
+          throw attemptError
+        }
+      }
     }
 
-    const result: ImageOptimizeResult = await res.json()
+    if (!result) {
+      throw lastError ?? new Error('No se pudo resolver la ruta de optimización de imagen')
+    }
+
     imageInfo.value = result
     emit('update:modelValue', result.data_url)
     emit('optimized', result)
   } catch (e: unknown) {
-    const msg = e instanceof Error ? e.message : 'Error procesando imagen'
+    const err = e as { response?: { data?: { detail?: string } } }
+    const msg = err.response?.data?.detail ?? (e instanceof Error ? e.message : 'Error procesando imagen')
     error.value = msg
     emit('error', msg)
   } finally {
     loading.value = false
   }
+}
+
+function openFilePicker() {
+  if (props.disabled || loading.value) return
+  inputRef.value?.click()
 }
 
 function onFileChange(event: Event) {

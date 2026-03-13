@@ -19,11 +19,13 @@ export interface Usuario {
   email: string
   rol: RolEnum
   nombre_completo?: string
+  telefono_recuperacion?: string
   activo: boolean
   mfa_habilitado: boolean
   force_mfa: boolean
   foto_perfil_url?: string
   email_verificado: boolean
+  telefono_verificado: boolean
   permisos: string[]
   vistas: string[]
   herramientas: string[]
@@ -139,6 +141,7 @@ export interface Cotizacion {
   numero: string
   id_cliente: number
   id_vendedor: number
+  id_proyecto?: number
   estado: EstadoCotizacion
   subtotal: number
   impuesto: number
@@ -252,6 +255,32 @@ export interface Proyecto {
   fecha_creacion: string
 }
 
+export interface ProyectoRentabilidad {
+  id_proyecto: number
+  presupuesto: number
+  ingresos_facturados: number
+  costo_horas_tecnicas: number
+  costo_reparaciones: number
+  costo_repuestos: number
+  costo_total_operativo: number
+  margen_presupuestario: number
+  utilidad_neta_real: number
+  margen_neto_pct: number
+  consumo_presupuesto_pct: number
+  tickets_total: number
+  tickets_cerrados: number
+}
+
+export interface CotizacionProyectoResumen {
+  id_cotizacion: number
+  numero: string
+  estado: string
+  total: number
+  fecha_creacion: string
+  numero_factura?: string
+  fecha_factura?: string
+}
+
 export interface RepuestoUsado {
   id_repuesto: number
   id_producto: number
@@ -300,10 +329,28 @@ export interface TokenResponse {
   mfa_required: boolean
   session_id?: string
   access_expires_in?: number
+  mfa_channel?: string
+  mfa_destination?: string
+  mfa_debug_code?: string
 }
 
 export interface LoginRequest {
   username: string
   password: string
   mfa_code?: string
+  recovery_code?: string
+}
+
+export interface PasswordRecoveryRequest {
+  identifier: string
+}
+
+export interface PasswordRecoveryConfirmRequest {
+  token: string
+  new_password: string
+}
+
+export interface RecoveryCodesResponse {
+  codes: string[]
+  generated_at: string
 }

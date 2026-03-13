@@ -8,6 +8,9 @@ export const useAuthStore = defineStore('auth', () => {
   const accessToken = ref<string | null>(localStorage.getItem('access_token'))
   const sessionId = ref<string | null>(localStorage.getItem('session_id'))
   const mfaRequired = ref(false)
+  const mfaChannel = ref<string | null>(null)
+  const mfaDestination = ref<string | null>(null)
+  const mfaDebugCode = ref<string | null>(null)
   const loading = ref(false)
   const error = ref<string | null>(null)
 
@@ -20,8 +23,15 @@ export const useAuthStore = defineStore('auth', () => {
       const { data } = await api.post<TokenResponse>('/api/v1/auth/login', credentials)
       if (data.mfa_required) {
         mfaRequired.value = true
+        mfaChannel.value = data.mfa_channel ?? null
+        mfaDestination.value = data.mfa_destination ?? null
+        mfaDebugCode.value = data.mfa_debug_code ?? null
         return false
       }
+      mfaRequired.value = false
+      mfaChannel.value = null
+      mfaDestination.value = null
+      mfaDebugCode.value = null
       accessToken.value = data.access_token
       localStorage.setItem('access_token', data.access_token)
       if (data.session_id) {
@@ -52,6 +62,9 @@ export const useAuthStore = defineStore('auth', () => {
     user.value = null
     accessToken.value = null
     mfaRequired.value = false
+    mfaChannel.value = null
+    mfaDestination.value = null
+    mfaDebugCode.value = null
     localStorage.removeItem('access_token')
     sessionId.value = null
     localStorage.removeItem('session_id')
@@ -63,5 +76,19 @@ export const useAuthStore = defineStore('auth', () => {
     fetchMe()
   }
 
-  return { user, accessToken, sessionId, mfaRequired, loading, error, isAuthenticated, login, fetchMe, logout }
+  return {
+    user,
+    accessToken,
+    sessionId,
+    mfaRequired,
+    mfaChannel,
+    mfaDestination,
+    mfaDebugCode,
+    loading,
+    error,
+    isAuthenticated,
+    login,
+    fetchMe,
+    logout,
+  }
 })

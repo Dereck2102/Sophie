@@ -23,9 +23,20 @@ class Settings(BaseSettings):
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
     COOKIE_SECURE: bool = False
     COOKIE_SAMESITE: str = "lax"
+    MFA_EMAIL_CODE_EXPIRE_MINUTES: int = 10
+
+    # SMTP / email delivery
+    SMTP_HOST: str = os.getenv("SMTP_HOST", "")
+    SMTP_PORT: int = int(os.getenv("SMTP_PORT", "587"))
+    SMTP_USERNAME: str = os.getenv("SMTP_USERNAME", "")
+    SMTP_PASSWORD: str = os.getenv("SMTP_PASSWORD", "")
+    SMTP_USE_TLS: bool = os.getenv("SMTP_USE_TLS", "true").lower() in {"1", "true", "yes"}
+    SMTP_FROM_EMAIL: str = os.getenv("SMTP_FROM_EMAIL", "no-reply@sophie.local")
+    SMTP_FROM_NAME: str = os.getenv("SMTP_FROM_NAME", "SOPHIE")
 
     # MFA
     MFA_ISSUER: str = "SOPHIE - Big Solutions"
+    MFA_EMAIL_DEBUG_FALLBACK: bool = os.getenv("MFA_EMAIL_DEBUG_FALLBACK", "true").lower() in {"1", "true", "yes"}
     OWNER_SUPERADMIN_USERNAME: str = os.getenv("OWNER_SUPERADMIN_USERNAME", "damacoria")
 
     # Vault encryption (AES-256-GCM key must be 32 bytes base64-encoded)

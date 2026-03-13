@@ -13,6 +13,7 @@ class UsuarioBase(BaseModel):
     email: EmailStr
     rol: RolEnum
     nombre_completo: Optional[str] = None
+    telefono_recuperacion: Optional[str] = None
 
 
 class UsuarioCreate(UsuarioBase):
@@ -34,6 +35,8 @@ class UsuarioCreate(UsuarioBase):
 class UsuarioUpdate(BaseModel):
     email: Optional[EmailStr] = None
     nombre_completo: Optional[str] = None
+    telefono_recuperacion: Optional[str] = None
+    telefono_verificado: Optional[bool] = None
     activo: Optional[bool] = None
     rol: Optional[RolEnum] = None
     mfa_habilitado: Optional[bool] = None
@@ -47,6 +50,7 @@ class UsuarioSelfUpdate(BaseModel):
     """Schema for users updating their own profile."""
     nombre_completo: Optional[str] = None
     email: Optional[EmailStr] = None
+    telefono_recuperacion: Optional[str] = None
     foto_perfil_url: Optional[str] = None
     current_password: Optional[str] = None
     new_password: Optional[str] = None
@@ -72,6 +76,7 @@ class UsuarioOut(UsuarioBase):
     force_mfa: bool
     foto_perfil_url: Optional[str] = None
     email_verificado: bool
+    telefono_verificado: bool
     permisos: list[str] = []
     vistas: list[str] = []
     herramientas: list[str] = []
@@ -84,6 +89,7 @@ class LoginRequest(BaseModel):
     username: str
     password: str
     mfa_code: Optional[str] = None
+    recovery_code: Optional[str] = None
 
 
 class TokenResponse(BaseModel):
@@ -92,6 +98,9 @@ class TokenResponse(BaseModel):
     mfa_required: bool = False
     session_id: Optional[str] = None
     access_expires_in: Optional[int] = None
+    mfa_channel: Optional[str] = None
+    mfa_destination: Optional[str] = None
+    mfa_debug_code: Optional[str] = None
 
 
 class MFASetupOut(BaseModel):
@@ -115,6 +124,36 @@ class EmailVerificationTokenOut(BaseModel):
 
 class EmailVerificationRequest(BaseModel):
     token: str
+
+
+class PasswordRecoveryRequest(BaseModel):
+    identifier: str
+
+
+class PasswordRecoveryConfirmRequest(BaseModel):
+    token: str
+    new_password: str
+
+    @field_validator("new_password")
+    @classmethod
+    def new_password_min_length(cls, v: str) -> str:
+        if len(v) < 8:
+            raise ValueError("Password must be at least 8 characters")
+        has_upper = any(ch.isupper() for ch in v)
+        has_lower = any(ch.islower() for ch in v)
+        has_digit = any(ch.isdigit() for ch in v)
+        if not (has_upper and has_lower and has_digit):
+            raise ValueError("Password must include uppercase, lowercase, and number")
+        return v
+
+
+class RecoveryCodesRotateRequest(BaseModel):
+    current_password: str
+
+
+class RecoveryCodesOut(BaseModel):
+    codes: list[str]
+    generated_at: datetime
 
 
 class ConfiguracionSistemaOut(BaseModel):

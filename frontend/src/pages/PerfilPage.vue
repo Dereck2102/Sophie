@@ -6,7 +6,7 @@ import Button from '../components/ui/Button.vue'
 import ImageUpload from '../components/ui/ImageUpload.vue'
 import { useAuthStore } from '../stores/auth'
 import api from '../services/api'
-import type { EmailVerificationTokenResponse, Usuario } from '../types'
+import type { EmailVerificationTokenResponse, RecoveryCodesResponse, Usuario } from '../types'
 
 const auth = useAuthStore()
 
@@ -14,6 +14,7 @@ const auth = useAuthStore()
 const profileForm = ref({
   nombre_completo: auth.user?.nombre_completo ?? '',
   email: auth.user?.email ?? '',
+  telefono_recuperacion: auth.user?.telefono_recuperacion ?? '',
   foto_perfil_url: auth.user?.foto_perfil_url ?? '',
 })
 const profileSaving = ref(false)
@@ -34,6 +35,11 @@ const verificationTokenExpires = ref<string | null>(null)
 const verificationLoading = ref(false)
 const verificationError = ref<string | null>(null)
 const verificationSuccess = ref<string | null>(null)
+const recoveryCodes = ref<string[]>([])
+const recoveryCodesLoading = ref(false)
+const recoveryCodesError = ref<string | null>(null)
+const recoveryCodesGeneratedAt = ref<string | null>(null)
+const recoveryPassword = ref('')
 
 const roleLabels: Record<string, string> = {
   superadmin: 'Superadministrador',
@@ -70,6 +76,7 @@ async function saveProfile(): Promise<void> {
     const { data } = await api.patch<Usuario>('/api/v1/usuarios/me', {
       nombre_completo: profileForm.value.nombre_completo || undefined,
       email: profileForm.value.email,
+      telefono_recuperacion: profileForm.value.telefono_recuperacion || undefined,
       foto_perfil_url: profileForm.value.foto_perfil_url || undefined,
     })
     auth.user = data
@@ -144,26 +151,48 @@ async function verifyEmailToken(): Promise<void> {
     verificationLoading.value = false
   }
 }
+
+async function rotateRecoveryCodes(): Promise<void> {
+  if (!recoveryPassword.value) {
+    recoveryCodesError.value = 'Ingresa tu contraseña actual para generar códigos de recuperación'
+    return
+  }
+  recoveryCodesLoading.value = true
+  recoveryCodesError.value = null
+  try {
+    const { data } = await api.post<RecoveryCodesResponse>('/api/v1/auth/mfa/recovery-codes/rotate', {
+      current_password: recoveryPassword.value,
+    })
+    recoveryCodes.value = data.codes
+    recoveryCodesGeneratedAt.value = data.generated_at
+    recoveryPassword.value = ''
+  } catch (e: unknown) {
+    const err = e as { response?: { data?: { detail?: string } } }
+    recoveryCodesError.value = err.response?.data?.detail ?? 'No se pudieron generar los códigos'
+  } finally {
+    recoveryCodesLoading.value = false
+  }
+}
 </script>
 
 <template>
-  <div class="space-y-6 max-w-3xl">
+  <div class="space-y-6 max-w-3xl px-1 sm:px-0">
     <!-- Header -->
-    <div class="flex items-center gap-4">
+    <div class="flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:gap-4">
       <img
         v-if="auth.user?.foto_perfil_url"
         :src="auth.user.foto_perfil_url"
         alt="Foto de perfil"
-        class="w-16 h-16 rounded-2xl object-cover"
+        class="h-16 w-16 rounded-2xl object-cover"
       />
-      <div v-else class="w-16 h-16 bg-blue-600 rounded-2xl flex items-center justify-center text-white text-xl font-bold">
+      <div v-else class="h-16 w-16 rounded-2xl bg-blue-600 flex items-center justify-center text-white text-xl font-bold">
         {{ userInitials }}
       </div>
-      <div>
-        <h1 class="text-2xl font-bold text-gray-900">
+      <div class="min-w-0">
+        <h1 class="truncate text-2xl font-bold text-gray-900">
           {{ auth.user?.nombre_completo ?? auth.user?.username }}
         </h1>
-        <p class="text-gray-500 text-sm">
+        <p class="break-words text-gray-500 text-sm">
           {{ roleLabels[auth.user?.rol ?? ''] ?? auth.user?.rol }} ·
           {{ auth.user?.email }}
         </p>
@@ -212,14 +241,25 @@ async function verifyEmailToken(): Promise<void> {
             />
           </div>
           <div class="sm:col-span-2">
+            <label class="block text-sm font-medium text-gray-700 mb-1">Teléfono de recuperación</label>
+            <input
+              v-model="profileForm.telefono_recuperacion"
+              type="tel"
+              inputmode="tel"
+              class="w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+              placeholder="+593..."
+            />
+            <p class="text-xs text-gray-400 mt-1">Se usa para recuperación de cuenta y verificación futura.</p>
+          </div>
+          <div class="sm:col-span-2">
             <label class="block text-sm font-medium text-gray-700 mb-1">Foto de Perfil</label>
             <ImageUpload
               v-model="profileForm.foto_perfil_url"
               label="Foto de perfil"
               image-type="profile"
-              :target-width="400"
-              preview-class="w-32 h-32 rounded-xl object-cover"
-              dropzone-class="min-h-[100px]"
+              :target-width="360"
+              preview-class="w-24 h-24 sm:w-32 sm:h-32 rounded-xl object-cover"
+              dropzone-class="min-h-[96px] sm:min-h-[110px]"
             />
           </div>
         </div>
@@ -304,19 +344,25 @@ async function verifyEmailToken(): Promise<void> {
     <!-- Account Info -->
     <Card title="Información de la Cuenta">
       <div class="space-y-3 text-sm">
-        <div class="flex justify-between py-2 border-b border-gray-50">
+        <div class="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between py-2 border-b border-gray-50">
           <span class="text-gray-500">Miembro desde</span>
           <span class="font-medium text-gray-800">
             {{ auth.user?.fecha_creacion ? new Date(auth.user.fecha_creacion).toLocaleDateString('es-PE', { year: 'numeric', month: 'long', day: 'numeric' }) : '—' }}
           </span>
         </div>
-        <div class="flex justify-between py-2 border-b border-gray-50">
+        <div class="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between py-2 border-b border-gray-50">
           <span class="text-gray-500">Autenticación de dos factores (MFA)</span>
           <span :class="auth.user?.mfa_habilitado ? 'text-green-600 font-medium' : 'text-gray-400'">
             {{ auth.user?.mfa_habilitado ? 'Activado' : 'Desactivado' }}
           </span>
         </div>
-        <div class="flex justify-between py-2">
+        <div class="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between py-2 border-b border-gray-50">
+          <span class="text-gray-500">Teléfono recuperación</span>
+          <span :class="auth.user?.telefono_recuperacion ? 'text-green-600 font-medium' : 'text-gray-400'">
+            {{ auth.user?.telefono_recuperacion ? auth.user.telefono_recuperacion : 'No configurado' }}
+          </span>
+        </div>
+        <div class="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between py-2">
           <span class="text-gray-500">Estado de cuenta</span>
           <span :class="auth.user?.activo ? 'text-green-600 font-medium' : 'text-red-500 font-medium'">
             {{ auth.user?.activo ? 'Activa' : 'Inactiva' }}
@@ -341,7 +387,7 @@ async function verifyEmailToken(): Promise<void> {
             <p class="text-xs text-blue-700">Genera un token y confírmalo para validar tu correo en la plataforma.</p>
           </div>
         </div>
-        <div class="flex flex-wrap items-center gap-2">
+        <div class="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-2">
           <Button variant="secondary" :loading="verificationLoading" @click="requestVerificationToken">
             Generar token
           </Button>
@@ -349,7 +395,7 @@ async function verifyEmailToken(): Promise<void> {
             v-model="verificationToken"
             type="text"
             placeholder="Pega o escribe token"
-            class="px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none min-w-[250px]"
+            class="w-full sm:w-auto px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none sm:min-w-[250px]"
           />
           <Button :loading="verificationLoading" @click="verifyEmailToken">Verificar</Button>
         </div>
@@ -361,6 +407,30 @@ async function verifyEmailToken(): Promise<void> {
       </div>
       <div v-else class="mt-4 p-3 bg-green-50 border border-green-200 rounded-lg text-sm text-green-700">
         Correo verificado correctamente.
+      </div>
+
+      <div v-if="auth.user?.mfa_habilitado" class="mt-4 p-3 bg-slate-50 border border-slate-200 rounded-lg space-y-3">
+        <div>
+          <p class="text-sm font-medium text-slate-800">Códigos de recuperación MFA</p>
+          <p class="text-xs text-slate-600 mt-1">Guárdalos offline. Cada código sirve una sola vez cuando no tengas tu app TOTP.</p>
+        </div>
+        <div class="flex flex-col sm:flex-row gap-2">
+          <input
+            v-model="recoveryPassword"
+            type="password"
+            autocomplete="current-password"
+            placeholder="Confirma tu contraseña actual"
+            class="w-full sm:w-auto sm:min-w-[280px] px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+          />
+          <Button :loading="recoveryCodesLoading" @click="rotateRecoveryCodes">Generar códigos</Button>
+        </div>
+        <p v-if="recoveryCodesError" class="text-xs text-red-700 bg-red-50 border border-red-200 rounded px-2 py-1">{{ recoveryCodesError }}</p>
+        <div v-if="recoveryCodes.length > 0" class="bg-white border border-slate-200 rounded-lg p-3">
+          <p class="text-xs text-slate-500 mb-2">Generados: {{ recoveryCodesGeneratedAt ? new Date(recoveryCodesGeneratedAt).toLocaleString('es-EC') : 'ahora' }}</p>
+          <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            <code v-for="code in recoveryCodes" :key="code" class="px-2 py-1 rounded bg-slate-100 text-slate-800 text-xs text-center">{{ code }}</code>
+          </div>
+        </div>
       </div>
     </Card>
 

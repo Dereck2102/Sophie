@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Annotated, List
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -15,11 +15,16 @@ from app.infrastructure.models.proyectos import (
     RegistroTiempo,
     Tarea,
 )
+from app.infrastructure.models.sistema import ConfiguracionSistema
+from app.infrastructure.models.tickets import EstadoTicketEnum, RepuestoUsado, ReparacionTaller, Ticket
 from app.infrastructure.models.usuario import RolEnum, Usuario
+from app.infrastructure.models.ventas import Cotizacion, EstadoCotizacionEnum, Venta
 from app.schemas.proyectos import (
+    CotizacionProyectoOut,
     MiembroCreate,
     MiembroOut,
     ProyectoCreate,
+    ProyectoRentabilidadOut,
     ProyectoOut,
     ProyectoUpdate,
     RegistroTiempoCreate,
@@ -265,3 +270,122 @@ async def add_miembro(
     db.add(miembro)
     await db.flush()
     return miembro
+
+
+@router.get("/{id_proyecto}/cotizaciones", response_model=List[CotizacionProyectoOut])
+async def list_cotizaciones_proyecto(
+    id_proyecto: int,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[Usuario, Depends(get_current_user)],
+    limit: int = Query(30, ge=1, le=200),
+) -> list[CotizacionProyectoOut]:
+    proyecto_result = await db.execute(
+        select(Proyecto.id_proyecto).where(Proyecto.id_proyecto == id_proyecto)
+    )
+    if not proyecto_result.scalar_one_or_none():
+        raise HTTPException(status_code=404, detail="Proyecto not found")
+
+    result = await db.execute(
+        select(Cotizacion, Venta.numero_factura, Venta.fecha_factura)
+        .outerjoin(Venta, Venta.id_cotizacion == Cotizacion.id_cotizacion)
+        .where(Cotizacion.id_proyecto == id_proyecto)
+        .order_by(Cotizacion.fecha_creacion.desc())
+        .limit(limit)
+    )
+
+    rows = result.all()
+    return [
+        CotizacionProyectoOut(
+            id_cotizacion=cot.id_cotizacion,
+            numero=cot.numero,
+            estado=cot.estado.value,
+            total=float(cot.total or 0),
+            fecha_creacion=cot.fecha_creacion,
+            numero_factura=numero_factura,
+            fecha_factura=fecha_factura,
+        )
+        for cot, numero_factura, fecha_factura in rows
+    ]
+
+
+@router.get("/{id_proyecto}/rentabilidad", response_model=ProyectoRentabilidadOut)
+async def get_proyecto_rentabilidad(
+    id_proyecto: int,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[Usuario, Depends(get_current_user)],
+) -> ProyectoRentabilidadOut:
+    proyecto_result = await db.execute(
+        select(Proyecto).where(Proyecto.id_proyecto == id_proyecto)
+    )
+    proyecto = proyecto_result.scalar_one_or_none()
+    if not proyecto:
+        raise HTTPException(status_code=404, detail="Proyecto not found")
+
+    horas_result = await db.execute(
+        select(func.coalesce(func.sum(Tarea.horas_reales), 0)).where(Tarea.id_proyecto == id_proyecto)
+    )
+    horas_reales = float(horas_result.scalar_one() or 0)
+
+    costo_hora_result = await db.execute(
+        select(ConfiguracionSistema.costo_hora_tecnica_default).where(ConfiguracionSistema.id_configuracion == 1)
+    )
+    costo_hora = float(costo_hora_result.scalar_one_or_none() or 25)
+    costo_horas_tecnicas = round(horas_reales * costo_hora, 2)
+
+    reparaciones_result = await db.execute(
+        select(func.coalesce(func.sum(ReparacionTaller.costo_reparacion), 0))
+        .join(Ticket, Ticket.id_ticket == ReparacionTaller.id_ticket)
+        .where(Ticket.id_proyecto == id_proyecto)
+    )
+    costo_reparaciones = float(reparaciones_result.scalar_one() or 0)
+
+    repuestos_result = await db.execute(
+        select(func.coalesce(func.sum(RepuestoUsado.cantidad * RepuestoUsado.precio_unitario), 0))
+        .join(Ticket, Ticket.id_ticket == RepuestoUsado.id_ticket)
+        .where(Ticket.id_proyecto == id_proyecto)
+    )
+    costo_repuestos = float(repuestos_result.scalar_one() or 0)
+
+    tickets_total_result = await db.execute(
+        select(func.count(Ticket.id_ticket)).where(Ticket.id_proyecto == id_proyecto)
+    )
+    tickets_total = int(tickets_total_result.scalar_one() or 0)
+
+    tickets_cerrados_result = await db.execute(
+        select(func.count(Ticket.id_ticket)).where(
+            Ticket.id_proyecto == id_proyecto,
+            Ticket.estado.in_([EstadoTicketEnum.RESUELTO, EstadoTicketEnum.CERRADO]),
+        )
+    )
+    tickets_cerrados = int(tickets_cerrados_result.scalar_one() or 0)
+
+    ingresos_result = await db.execute(
+        select(func.coalesce(func.sum(Cotizacion.total), 0)).where(
+            Cotizacion.id_proyecto == id_proyecto,
+            Cotizacion.estado == EstadoCotizacionEnum.FACTURADA,
+        )
+    )
+    ingresos_facturados = float(ingresos_result.scalar_one() or 0)
+
+    presupuesto = float(proyecto.presupuesto or 0)
+    costo_total_operativo = round(costo_horas_tecnicas + costo_reparaciones + costo_repuestos, 2)
+    margen_presupuestario = round(presupuesto - costo_total_operativo, 2)
+    utilidad_neta_real = round(ingresos_facturados - costo_total_operativo, 2)
+    margen_neto_pct = round((utilidad_neta_real / ingresos_facturados) * 100, 2) if ingresos_facturados > 0 else 0
+    consumo_presupuesto_pct = round((costo_total_operativo / presupuesto) * 100, 2) if presupuesto > 0 else 0
+
+    return ProyectoRentabilidadOut(
+        id_proyecto=id_proyecto,
+        presupuesto=round(presupuesto, 2),
+        ingresos_facturados=round(ingresos_facturados, 2),
+        costo_horas_tecnicas=round(costo_horas_tecnicas, 2),
+        costo_reparaciones=round(costo_reparaciones, 2),
+        costo_repuestos=round(costo_repuestos, 2),
+        costo_total_operativo=costo_total_operativo,
+        margen_presupuestario=margen_presupuestario,
+        utilidad_neta_real=utilidad_neta_real,
+        margen_neto_pct=margen_neto_pct,
+        consumo_presupuesto_pct=consumo_presupuesto_pct,
+        tickets_total=tickets_total,
+        tickets_cerrados=tickets_cerrados,
+    )

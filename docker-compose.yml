@@ -32,6 +32,15 @@ services:
       DATABASE_URL: postgresql+asyncpg://sophie_user:sophie_pass@postgres:5432/sophie_db
       SECRET_KEY: dev_secret_key_change_in_production
       MFA_ISSUER: "SOPHIE - Big Solutions"
+      MFA_EMAIL_CODE_EXPIRE_MINUTES: 10
+      MFA_EMAIL_DEBUG_FALLBACK: "true"
+      SMTP_HOST: smtp.gmail.com
+      SMTP_PORT: 587
+      SMTP_USERNAME: your_email@gmail.com
+      SMTP_PASSWORD: your_app_password
+      SMTP_USE_TLS: "true"
+      SMTP_FROM_EMAIL: your_email@gmail.com
+      SMTP_FROM_NAME: SOPHIE
       VAULT_SECRET_KEY: MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=
       CORS_ORIGINS: '["http://localhost:3000", "http://localhost", "http://localhost:5173"]'
     depends_on:

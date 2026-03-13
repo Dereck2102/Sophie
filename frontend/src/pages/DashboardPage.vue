@@ -1,15 +1,28 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, computed } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import {
-  Users, ShoppingCart, Wrench, AlertCircle, TrendingUp, FolderOpen,
-  ArrowRight, Clock, XCircle, UserCog, Settings, Lock
+  AlertTriangle,
+  ArrowRight,
+  Boxes,
+  Briefcase,
+  Clock,
+  FolderOpen,
+  Landmark,
+  Receipt,
+  ShoppingCart,
+  TrendingDown,
+  TrendingUp,
+  Users,
+  Wallet,
+  Wrench,
+  XCircle,
 } from 'lucide-vue-next'
 import Card from '../components/ui/Card.vue'
 import Badge from '../components/ui/Badge.vue'
 import { useAuthStore } from '../stores/auth'
 import api from '../services/api'
-import type { ConfiguracionSistema, Ticket } from '../types'
+import type { Ticket } from '../types'
 
 interface DashboardStats {
   total_clientes: number
@@ -21,6 +34,81 @@ interface DashboardStats {
   margen_bruto_mes: number
   caja_chica_balance: number
   caja_chica_egresos_mes: number
+}
+
+interface DashboardTrendPoint {
+  label: string
+  ingresos: number
+  compras: number
+  caja_ingresos: number
+  caja_egresos: number
+  flujo_neto: number
+}
+
+interface DashboardTopClient {
+  id_cliente: number
+  nombre: string
+  total_facturado: number
+  participacion_pct: number
+}
+
+interface DashboardExpenseCategory {
+  categoria: string
+  total: number
+}
+
+interface DashboardReceivableBucket {
+  bucket: string
+  total: number
+  cantidad: number
+}
+
+interface DashboardReceivableDueItem {
+  id_cotizacion: number
+  numero: string
+  id_cliente: number
+  cliente_nombre: string
+  estado: string
+  total: number
+  fecha_vencimiento?: string | null
+  dias_para_vencer?: number | null
+  dias_vencido?: number | null
+}
+
+interface DashboardAlert {
+  severity: 'critical' | 'warning' | 'info'
+  title: string
+  detail: string
+  link?: string | null
+}
+
+interface DashboardFinanceAnalytics {
+  ingresos_facturados_mes: number
+  compras_registradas_mes: number
+  caja_ingresos_mes: number
+  caja_egresos_mes: number
+  flujo_neto_mes: number
+  cuentas_por_cobrar: number
+  ordenes_pendientes_monto: number
+  margen_bruto_mes: number
+  caja_chica_balance: number
+  top_clientes: DashboardTopClient[]
+  egresos_por_categoria: DashboardExpenseCategory[]
+  cartera_aging: DashboardReceivableBucket[]
+  proximos_vencimientos: DashboardReceivableDueItem[]
+  tendencia_mensual: DashboardTrendPoint[]
+  alertas: DashboardAlert[]
+}
+
+interface CotizacionSummary {
+  estado: string
+}
+
+interface PipelineStage {
+  label: string
+  estado: string
+  color: string
+  textColor: string
 }
 
 const router = useRouter()
@@ -37,58 +125,49 @@ const stats = ref<DashboardStats>({
   caja_chica_balance: 0,
   caja_chica_egresos_mes: 0,
 })
+
+const analytics = ref<DashboardFinanceAnalytics>({
+  ingresos_facturados_mes: 0,
+  compras_registradas_mes: 0,
+  caja_ingresos_mes: 0,
+  caja_egresos_mes: 0,
+  flujo_neto_mes: 0,
+  cuentas_por_cobrar: 0,
+  ordenes_pendientes_monto: 0,
+  margen_bruto_mes: 0,
+  caja_chica_balance: 0,
+  top_clientes: [],
+  egresos_por_categoria: [],
+  cartera_aging: [],
+  proximos_vencimientos: [],
+  tendencia_mensual: [],
+  alertas: [],
+})
+
 const recentTickets = ref<Ticket[]>([])
+const cotizacionStats = ref<Record<string, number>>({})
 const loading = ref(true)
 
-const financeInputs = ref({
-  projectedSales: 12000,
-  projectedCosts: 8000,
-  ivaRate: 15,
-  discountRate: 5,
-  laborCost: 350,
-  materialCost: 520,
-  mobilityCost: 80,
-  softwareCost: 120,
-  technicalHours: 12,
-  hourlyRate: 25,
-})
+const pipelineStages: PipelineStage[] = [
+  { label: 'Borrador', estado: 'borrador', color: 'bg-slate-400', textColor: 'text-slate-700' },
+  { label: 'Enviada', estado: 'enviada', color: 'bg-sky-500', textColor: 'text-sky-700' },
+  { label: 'Aprobada', estado: 'aprobada', color: 'bg-emerald-500', textColor: 'text-emerald-700' },
+  { label: 'Facturada', estado: 'facturada', color: 'bg-indigo-500', textColor: 'text-indigo-700' },
+]
 
-const financeSummary = computed(() => {
-  const labor = Number(financeInputs.value.laborCost) || 0
-  const material = Number(financeInputs.value.materialCost) || 0
-  const mobility = Number(financeInputs.value.mobilityCost) || 0
-  const software = Number(financeInputs.value.softwareCost) || 0
-  const hours = Number(financeInputs.value.technicalHours) || 0
-  const hourly = Number(financeInputs.value.hourlyRate) || 0
-  const discount = Math.max(0, Number(financeInputs.value.discountRate) || 0)
-  const iva = Math.max(0, Number(financeInputs.value.ivaRate) || 0)
-  const projectedSales = Number(financeInputs.value.projectedSales) || 0
-  const projectedCosts = Number(financeInputs.value.projectedCosts) || 0
+const priorityVariant: Record<string, 'danger' | 'warning' | 'info' | 'default'> = {
+  critica: 'danger',
+  alta: 'warning',
+  media: 'info',
+  baja: 'default',
+}
 
-  const operationalCost = labor + material + mobility + software
-  const technicalCost = hours * hourly
-  const quoteSubtotal = operationalCost + technicalCost
-  const discountValue = quoteSubtotal * (discount / 100)
-  const taxableBase = Math.max(0, quoteSubtotal - discountValue)
-  const ivaValue = taxableBase * (iva / 100)
-  const quoteTotal = taxableBase + ivaValue
-  const monthlyProfit = projectedSales - projectedCosts
-  const annualProfit = monthlyProfit * 12
-  const margin = projectedSales > 0 ? (monthlyProfit / projectedSales) * 100 : 0
-
-  return {
-    operationalCost,
-    technicalCost,
-    quoteSubtotal,
-    discountValue,
-    taxableBase,
-    ivaValue,
-    quoteTotal,
-    monthlyProfit,
-    annualProfit,
-    margin,
-  }
-})
+const estadoVariant: Record<string, 'warning' | 'info' | 'success' | 'default'> = {
+  abierto: 'warning',
+  en_progreso: 'info',
+  resuelto: 'success',
+  cerrado: 'default',
+}
 
 function formatCurrency(value: number): string {
   return new Intl.NumberFormat('en-US', {
@@ -98,129 +177,177 @@ function formatCurrency(value: number): string {
   }).format(value)
 }
 
-const statCards = [
-  {
-    label: 'Clientes Activos', key: 'total_clientes' as keyof DashboardStats,
-    icon: Users, color: 'text-blue-600', bg: 'bg-blue-50',
-    link: '/crm', format: (v: number) => String(v)
-  },
-  {
-    label: 'Ventas este Mes', key: 'revenue_mes' as keyof DashboardStats,
-    icon: TrendingUp, color: 'text-emerald-600', bg: 'bg-emerald-50',
-    link: '/ventas', format: (v: number) => `$${v.toLocaleString('en-US', { minimumFractionDigits: 2 })}`
-  },
-  {
-    label: 'Cotizaciones (mes)', key: 'cotizaciones_mes' as keyof DashboardStats,
-    icon: ShoppingCart, color: 'text-cyan-700', bg: 'bg-cyan-50',
-    link: '/ventas', format: (v: number) => String(v)
-  },
-  {
-    label: 'Tickets Abiertos', key: 'tickets_abiertos' as keyof DashboardStats,
-    icon: Wrench, color: 'text-amber-600', bg: 'bg-amber-50',
-    link: '/taller', format: (v: number) => String(v)
-  },
-  {
-    label: 'Proyectos Activos', key: 'proyectos_activos' as keyof DashboardStats,
-    icon: FolderOpen, color: 'text-purple-600', bg: 'bg-purple-50',
-    link: '/proyectos', format: (v: number) => String(v)
-  },
-  {
-    label: 'Margen Bruto (Mes)', key: 'margen_bruto_mes' as keyof DashboardStats,
-    icon: TrendingUp, color: 'text-emerald-700', bg: 'bg-emerald-50',
-    link: '/ventas', format: (v: number) => `$${v.toLocaleString('en-US', { minimumFractionDigits: 2 })}`
-  },
-  {
-    label: 'Balance Caja Chica', key: 'caja_chica_balance' as keyof DashboardStats,
-    icon: Lock, color: 'text-indigo-700', bg: 'bg-indigo-50',
-    link: '/caja-chica', format: (v: number) => `$${v.toLocaleString('en-US', { minimumFractionDigits: 2 })}`
-  },
-  {
-    label: 'Stock Bajo', key: 'productos_bajo_stock' as keyof DashboardStats,
-    icon: AlertCircle, color: 'text-red-500', bg: 'bg-red-50',
-    link: '/compras', format: (v: number) => String(v)
-  },
-]
+function formatCompactCurrency(value: number): string {
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    notation: 'compact',
+    maximumFractionDigits: 1,
+  }).format(value)
+}
 
-const priorityVariant: Record<string, 'danger' | 'warning' | 'info' | 'default'> = {
-  critica: 'danger', alta: 'warning', media: 'info', baja: 'default',
-}
-const estadoVariant: Record<string, 'warning' | 'info' | 'success' | 'default'> = {
-  abierto: 'warning', en_progreso: 'info', resuelto: 'success', cerrado: 'default',
-}
+const cotizacionTotal = computed(() => Object.values(cotizacionStats.value).reduce((sum, count) => sum + count, 0) || 1)
+
+const financialCards = computed(() => [
+  {
+    label: 'Ingresos facturados',
+    value: analytics.value.ingresos_facturados_mes,
+    icon: TrendingUp,
+    tone: 'text-emerald-700',
+    bg: 'bg-emerald-50',
+    link: '/ventas',
+    detail: 'Ventas confirmadas del mes',
+  },
+  {
+    label: 'Compras registradas',
+    value: analytics.value.compras_registradas_mes,
+    icon: Receipt,
+    tone: 'text-rose-700',
+    bg: 'bg-rose-50',
+    link: '/compras',
+    detail: 'Ordenes emitidas no canceladas',
+  },
+  {
+    label: 'Flujo operativo',
+    value: analytics.value.flujo_neto_mes,
+    icon: analytics.value.flujo_neto_mes >= 0 ? Landmark : TrendingDown,
+    tone: analytics.value.flujo_neto_mes >= 0 ? 'text-sky-700' : 'text-red-700',
+    bg: analytics.value.flujo_neto_mes >= 0 ? 'bg-sky-50' : 'bg-red-50',
+    link: '/dashboard',
+    detail: 'Ventas + caja menos compras y egresos',
+  },
+  {
+    label: 'Cartera por cobrar',
+    value: analytics.value.cuentas_por_cobrar,
+    icon: Briefcase,
+    tone: 'text-amber-700',
+    bg: 'bg-amber-50',
+    link: '/ventas',
+    detail: 'Cotizaciones aprobadas o enviadas',
+  },
+  {
+    label: 'Ordenes comprometidas',
+    value: analytics.value.ordenes_pendientes_monto,
+    icon: ShoppingCart,
+    tone: 'text-fuchsia-700',
+    bg: 'bg-fuchsia-50',
+    link: '/compras',
+    detail: 'Compras pendientes por cerrar',
+  },
+  {
+    label: 'Caja chica disponible',
+    value: analytics.value.caja_chica_balance,
+    icon: Wallet,
+    tone: analytics.value.caja_chica_balance >= 0 ? 'text-indigo-700' : 'text-red-700',
+    bg: analytics.value.caja_chica_balance >= 0 ? 'bg-indigo-50' : 'bg-red-50',
+    link: '/caja-chica',
+    detail: 'Balance acumulado de movimientos',
+  },
+])
+
+const operationalCards = computed(() => [
+  {
+    label: 'Clientes activos',
+    value: String(stats.value.total_clientes),
+    icon: Users,
+    tone: 'text-blue-700',
+    bg: 'bg-blue-50',
+    link: '/crm',
+  },
+  {
+    label: 'Proyectos activos',
+    value: String(stats.value.proyectos_activos),
+    icon: FolderOpen,
+    tone: 'text-violet-700',
+    bg: 'bg-violet-50',
+    link: '/proyectos',
+  },
+  {
+    label: 'Tickets abiertos',
+    value: String(stats.value.tickets_abiertos),
+    icon: Wrench,
+    tone: 'text-orange-700',
+    bg: 'bg-orange-50',
+    link: '/taller',
+  },
+  {
+    label: 'Items bajo stock',
+    value: String(stats.value.productos_bajo_stock),
+    icon: Boxes,
+    tone: 'text-red-700',
+    bg: 'bg-red-50',
+    link: '/compras',
+  },
+])
+
+const trendMaxValue = computed(() => {
+  const values = analytics.value.tendencia_mensual.flatMap((item) => [
+    item.ingresos,
+    item.compras,
+    item.caja_egresos,
+    Math.abs(item.flujo_neto),
+  ])
+  return Math.max(...values, 1)
+})
 
 const quickActions = computed(() => {
   const rol = auth.user?.rol
-  const actions = []
+  const actions = [
+    { label: 'Caja chica', path: '/caja-chica', color: 'bg-indigo-700 hover:bg-indigo-800', icon: Wallet },
+    { label: 'Compras', path: '/compras', color: 'bg-rose-700 hover:bg-rose-800', icon: Receipt },
+    { label: 'Ventas', path: '/ventas', color: 'bg-emerald-700 hover:bg-emerald-800', icon: TrendingUp },
+  ]
+
   if (rol === 'superadmin' || rol === 'ejecutivo') {
-    actions.push({ label: 'Nueva Cotización', icon: ShoppingCart, path: '/ventas', color: 'bg-blue-600 hover:bg-blue-700' })
-    actions.push({ label: 'Nuevo Cliente', icon: Users, path: '/crm', color: 'bg-emerald-600 hover:bg-emerald-700' })
+    actions.unshift({ label: 'CRM clientes', path: '/crm', color: 'bg-blue-700 hover:bg-blue-800', icon: Users })
+    actions.push({ label: 'Proyectos', path: '/proyectos', color: 'bg-violet-700 hover:bg-violet-800', icon: FolderOpen })
   }
-  if (rol === 'superadmin' || rol === 'ejecutivo') {
-    actions.push({ label: 'Nuevo Proyecto', icon: FolderOpen, path: '/proyectos', color: 'bg-purple-600 hover:bg-purple-700' })
-  }
+
   if (rol === 'superadmin' || rol === 'ejecutivo' || rol === 'tecnico') {
-    actions.push({ label: 'Ver Mis Tickets', icon: Wrench, path: '/taller', color: 'bg-amber-600 hover:bg-amber-700' })
+    actions.push({ label: 'Taller', path: '/taller', color: 'bg-orange-700 hover:bg-orange-800', icon: Wrench })
   }
-  if (rol === 'superadmin' || rol === 'administrativo_contable') {
-    actions.push({ label: 'Gestionar Stock', icon: AlertCircle, path: '/compras', color: 'bg-red-600 hover:bg-red-700' })
-  }
-  if (rol === 'superadmin') {
-    actions.push({ label: 'Administrar Usuarios', icon: UserCog, path: '/usuarios', color: 'bg-slate-700 hover:bg-slate-800' })
-    actions.push({ label: 'Bóveda y Accesos', icon: Lock, path: '/boveda', color: 'bg-indigo-700 hover:bg-indigo-800' })
-  }
-  if (rol === 'superadmin') {
-    actions.push({ label: 'Configuración ERP', icon: Settings, path: '/configuracion', color: 'bg-gray-700 hover:bg-gray-800' })
-  }
+
   return actions
 })
 
-interface PipelineStage { label: string; estado: string; color: string; textColor: string }
-const pipelineStages: PipelineStage[] = [
-  { label: 'Borrador', estado: 'borrador', color: 'bg-gray-300', textColor: 'text-gray-600' },
-  { label: 'Enviada', estado: 'enviada', color: 'bg-blue-400', textColor: 'text-blue-700' },
-  { label: 'Aprobada', estado: 'aprobada', color: 'bg-emerald-400', textColor: 'text-emerald-700' },
-  { label: 'Facturada', estado: 'facturada', color: 'bg-cyan-500', textColor: 'text-cyan-700' },
-]
-const cotizacionStats = ref<Record<string, number>>({})
-const cotizacionTotal = computed(() => Object.values(cotizacionStats.value).reduce((a, b) => a + b, 0) || 1)
+function alertClass(severity: DashboardAlert['severity']): string {
+  if (severity === 'critical') return 'border-red-200 bg-red-50 text-red-800'
+  if (severity === 'warning') return 'border-amber-200 bg-amber-50 text-amber-800'
+  return 'border-sky-200 bg-sky-50 text-sky-800'
+}
 
-interface CotizacionSummary { estado: string }
+function dueBadgeClass(item: DashboardReceivableDueItem): string {
+  if ((item.dias_vencido ?? 0) > 0) return 'bg-red-100 text-red-700'
+  if ((item.dias_para_vencer ?? 999) <= 3) return 'bg-amber-100 text-amber-700'
+  return 'bg-emerald-100 text-emerald-700'
+}
 
 async function loadData(): Promise<void> {
   try {
-    const [statsRes, ticketRes, cotRes, settingsRes] = await Promise.all([
+    const [statsRes, analyticsRes, ticketRes, cotRes] = await Promise.all([
       api.get<DashboardStats>('/api/v1/dashboard/stats'),
+      api.get<DashboardFinanceAnalytics>('/api/v1/dashboard/analytics'),
       api.get<Ticket[]>('/api/v1/tickets/', { params: { limit: 6 } }),
       api.get<CotizacionSummary[]>('/api/v1/ventas/cotizaciones', { params: { limit: 200 } }),
-      api.get<ConfiguracionSistema>('/api/v1/admin/settings/public'),
     ])
+
     stats.value = statsRes.data
+    analytics.value = analyticsRes.data
     recentTickets.value = ticketRes.data
-    financeInputs.value = {
-      ...financeInputs.value,
-      ivaRate: settingsRes.data.iva_default_percent ?? financeInputs.value.ivaRate,
-      discountRate: settingsRes.data.descuento_default_percent ?? financeInputs.value.discountRate,
-      hourlyRate: settingsRes.data.costo_hora_tecnica_default ?? financeInputs.value.hourlyRate,
-      laborCost: settingsRes.data.costo_mano_obra_default ?? financeInputs.value.laborCost,
-      materialCost: settingsRes.data.costo_material_default ?? financeInputs.value.materialCost,
-      mobilityCost: settingsRes.data.costo_movilizacion_default ?? financeInputs.value.mobilityCost,
-      softwareCost: settingsRes.data.costo_software_default ?? financeInputs.value.softwareCost,
-    }
+
     const counts: Record<string, number> = {}
-    cotRes.data.forEach((c) => {
-      counts[c.estado] = (counts[c.estado] ?? 0) + 1
+    cotRes.data.forEach((cotizacion) => {
+      counts[cotizacion.estado] = (counts[cotizacion.estado] ?? 0) + 1
     })
     cotizacionStats.value = counts
   } catch {
-    // silently fail
+    // silent dashboard fallback
   } finally {
     loading.value = false
   }
 }
 
 let refreshTimer: ReturnType<typeof setInterval> | null = null
-
-/** Refresh interval for dashboard KPIs — balance between freshness and API load */
 const DASHBOARD_REFRESH_MS = 60_000
 
 onMounted(async () => {
@@ -235,200 +362,360 @@ onUnmounted(() => {
 
 <template>
   <div class="space-y-6">
-    <!-- Header -->
-    <div class="flex items-center justify-between">
-      <div>
-        <h1 class="text-2xl font-bold text-gray-900">
-          Bienvenido, {{ auth.user?.nombre_completo ?? auth.user?.username }} 👋
-        </h1>
-        <p class="text-gray-500 text-sm mt-1">
-          {{ new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }) }}
-        </p>
-      </div>
-    </div>
-
-    <!-- KPI Stats -->
-    <div class="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
-      <router-link
-        v-for="card in statCards"
-        :key="card.key"
-        :to="card.link"
-        class="block"
-      >
-        <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-4 hover:shadow-md transition-shadow cursor-pointer">
-          <div class="flex items-center gap-3 mb-2">
-            <div :class="['p-2 rounded-lg', card.bg]">
-              <component :is="card.icon" :class="['w-5 h-5', card.color]" />
+    <section class="rounded-3xl border border-slate-200 bg-[radial-gradient(circle_at_top_left,_rgba(15,23,42,0.06),_transparent_38%),linear-gradient(135deg,#f8fafc_0%,#eef4ff_45%,#f8fafc_100%)] p-6 shadow-sm">
+      <div class="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
+        <div>
+          <p class="text-xs font-semibold uppercase tracking-[0.25em] text-slate-500">Centro financiero ERP</p>
+          <h1 class="mt-2 text-3xl font-bold text-slate-900">
+            Bienvenido, {{ auth.user?.nombre_completo ?? auth.user?.username }}
+          </h1>
+          <p class="mt-2 max-w-2xl text-sm text-slate-600">
+            El tablero ahora prioriza facturacion, compras, caja chica, cartera y alertas de cierre para que el seguimiento contable salga de datos reales y no de simulaciones.
+          </p>
+        </div>
+        <div class="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <div
+            v-for="card in operationalCards"
+            :key="card.label"
+            class="rounded-2xl border border-white/60 bg-white/90 p-4 shadow-sm"
+          >
+            <div class="flex items-center gap-2">
+              <div :class="['rounded-xl p-2', card.bg]">
+                <component :is="card.icon" :class="['h-4 w-4', card.tone]" />
+              </div>
+              <span class="text-xs font-medium text-slate-500">{{ card.label }}</span>
             </div>
-          </div>
-          <p class="text-xl font-bold text-gray-900">{{ card.format(stats[card.key] as number) }}</p>
-          <p class="text-xs text-gray-500 mt-1">{{ card.label }}</p>
-        </div>
-      </router-link>
-    </div>
-
-    <!-- Financial Projection Studio -->
-    <Card title="Centro de Proyecciones y Costeo">
-      <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <div class="space-y-3">
-          <h3 class="text-sm font-semibold text-gray-700">Parámetros financieros</h3>
-          <label class="block text-xs text-gray-500">Ventas proyectadas (mes)
-            <input v-model.number="financeInputs.projectedSales" type="number" min="0" class="mt-1 w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
-          </label>
-          <label class="block text-xs text-gray-500">Costos proyectados (mes)
-            <input v-model.number="financeInputs.projectedCosts" type="number" min="0" class="mt-1 w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
-          </label>
-          <label class="block text-xs text-gray-500">IVA (%)
-            <input v-model.number="financeInputs.ivaRate" type="number" min="0" step="0.1" class="mt-1 w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
-          </label>
-          <label class="block text-xs text-gray-500">Descuento (%)
-            <input v-model.number="financeInputs.discountRate" type="number" min="0" step="0.1" class="mt-1 w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
-          </label>
-        </div>
-
-        <div class="space-y-3">
-          <h3 class="text-sm font-semibold text-gray-700">Costos de cotización</h3>
-          <label class="block text-xs text-gray-500">Mano de obra
-            <input v-model.number="financeInputs.laborCost" type="number" min="0" class="mt-1 w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
-          </label>
-          <label class="block text-xs text-gray-500">Materiales
-            <input v-model.number="financeInputs.materialCost" type="number" min="0" class="mt-1 w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
-          </label>
-          <label class="block text-xs text-gray-500">Movilización
-            <input v-model.number="financeInputs.mobilityCost" type="number" min="0" class="mt-1 w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
-          </label>
-          <label class="block text-xs text-gray-500">Software
-            <input v-model.number="financeInputs.softwareCost" type="number" min="0" class="mt-1 w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
-          </label>
-          <label class="block text-xs text-gray-500">Horas técnicas
-            <input v-model.number="financeInputs.technicalHours" type="number" min="0" step="0.5" class="mt-1 w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
-          </label>
-          <label class="block text-xs text-gray-500">Tarifa hora técnica
-            <input v-model.number="financeInputs.hourlyRate" type="number" min="0" step="0.5" class="mt-1 w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
-          </label>
-        </div>
-
-        <div class="space-y-2">
-          <h3 class="text-sm font-semibold text-gray-700">Resultados</h3>
-          <div class="bg-gray-50 border rounded-lg p-3 space-y-1 text-sm">
-            <div class="flex justify-between"><span class="text-gray-600">Costo operacional</span><span class="font-medium">{{ formatCurrency(financeSummary.operationalCost) }}</span></div>
-            <div class="flex justify-between"><span class="text-gray-600">Costo técnico</span><span class="font-medium">{{ formatCurrency(financeSummary.technicalCost) }}</span></div>
-            <div class="flex justify-between"><span class="text-gray-600">Subtotal cotización</span><span class="font-medium">{{ formatCurrency(financeSummary.quoteSubtotal) }}</span></div>
-            <div class="flex justify-between"><span class="text-gray-600">Descuento</span><span class="font-medium text-amber-700">- {{ formatCurrency(financeSummary.discountValue) }}</span></div>
-            <div class="flex justify-between"><span class="text-gray-600">Base imponible</span><span class="font-medium">{{ formatCurrency(financeSummary.taxableBase) }}</span></div>
-            <div class="flex justify-between"><span class="text-gray-600">IVA</span><span class="font-medium">{{ formatCurrency(financeSummary.ivaValue) }}</span></div>
-            <div class="flex justify-between border-t pt-2"><span class="text-gray-700 font-semibold">Total cotización</span><span class="font-bold text-blue-700">{{ formatCurrency(financeSummary.quoteTotal) }}</span></div>
-          </div>
-          <div class="bg-white border rounded-lg p-3 space-y-1 text-sm">
-            <div class="flex justify-between"><span class="text-gray-600">Ganancia mensual</span><span :class="financeSummary.monthlyProfit >= 0 ? 'font-semibold text-emerald-700' : 'font-semibold text-red-600'">{{ formatCurrency(financeSummary.monthlyProfit) }}</span></div>
-            <div class="flex justify-between"><span class="text-gray-600">Ganancia anual proyectada</span><span :class="financeSummary.annualProfit >= 0 ? 'font-semibold text-emerald-700' : 'font-semibold text-red-600'">{{ formatCurrency(financeSummary.annualProfit) }}</span></div>
-            <div class="flex justify-between"><span class="text-gray-600">Margen (%)</span><span :class="financeSummary.margin >= 0 ? 'font-semibold text-emerald-700' : 'font-semibold text-red-600'">{{ financeSummary.margin.toFixed(2) }}%</span></div>
+            <p class="mt-3 text-2xl font-bold text-slate-900">{{ card.value }}</p>
           </div>
         </div>
       </div>
-    </Card>
+    </section>
 
-    <!-- Quick Actions -->
-    <div v-if="quickActions.length > 0">
-      <h2 class="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3">Acciones Rápidas</h2>
-      <div class="flex flex-wrap gap-3">
-        <button
-          v-for="action in quickActions"
-          :key="action.path"
-          @click="router.push(action.path)"
-          :class="['flex items-center gap-2 px-4 py-2.5 text-white text-sm font-medium rounded-xl transition-colors', action.color]"
+    <section>
+      <div class="mb-3 flex items-center justify-between">
+        <h2 class="text-sm font-semibold uppercase tracking-[0.2em] text-slate-500">Cierre del mes</h2>
+        <router-link to="/ventas" class="text-sm font-medium text-blue-700 hover:underline">Ir a ventas</router-link>
+      </div>
+      <div class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+        <router-link
+          v-for="card in financialCards"
+          :key="card.label"
+          :to="card.link"
+          class="group rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md"
         >
-          <component :is="action.icon" :size="16" />
-          {{ action.label }}
-        </button>
-      </div>
-    </div>
-
-    <!-- Two column layout -->
-    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-
-      <!-- Recent Tickets -->
-      <Card :padding="false">
-        <div class="flex items-center justify-between px-5 py-4 border-b border-gray-100">
-          <h3 class="font-semibold text-gray-800">Tickets Recientes</h3>
-          <router-link to="/taller" class="text-xs text-blue-600 hover:underline flex items-center gap-1">
-            Ver todos <ArrowRight :size="12" />
-          </router-link>
-        </div>
-        <div v-if="loading" class="flex justify-center py-8">
-          <svg class="animate-spin h-5 w-5 text-blue-600" fill="none" viewBox="0 0 24 24">
-            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
-            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-          </svg>
-        </div>
-        <div v-else-if="recentTickets.length === 0" class="text-center py-8 text-gray-400 text-sm">
-          No hay tickets recientes
-        </div>
-        <div v-else class="divide-y divide-gray-50">
-          <div
-            v-for="ticket in recentTickets"
-            :key="ticket.id_ticket"
-            class="flex items-center justify-between px-5 py-3 hover:bg-gray-50 transition-colors cursor-pointer"
-            @click="router.push('/taller')"
-          >
-            <div class="flex-1 min-w-0 mr-3">
-              <p class="text-sm font-medium text-gray-800 truncate">{{ ticket.titulo }}</p>
-              <p class="text-xs text-gray-400 mt-0.5">{{ ticket.numero }}</p>
+          <div class="flex items-start justify-between gap-3">
+            <div>
+              <p class="text-sm font-medium text-slate-500">{{ card.label }}</p>
+              <p class="mt-2 text-3xl font-bold text-slate-900">{{ formatCompactCurrency(card.value) }}</p>
+              <p class="mt-1 text-xs text-slate-500">{{ card.detail }}</p>
             </div>
-            <div class="flex items-center gap-2 shrink-0">
-              <Badge :variant="priorityVariant[ticket.prioridad] ?? 'default'">{{ ticket.prioridad }}</Badge>
-              <Badge :variant="estadoVariant[ticket.estado] ?? 'default'">{{ ticket.estado.replace('_', ' ') }}</Badge>
+            <div :class="['rounded-2xl p-3', card.bg]">
+              <component :is="card.icon" :class="['h-5 w-5', card.tone]" />
+            </div>
+          </div>
+          <div class="mt-4 flex items-center justify-between border-t border-slate-100 pt-3 text-sm">
+            <span class="font-medium text-slate-700">{{ formatCurrency(card.value) }}</span>
+            <span class="flex items-center gap-1 text-blue-700 group-hover:gap-2 transition-all">
+              Ver detalle
+              <ArrowRight class="h-4 w-4" />
+            </span>
+          </div>
+        </router-link>
+      </div>
+    </section>
+
+    <section class="grid grid-cols-1 gap-6 xl:grid-cols-[1.6fr_1fr]">
+      <Card title="Tendencia financiera de 6 meses">
+        <div class="space-y-4">
+          <div class="grid grid-cols-4 gap-3 rounded-2xl bg-slate-50 p-4 text-xs text-slate-600">
+            <div>
+              <p class="font-semibold text-slate-800">Margen bruto</p>
+              <p class="mt-1 text-lg font-bold text-emerald-700">{{ formatCompactCurrency(analytics.margen_bruto_mes) }}</p>
+            </div>
+            <div>
+              <p class="font-semibold text-slate-800">Ingresos caja</p>
+              <p class="mt-1 text-lg font-bold text-sky-700">{{ formatCompactCurrency(analytics.caja_ingresos_mes) }}</p>
+            </div>
+            <div>
+              <p class="font-semibold text-slate-800">Egresos caja</p>
+              <p class="mt-1 text-lg font-bold text-rose-700">{{ formatCompactCurrency(analytics.caja_egresos_mes) }}</p>
+            </div>
+            <div>
+              <p class="font-semibold text-slate-800">Cotizaciones del mes</p>
+              <p class="mt-1 text-lg font-bold text-slate-900">{{ stats.cotizaciones_mes }}</p>
+            </div>
+          </div>
+
+          <div v-if="analytics.tendencia_mensual.length === 0" class="rounded-2xl border border-dashed border-slate-200 p-6 text-sm text-slate-500">
+            Aun no hay suficientes movimientos para construir una tendencia financiera.
+          </div>
+
+          <div v-else class="space-y-4">
+            <div v-for="month in analytics.tendencia_mensual" :key="month.label" class="rounded-2xl border border-slate-100 p-4">
+              <div class="mb-3 flex items-center justify-between">
+                <div>
+                  <p class="text-sm font-semibold text-slate-900">{{ month.label }}</p>
+                  <p class="text-xs text-slate-500">Flujo neto {{ formatCurrency(month.flujo_neto) }}</p>
+                </div>
+                <Badge :variant="month.flujo_neto >= 0 ? 'success' : 'danger'">
+                  {{ month.flujo_neto >= 0 ? 'Sano' : 'Presionado' }}
+                </Badge>
+              </div>
+              <div class="space-y-3">
+                <div>
+                  <div class="mb-1 flex items-center justify-between text-xs text-slate-500">
+                    <span>Ingresos</span>
+                    <span>{{ formatCurrency(month.ingresos) }}</span>
+                  </div>
+                  <div class="h-2 rounded-full bg-slate-100">
+                    <div class="h-2 rounded-full bg-emerald-500" :style="{ width: `${(month.ingresos / trendMaxValue) * 100}%` }" />
+                  </div>
+                </div>
+                <div>
+                  <div class="mb-1 flex items-center justify-between text-xs text-slate-500">
+                    <span>Compras</span>
+                    <span>{{ formatCurrency(month.compras) }}</span>
+                  </div>
+                  <div class="h-2 rounded-full bg-slate-100">
+                    <div class="h-2 rounded-full bg-rose-500" :style="{ width: `${(month.compras / trendMaxValue) * 100}%` }" />
+                  </div>
+                </div>
+                <div>
+                  <div class="mb-1 flex items-center justify-between text-xs text-slate-500">
+                    <span>Egresos caja</span>
+                    <span>{{ formatCurrency(month.caja_egresos) }}</span>
+                  </div>
+                  <div class="h-2 rounded-full bg-slate-100">
+                    <div class="h-2 rounded-full bg-amber-500" :style="{ width: `${(month.caja_egresos / trendMaxValue) * 100}%` }" />
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </div>
       </Card>
 
-      <!-- Pipeline Summary -->
-      <Card title="Pipeline de Ventas">
-        <div class="space-y-3">
-          <div
-            v-for="stage in pipelineStages"
-            :key="stage.estado"
-          >
-            <div class="flex items-center justify-between mb-1">
-              <span class="text-sm text-gray-600">{{ stage.label }}</span>
-              <span class="text-xs font-semibold" :class="stage.textColor">{{ cotizacionStats[stage.estado] ?? 0 }}</span>
+      <div class="space-y-6">
+        <Card title="Alertas contables">
+          <div v-if="analytics.alertas.length === 0" class="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
+            No hay alertas financieras activas con los datos actuales.
+          </div>
+          <div v-else class="space-y-3">
+            <div
+              v-for="alerta in analytics.alertas"
+              :key="`${alerta.title}-${alerta.detail}`"
+              :class="['rounded-2xl border p-4', alertClass(alerta.severity)]"
+            >
+              <div class="flex items-start gap-3">
+                <AlertTriangle class="mt-0.5 h-4 w-4 shrink-0" />
+                <div class="min-w-0 flex-1">
+                  <p class="text-sm font-semibold">{{ alerta.title }}</p>
+                  <p class="mt-1 text-sm opacity-90">{{ alerta.detail }}</p>
+                  <button
+                    v-if="alerta.link"
+                    class="mt-3 text-sm font-semibold underline"
+                    @click="router.push(alerta.link)"
+                  >
+                    Revisar modulo
+                  </button>
+                </div>
+              </div>
             </div>
-            <div class="w-full bg-gray-100 rounded-full h-2">
+          </div>
+        </Card>
+
+        <Card title="Herramientas contables">
+          <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <button
+              v-for="action in quickActions"
+              :key="action.path"
+              :class="['flex items-center justify-between rounded-2xl px-4 py-3 text-left text-sm font-semibold text-white transition-colors', action.color]"
+              @click="router.push(action.path)"
+            >
+              <span class="flex items-center gap-2">
+                <component :is="action.icon" class="h-4 w-4" />
+                {{ action.label }}
+              </span>
+              <ArrowRight class="h-4 w-4" />
+            </button>
+          </div>
+        </Card>
+      </div>
+    </section>
+
+    <section class="grid grid-cols-1 gap-6 xl:grid-cols-[1.1fr_0.9fr_0.9fr]">
+      <Card title="Clientes con mayor facturacion">
+        <div v-if="analytics.top_clientes.length === 0" class="rounded-2xl border border-dashed border-slate-200 p-6 text-sm text-slate-500">
+          Aun no existen facturas suficientes para construir un ranking de clientes.
+        </div>
+        <div v-else class="space-y-3">
+          <div
+            v-for="cliente in analytics.top_clientes"
+            :key="cliente.id_cliente"
+            class="rounded-2xl border border-slate-100 p-4"
+          >
+            <div class="flex items-start justify-between gap-3">
+              <div>
+                <p class="text-sm font-semibold text-slate-900">{{ cliente.nombre }}</p>
+                <p class="mt-1 text-xs text-slate-500">Participacion {{ cliente.participacion_pct.toFixed(2) }}%</p>
+              </div>
+              <p class="text-sm font-bold text-slate-900">{{ formatCurrency(cliente.total_facturado) }}</p>
+            </div>
+            <div class="mt-3 h-2 rounded-full bg-slate-100">
+              <div class="h-2 rounded-full bg-slate-900" :style="{ width: `${Math.min(cliente.participacion_pct, 100)}%` }" />
+            </div>
+          </div>
+        </div>
+      </Card>
+
+      <Card title="Caja chica por categoria">
+        <div v-if="analytics.egresos_por_categoria.length === 0" class="rounded-2xl border border-dashed border-slate-200 p-6 text-sm text-slate-500">
+          No hay egresos de caja chica categorizados en el mes.
+        </div>
+        <div v-else class="space-y-3">
+          <div
+            v-for="categoria in analytics.egresos_por_categoria"
+            :key="categoria.categoria"
+            class="rounded-2xl bg-slate-50 p-4"
+          >
+            <div class="flex items-center justify-between gap-3">
+              <p class="text-sm font-semibold text-slate-900">{{ categoria.categoria }}</p>
+              <p class="text-sm font-bold text-rose-700">{{ formatCurrency(categoria.total) }}</p>
+            </div>
+            <p class="mt-1 text-xs text-slate-500">Gasto consolidado del mes en esta categoria.</p>
+          </div>
+        </div>
+      </Card>
+
+      <Card title="Cartera y vencimientos">
+        <div class="space-y-4">
+          <div v-if="analytics.cartera_aging.length === 0" class="rounded-2xl border border-dashed border-slate-200 p-6 text-sm text-slate-500">
+            No hay cartera pendiente para analizar.
+          </div>
+          <div v-else class="space-y-2">
+            <div
+              v-for="bucket in analytics.cartera_aging"
+              :key="bucket.bucket"
+              class="rounded-xl border border-slate-100 px-3 py-2"
+            >
+              <div class="flex items-center justify-between text-sm">
+                <p class="font-medium text-slate-700">{{ bucket.bucket }}</p>
+                <p class="font-semibold text-slate-900">{{ formatCurrency(bucket.total) }}</p>
+              </div>
+              <p class="mt-0.5 text-xs text-slate-500">{{ bucket.cantidad }} documento(s)</p>
+            </div>
+          </div>
+
+          <div class="border-t border-slate-100 pt-3">
+            <p class="mb-2 text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Próximos vencimientos</p>
+            <div v-if="analytics.proximos_vencimientos.length === 0" class="rounded-2xl border border-dashed border-slate-200 p-4 text-sm text-slate-500">
+              No hay fechas de vencimiento registradas.
+            </div>
+            <div v-else class="space-y-2">
               <div
-                :class="['h-2 rounded-full transition-all', stage.color]"
-                :style="`width: ${((cotizacionStats[stage.estado] ?? 0) / cotizacionTotal) * 100}%`"
-              />
+                v-for="item in analytics.proximos_vencimientos"
+                :key="item.id_cotizacion"
+                class="rounded-xl bg-slate-50 p-3"
+              >
+                <div class="flex items-start justify-between gap-3">
+                  <div class="min-w-0">
+                    <p class="truncate text-sm font-semibold text-slate-900">{{ item.numero }} · {{ item.cliente_nombre }}</p>
+                    <p class="mt-0.5 text-xs text-slate-500">
+                      Vence: {{ item.fecha_vencimiento ?? 'Sin fecha' }}
+                    </p>
+                  </div>
+                  <p class="shrink-0 text-sm font-bold text-slate-900">{{ formatCurrency(item.total) }}</p>
+                </div>
+                <div class="mt-2 flex items-center justify-between">
+                  <span :class="['rounded-full px-2 py-1 text-[11px] font-semibold', dueBadgeClass(item)]">
+                    {{ (item.dias_vencido ?? 0) > 0 ? `Vencido ${item.dias_vencido}d` : `Vence en ${item.dias_para_vencer ?? 0}d` }}
+                  </span>
+                  <button class="text-xs font-semibold text-blue-700 hover:underline" @click="router.push('/ventas')">
+                    Gestionar cobro
+                  </button>
+                </div>
+              </div>
             </div>
-          </div>
-          <div class="pt-2 border-t border-gray-100">
-            <router-link to="/ventas" class="text-sm text-blue-600 hover:underline flex items-center gap-1">
-              Gestionar cotizaciones <ArrowRight :size="13" />
-            </router-link>
           </div>
         </div>
       </Card>
 
-    </div>
+      <Card title="Pipeline y servicio">
+        <div class="space-y-4">
+          <div>
+            <p class="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Cotizaciones</p>
+            <div class="mt-3 space-y-3">
+              <div v-for="stage in pipelineStages" :key="stage.estado">
+                <div class="mb-1 flex items-center justify-between text-xs">
+                  <span class="text-slate-600">{{ stage.label }}</span>
+                  <span :class="['font-semibold', stage.textColor]">{{ cotizacionStats[stage.estado] ?? 0 }}</span>
+                </div>
+                <div class="h-2 rounded-full bg-slate-100">
+                  <div
+                    :class="['h-2 rounded-full transition-all', stage.color]"
+                    :style="{ width: `${((cotizacionStats[stage.estado] ?? 0) / cotizacionTotal) * 100}%` }"
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
 
-    <!-- Alerts row -->
-    <div v-if="stats.productos_bajo_stock > 0 || stats.tickets_abiertos > 5" class="space-y-2">
-      <div v-if="stats.productos_bajo_stock > 0" class="flex items-center gap-3 bg-red-50 border border-red-200 rounded-xl px-4 py-3">
-        <XCircle class="text-red-500 shrink-0" :size="18" />
-        <p class="text-sm text-red-700">
-          <span class="font-semibold">{{ stats.productos_bajo_stock }} producto(s)</span> con stock por debajo del mínimo.
-          <router-link to="/compras" class="underline ml-1">Gestionar inventario →</router-link>
+          <div class="border-t border-slate-100 pt-4">
+            <div class="mb-3 flex items-center justify-between">
+              <p class="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Tickets recientes</p>
+              <router-link to="/taller" class="text-xs font-semibold text-blue-700 hover:underline">Ver todos</router-link>
+            </div>
+
+            <div v-if="loading" class="flex justify-center py-8">
+              <svg class="h-5 w-5 animate-spin text-blue-600" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+              </svg>
+            </div>
+            <div v-else-if="recentTickets.length === 0" class="rounded-2xl border border-dashed border-slate-200 p-6 text-sm text-slate-500">
+              No hay tickets recientes.
+            </div>
+            <div v-else class="space-y-3">
+              <div
+                v-for="ticket in recentTickets"
+                :key="ticket.id_ticket"
+                class="cursor-pointer rounded-2xl border border-slate-100 p-4 transition-colors hover:bg-slate-50"
+                @click="router.push('/taller')"
+              >
+                <div class="flex items-start justify-between gap-3">
+                  <div class="min-w-0">
+                    <p class="truncate text-sm font-semibold text-slate-900">{{ ticket.titulo }}</p>
+                    <p class="mt-1 text-xs text-slate-500">{{ ticket.numero }}</p>
+                  </div>
+                  <div class="flex shrink-0 items-center gap-2">
+                    <Badge :variant="priorityVariant[ticket.prioridad] ?? 'default'">{{ ticket.prioridad }}</Badge>
+                    <Badge :variant="estadoVariant[ticket.estado] ?? 'default'">{{ ticket.estado.replace('_', ' ') }}</Badge>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </Card>
+    </section>
+
+    <section v-if="stats.productos_bajo_stock > 0 || stats.tickets_abiertos > 5" class="space-y-2">
+      <div v-if="stats.productos_bajo_stock > 0" class="flex items-center gap-3 rounded-2xl border border-red-200 bg-red-50 px-4 py-3">
+        <XCircle class="h-4 w-4 shrink-0 text-red-600" />
+        <p class="text-sm text-red-800">
+          <span class="font-semibold">{{ stats.productos_bajo_stock }} producto(s)</span>
+          estan por debajo del stock minimo.
+          <router-link to="/compras" class="ml-1 underline">Gestionar inventario</router-link>
         </p>
       </div>
-      <div v-if="stats.tickets_abiertos > 5" class="flex items-center gap-3 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
-        <Clock class="text-amber-500 shrink-0" :size="18" />
-        <p class="text-sm text-amber-700">
-          <span class="font-semibold">{{ stats.tickets_abiertos }} tickets</span> abiertos requieren atención.
-          <router-link to="/taller" class="underline ml-1">Ver tickets →</router-link>
+      <div v-if="stats.tickets_abiertos > 5" class="flex items-center gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3">
+        <Clock class="h-4 w-4 shrink-0 text-amber-600" />
+        <p class="text-sm text-amber-800">
+          <span class="font-semibold">{{ stats.tickets_abiertos }} tickets</span>
+          siguen abiertos y requieren coordinacion operativa.
+          <router-link to="/taller" class="ml-1 underline">Ver tickets</router-link>
         </p>
       </div>
-    </div>
-
+    </section>
   </div>
 </template>
-

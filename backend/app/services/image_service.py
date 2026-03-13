@@ -19,7 +19,7 @@ from PIL import Image
 
 # Límites de tamaño por tipo de imagen (bytes)
 IMAGE_LIMITS = {
-    "profile": 500_000,      # 500 KB para fotos de perfil
+    "profile": 350_000,      # 350 KB para fotos de perfil
     "document": 2_000_000,   # 2 MB para documentos
     "gallery": 1_000_000,    # 1 MB para galerías
     "default": 1_500_000,    # 1.5 MB por defecto
@@ -27,7 +27,7 @@ IMAGE_LIMITS = {
 
 # Calidades de compresión según tipo
 COMPRESSION_QUALITY = {
-    "profile": 85,      # Alta calidad para perfiles
+    "profile": 80,      # Equilibrio calidad/peso para perfiles
     "document": 90,     # Muy alta para documentos
     "gallery": 75,      # Calidad media para galerías
     "default": 80,
@@ -132,9 +132,18 @@ def optimize_image(
             ratio = target_width / img.width
             new_height = int(img.height * ratio)
             img = img.resize((target_width, new_height), Image.Resampling.LANCZOS)
+        elif image_type == "profile" and img.width > 512:
+            ratio = 512 / img.width
+            new_height = int(img.height * ratio)
+            img = img.resize((512, new_height), Image.Resampling.LANCZOS)
         
         # Determinar formato de salida
-        output_format = "PNG" if "png" in mime_type.lower() else "WEBP" if "webp" in mime_type.lower() else "JPEG"
+        if image_type in {"profile", "gallery"}:
+            output_format = "WEBP"
+        elif image_type == "document":
+            output_format = "PNG" if "png" in mime_type.lower() else "JPEG"
+        else:
+            output_format = "PNG" if "png" in mime_type.lower() else "WEBP" if "webp" in mime_type.lower() else "JPEG"
         
         # Comprimir iterativamente hasta conseguir el tamaño deseado
         current_quality = quality
@@ -143,8 +152,12 @@ def optimize_image(
             save_kwargs = {"format": output_format}
             if output_format == "JPEG":
                 save_kwargs["quality"] = current_quality
+                save_kwargs["optimize"] = True
             elif output_format == "WEBP":
                 save_kwargs["quality"] = current_quality
+                save_kwargs["method"] = 6
+            elif output_format == "PNG":
+                save_kwargs["optimize"] = True
             
             img.save(output, **save_kwargs)
             output_size = output.tell()
@@ -156,7 +169,8 @@ def optimize_image(
         # Resultado final
         output.seek(0)
         optimized_data = base64.b64encode(output.read()).decode()
-        return f"data:{output_format.lower()};base64,{optimized_data}"
+        output_mime = "image/jpeg" if output_format == "JPEG" else f"image/{output_format.lower()}"
+        return f"data:{output_mime};base64,{optimized_data}"
         
     except ImageOptimizationError:
         raise

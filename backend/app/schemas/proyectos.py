@@ -41,6 +41,32 @@ class ProyectoOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class ProyectoRentabilidadOut(BaseModel):
+    id_proyecto: int
+    presupuesto: float
+    ingresos_facturados: float
+    costo_horas_tecnicas: float
+    costo_reparaciones: float
+    costo_repuestos: float
+    costo_total_operativo: float
+    margen_presupuestario: float
+    utilidad_neta_real: float
+    margen_neto_pct: float
+    consumo_presupuesto_pct: float
+    tickets_total: int
+    tickets_cerrados: int
+
+
+class CotizacionProyectoOut(BaseModel):
+    id_cotizacion: int
+    numero: str
+    estado: str
+    total: float
+    fecha_creacion: datetime
+    numero_factura: Optional[str] = None
+    fecha_factura: Optional[datetime] = None
+
+
 class TareaCreate(BaseModel):
     titulo: str
     descripcion: Optional[str] = None

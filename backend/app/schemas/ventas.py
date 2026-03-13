@@ -29,6 +29,7 @@ class DetalleCotizacionOut(DetalleCotizacionCreate):
 
 class CotizacionCreate(BaseModel):
     id_cliente: int
+    id_proyecto: Optional[int] = None
     notas: Optional[str] = None
     fecha_vencimiento: Optional[datetime] = None
     costo_mano_obra: float = 0
@@ -41,6 +42,7 @@ class CotizacionCreate(BaseModel):
 
 class CotizacionUpdate(BaseModel):
     estado: Optional[EstadoCotizacionEnum] = None
+    id_proyecto: Optional[int] = None
     notas: Optional[str] = None
     costo_mano_obra: Optional[float] = None
     costo_movilizacion: Optional[float] = None
@@ -55,6 +57,7 @@ class CotizacionOut(BaseModel):
     numero: str
     id_cliente: int
     id_vendedor: int
+    id_proyecto: Optional[int] = None
     estado: EstadoCotizacionEnum
     subtotal: float
     impuesto: float

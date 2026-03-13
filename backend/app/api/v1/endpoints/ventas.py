@@ -12,6 +12,7 @@ from app.api.deps import get_current_user, require_roles
 from app.core.database import get_db
 from app.infrastructure.models.auditoria import EventoCliente
 from app.infrastructure.models.inventario import Inventario, InventarioSerie, EstadoSerieEnum
+from app.infrastructure.models.proyectos import Proyecto
 from app.infrastructure.models.sistema import ConfiguracionSistema
 from app.infrastructure.models.usuario import RolEnum, Usuario
 from app.infrastructure.models.ventas import (
@@ -98,6 +99,7 @@ def _serialize_cotizacion(cotizacion: Cotizacion, cost_map: dict[int, float]) ->
         numero=cotizacion.numero,
         id_cliente=cotizacion.id_cliente,
         id_vendedor=cotizacion.id_vendedor,
+        id_proyecto=cotizacion.id_proyecto,
         estado=cotizacion.estado,
         subtotal=float(cotizacion.subtotal),
         impuesto=float(cotizacion.impuesto),
@@ -167,11 +169,25 @@ async def create_cotizacion(
     count = count_result.scalar_one() or 0
     numero = _next_numero_cotizacion(count)
 
+    if body.id_proyecto is not None:
+        proyecto_result = await db.execute(
+            select(Proyecto).where(Proyecto.id_proyecto == body.id_proyecto)
+        )
+        proyecto = proyecto_result.scalar_one_or_none()
+        if not proyecto:
+            raise HTTPException(status_code=404, detail="Proyecto not found")
+        if proyecto.id_cliente != body.id_cliente:
+            raise HTTPException(
+                status_code=400,
+                detail="El proyecto seleccionado no pertenece al cliente de la cotización",
+            )
+
     subtotal = 0.0
     cotizacion = Cotizacion(
         numero=numero,
         id_cliente=body.id_cliente,
         id_vendedor=current_user.id_usuario,
+        id_proyecto=body.id_proyecto,
         costo_mano_obra=body.costo_mano_obra,
         costo_movilizacion=body.costo_movilizacion,
         costo_software=body.costo_software,
@@ -257,6 +273,19 @@ async def update_cotizacion(
         raise HTTPException(status_code=404, detail="Cotizacion not found")
     if body.estado:
         c.estado = body.estado
+    if body.id_proyecto is not None:
+        proyecto_result = await db.execute(
+            select(Proyecto).where(Proyecto.id_proyecto == body.id_proyecto)
+        )
+        proyecto = proyecto_result.scalar_one_or_none()
+        if not proyecto:
+            raise HTTPException(status_code=404, detail="Proyecto not found")
+        if proyecto.id_cliente != c.id_cliente:
+            raise HTTPException(
+                status_code=400,
+                detail="El proyecto seleccionado no pertenece al cliente de la cotización",
+            )
+        c.id_proyecto = body.id_proyecto
     if body.notas is not None:
         c.notas = body.notas
 

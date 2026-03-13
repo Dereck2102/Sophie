@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
-import { Plus, FolderOpen, ChevronRight, CheckSquare, Clock, Circle, ArrowLeft, User, Calendar, Flag, Tag, Trash2 } from 'lucide-vue-next'
+import { Plus, FolderOpen, ChevronRight, CheckSquare, Clock, Circle, ArrowLeft, User, Calendar, Flag, Tag, Trash2, Receipt } from 'lucide-vue-next'
 import Card from '../components/ui/Card.vue'
 import Badge from '../components/ui/Badge.vue'
 import Button from '../components/ui/Button.vue'
@@ -10,14 +10,17 @@ import api from '../services/api'
 import { useAuthStore } from '../stores/auth'
 import { useClienteStore } from '../stores/clientes'
 import { useUsuarioStore } from '../stores/usuarios'
-import type { Proyecto, Tarea, EstadoProyecto, EstadoTarea } from '../types'
+import type { CotizacionProyectoResumen, Proyecto, ProyectoRentabilidad, Tarea, EstadoProyecto, EstadoTarea } from '../types'
 
 const proyectos = ref<Proyecto[]>([])
 const tareas = ref<Tarea[]>([])
 const loading = ref(true)
 const selectedProject = ref<Proyecto | null>(null)
+const projectMetrics = ref<ProyectoRentabilidad | null>(null)
+const cotizacionesProyecto = ref<CotizacionProyectoResumen[]>([])
 const selectedTarea = ref<Tarea | null>(null)
 const tareasLoading = ref(false)
+const cotizacionesLoading = ref(false)
 const showCreateModal = ref(false)
 const showTareaModal = ref(false)
 const showTareaDetailModal = ref(false)
@@ -75,6 +78,13 @@ const prioridadVariant: Record<string, 'danger' | 'warning' | 'info' | 'default'
 const prioridadColor: Record<string, string> = {
   critica: 'text-red-500', alta: 'text-amber-500', media: 'text-blue-500', baja: 'text-gray-400',
 }
+const estadoCotizacionLabel: Record<string, string> = {
+  borrador: 'Borrador',
+  enviada: 'Enviada',
+  aprobada: 'Aprobada',
+  rechazada: 'Rechazada',
+  facturada: 'Facturada',
+}
 
 const rows = computed(() =>
   proyectos.value.map((p) => ({
@@ -111,6 +121,10 @@ function getClientName(id: number): string {
   return cliente?.empresa?.razon_social ?? cliente?.cliente_b2c?.nombre_completo ?? `Cliente #${id}`
 }
 
+function formatUSD(value: number): string {
+  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(value)
+}
+
 function isOverdue(tarea: Tarea): boolean {
   if (!tarea.fecha_vencimiento) return false
   return new Date(tarea.fecha_vencimiento) < new Date() && tarea.estado !== 'completado'
@@ -145,12 +159,22 @@ async function openProject(row: Record<string, unknown>): Promise<void> {
   if (!p) return
   selectedProject.value = p
   tareasLoading.value = true
+  cotizacionesLoading.value = true
   tareas.value = []
+  projectMetrics.value = null
+  cotizacionesProyecto.value = []
   try {
-    const { data } = await api.get<Tarea[]>(`/api/v1/proyectos/${p.id_proyecto}/tareas`)
-    tareas.value = data
+    const [tareasRes, metricsRes, cotizacionesRes] = await Promise.all([
+      api.get<Tarea[]>(`/api/v1/proyectos/${p.id_proyecto}/tareas`),
+      api.get<ProyectoRentabilidad>(`/api/v1/proyectos/${p.id_proyecto}/rentabilidad`),
+      api.get<CotizacionProyectoResumen[]>(`/api/v1/proyectos/${p.id_proyecto}/cotizaciones`),
+    ])
+    tareas.value = tareasRes.data
+    projectMetrics.value = metricsRes.data
+    cotizacionesProyecto.value = cotizacionesRes.data
   } finally {
     tareasLoading.value = false
+    cotizacionesLoading.value = false
   }
 }
 
@@ -263,6 +287,18 @@ async function openTallerFromProyecto(): Promise<void> {
   })
 }
 
+async function openVentasFromProyecto(): Promise<void> {
+  if (!selectedProject.value) return
+  await router.push({
+    path: '/ventas',
+    query: {
+      proyectoId: String(selectedProject.value.id_proyecto),
+      clienteId: String(selectedProject.value.id_cliente),
+      openCreate: '1',
+    },
+  })
+}
+
 async function handleDeleteProyecto(idProyecto: number): Promise<void> {
   if (!window.confirm('¿Eliminar este proyecto?')) return
   try {
@@ -271,6 +307,7 @@ async function handleDeleteProyecto(idProyecto: number): Promise<void> {
     if (selectedProject.value?.id_proyecto === idProyecto) {
       selectedProject.value = null
       tareas.value = []
+      cotizacionesProyecto.value = []
     }
   } catch (e: unknown) {
     const err = e as { response?: { data?: { detail?: string } } }
@@ -365,12 +402,77 @@ async function handleDeleteProyecto(idProyecto: number): Promise<void> {
     <!-- Task Kanban Board -->
     <div v-else>
       <!-- Project Stats -->
-      <div class="grid grid-cols-3 gap-4 mb-4">
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
         <div v-for="col in kanbanColumns" :key="col.estado" class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-3 text-center">
           <p class="text-2xl font-bold text-gray-800 dark:text-white">{{ tareasByEstado[col.estado].length }}</p>
           <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">{{ col.label }}</p>
         </div>
+        <div class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-3 text-center">
+          <p class="text-sm font-semibold text-cyan-700">{{ formatUSD(projectMetrics?.ingresos_facturados ?? 0) }}</p>
+          <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">Ingresos Facturados</p>
+        </div>
+        <div class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-3 text-center">
+          <p class="text-sm font-semibold" :class="(projectMetrics?.margen_presupuestario ?? 0) >= 0 ? 'text-emerald-700' : 'text-red-600'">
+            {{ formatUSD(projectMetrics?.margen_presupuestario ?? 0) }}
+          </p>
+          <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">Margen Presupuestario</p>
+        </div>
+        <div class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-3 text-center">
+          <p class="text-sm font-semibold" :class="(projectMetrics?.utilidad_neta_real ?? 0) >= 0 ? 'text-emerald-700' : 'text-red-600'">
+            {{ formatUSD(projectMetrics?.utilidad_neta_real ?? 0) }}
+          </p>
+          <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">Utilidad Neta Real</p>
+        </div>
+        <div class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-3 text-center">
+          <p class="text-sm font-semibold" :class="(projectMetrics?.margen_neto_pct ?? 0) >= 0 ? 'text-emerald-700' : 'text-red-600'">
+            {{ (projectMetrics?.margen_neto_pct ?? 0).toFixed(2) }}%
+          </p>
+          <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">Margen Neto</p>
+        </div>
+        <div class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-3 text-center">
+          <p class="text-sm font-semibold text-blue-700">{{ formatUSD(projectMetrics?.costo_total_operativo ?? 0) }}</p>
+          <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">Costo Operativo</p>
+        </div>
+        <div class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-3 text-center">
+          <p class="text-sm font-semibold text-amber-700">{{ (projectMetrics?.consumo_presupuesto_pct ?? 0).toFixed(2) }}%</p>
+          <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">Consumo Presupuesto</p>
+        </div>
+        <div class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-3 text-center">
+          <p class="text-sm font-semibold text-gray-800 dark:text-gray-100">{{ projectMetrics?.tickets_cerrados ?? 0 }}/{{ projectMetrics?.tickets_total ?? 0 }}</p>
+          <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">Tickets Cerrados</p>
+        </div>
       </div>
+
+      <Card>
+        <div class="flex items-center justify-between mb-3">
+          <h3 class="text-sm font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-2">
+            <Receipt :size="15" class="text-cyan-600" />
+            Cotizaciones y Facturas Vinculadas
+          </h3>
+          <Button size="sm" variant="secondary" @click="openVentasFromProyecto">Ir a Ventas</Button>
+        </div>
+
+        <div v-if="cotizacionesLoading" class="text-sm text-gray-500 py-2">Cargando cotizaciones vinculadas…</div>
+        <div v-else-if="cotizacionesProyecto.length === 0" class="text-sm text-gray-400 py-2">No hay cotizaciones vinculadas a este proyecto.</div>
+        <div v-else class="space-y-2">
+          <div
+            v-for="item in cotizacionesProyecto"
+            :key="item.id_cotizacion"
+            class="flex items-center justify-between border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2"
+          >
+            <div>
+              <p class="text-sm font-medium text-gray-800 dark:text-gray-200">{{ item.numero }}</p>
+              <p class="text-xs text-gray-500 dark:text-gray-400">
+                {{ estadoCotizacionLabel[item.estado] ?? item.estado }} · {{ new Date(item.fecha_creacion).toLocaleDateString('en-US') }}
+                <span v-if="item.numero_factura"> · Factura {{ item.numero_factura }}</span>
+              </p>
+            </div>
+            <div class="text-right">
+              <p class="text-sm font-semibold text-cyan-700">{{ formatUSD(Number(item.total ?? 0)) }}</p>
+            </div>
+          </div>
+        </div>
+      </Card>
 
       <!-- Kanban -->
       <div v-if="tareasLoading" class="flex justify-center py-8">

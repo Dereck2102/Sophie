@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, computed, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import { Plus, Search, Trash2, Receipt } from 'lucide-vue-next'
 import Card from '../components/ui/Card.vue'
 import Table from '../components/ui/Table.vue'
@@ -10,11 +11,12 @@ import { useVentasStore } from '../stores/ventas'
 import { useClienteStore } from '../stores/clientes'
 import { useInventarioStore } from '../stores/inventario'
 import api from '../services/api'
-import type { ConfiguracionSistema, EstadoCotizacion } from '../types'
+import type { ConfiguracionSistema, EstadoCotizacion, Proyecto } from '../types'
 
 const ventasStore = useVentasStore()
 const clienteStore = useClienteStore()
 const inventarioStore = useInventarioStore()
+const route = useRoute()
 
 const showCreateModal = ref(false)
 const showFacturarModal = ref(false)
@@ -28,6 +30,9 @@ const formError = ref<string | null>(null)
 const clienteSearch = ref('')
 const productoSearch = ref('')
 const filterEstado = ref<EstadoCotizacion | 'all'>('all')
+const filterProyectoId = ref<number | null>(null)
+const filterClienteId = ref<number | null>(null)
+const proyectos = ref<Proyecto[]>([])
 
 interface LineItem {
   id_producto: number
@@ -42,6 +47,7 @@ const ivaRate = ref(15)
 
 const form = ref({
   id_cliente: 0,
+  id_proyecto: null as number | null,
   notas: '',
   costo_mano_obra: 0,
   costo_movilizacion: 0,
@@ -49,6 +55,11 @@ const form = ref({
   horas_soporte: 0,
   tarifa_hora_soporte: 0,
   items: [] as LineItem[],
+})
+
+const proyectosCliente = computed(() => {
+  if (!form.value.id_cliente) return [] as Proyecto[]
+  return proyectos.value.filter((p) => p.id_cliente === form.value.id_cliente)
 })
 
 const clientesFiltered = computed(() =>
@@ -89,6 +100,7 @@ const formTotal = computed(() => formSubtotalCotizacion.value + formImpuesto.val
 const columns = [
   { key: 'numero', label: 'Número', class: 'w-36' },
   { key: 'id_cliente', label: 'Cliente ID', class: 'w-24' },
+  { key: 'id_proyecto', label: 'Proyecto', class: 'w-24' },
   { key: 'estado', label: 'Estado', class: 'w-32' },
   { key: 'total', label: 'Total', class: 'w-32' },
   { key: 'fecha_creacion', label: 'Fecha', class: 'w-32' },
@@ -121,6 +133,8 @@ const pipelineStages: Record<string, { label: string; color: string }> = {
 const filteredRows = computed(() =>
   ventasStore.cotizaciones
     .filter((c) => filterEstado.value === 'all' || c.estado === filterEstado.value)
+    .filter((c) => !filterProyectoId.value || c.id_proyecto === filterProyectoId.value)
+    .filter((c) => !filterClienteId.value || c.id_cliente === filterClienteId.value)
     .map((c) => ({
       ...c,
       id: c.id_cotizacion,
@@ -138,6 +152,11 @@ onMounted(async () => {
     ventasStore.fetchCotizaciones(),
     clienteStore.fetchClientes(),
     inventarioStore.fetchProductos(),
+    api.get<Proyecto[]>('/api/v1/proyectos/').then((response) => {
+      proyectos.value = response.data
+    }).catch(() => {
+      proyectos.value = []
+    }),
   ])
   try {
     const { data } = await api.get<ConfiguracionSistema>('/api/v1/admin/settings/public')
@@ -145,7 +164,34 @@ onMounted(async () => {
   } catch {
     ivaRate.value = 15
   }
+
+  const queryProyectoId = Number(route.query.proyectoId)
+  const queryClienteId = Number(route.query.clienteId)
+  if (Number.isFinite(queryProyectoId) && queryProyectoId > 0) {
+    filterProyectoId.value = queryProyectoId
+    form.value.id_proyecto = queryProyectoId
+  }
+  if (Number.isFinite(queryClienteId) && queryClienteId > 0) {
+    filterClienteId.value = queryClienteId
+    form.value.id_cliente = queryClienteId
+  }
+  if (route.query.openCreate === '1') {
+    showCreateModal.value = true
+  }
 })
+
+watch(
+  () => route.query,
+  (query) => {
+    const queryProyectoId = Number(query.proyectoId)
+    const queryClienteId = Number(query.clienteId)
+    filterProyectoId.value = Number.isFinite(queryProyectoId) && queryProyectoId > 0 ? queryProyectoId : null
+    filterClienteId.value = Number.isFinite(queryClienteId) && queryClienteId > 0 ? queryClienteId : null
+    if (query.openCreate === '1') {
+      showCreateModal.value = true
+    }
+  },
+)
 
 function addProducto(p: typeof inventarioStore.productos[0]): void {
   const existing = form.value.items.find((i) => i.id_producto === p.id_producto)
@@ -170,6 +216,7 @@ function removeItem(idx: number): void {
 
 function selectCliente(id: number): void {
   form.value.id_cliente = id
+  form.value.id_proyecto = null
   clienteSearch.value = ''
 }
 
@@ -181,6 +228,7 @@ async function handleCreate(): Promise<void> {
   try {
     await ventasStore.createCotizacion({
       id_cliente: form.value.id_cliente,
+      id_proyecto: form.value.id_proyecto || undefined,
       notas: form.value.notas || undefined,
       costo_mano_obra: form.value.costo_mano_obra,
       costo_movilizacion: form.value.costo_movilizacion,
@@ -265,6 +313,7 @@ async function handleDelete(): Promise<void> {
 function resetForm(): void {
   form.value = {
     id_cliente: 0,
+    id_proyecto: null,
     notas: '',
     costo_mano_obra: 0,
     costo_movilizacion: 0,
@@ -276,6 +325,11 @@ function resetForm(): void {
   clienteSearch.value = ''
   productoSearch.value = ''
   formError.value = null
+}
+
+function clearContextFilters(): void {
+  filterProyectoId.value = null
+  filterClienteId.value = null
 }
 </script>
 
@@ -312,8 +366,11 @@ function resetForm(): void {
         <span class="text-sm text-gray-500">
           {{ filteredRows.length }} cotización(es)
           <span v-if="filterEstado !== 'all'"> · Filtro: <strong>{{ estadoLabels[filterEstado] }}</strong></span>
+          <span v-if="filterProyectoId"> · Proyecto: <strong>#{{ filterProyectoId }}</strong></span>
+          <span v-if="filterClienteId"> · Cliente: <strong>#{{ filterClienteId }}</strong></span>
         </span>
         <button v-if="filterEstado !== 'all'" @click="filterEstado = 'all'" class="text-xs text-blue-600 hover:underline">Limpiar filtro</button>
+        <button v-if="filterProyectoId || filterClienteId" @click="clearContextFilters" class="text-xs text-blue-600 hover:underline">Quitar contexto proyecto/cliente</button>
       </div>
       <Table :columns="columns" :rows="filteredRows" :loading="ventasStore.loading">
         <template #estado="{ value }">
@@ -398,6 +455,21 @@ function resetForm(): void {
             </div>
             <p v-if="clienteSearch && clientesFiltered.length === 0" class="text-xs text-gray-400 mt-1">Sin resultados</p>
           </div>
+        </div>
+
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">Proyecto relacionado</label>
+          <select
+            v-model.number="form.id_proyecto"
+            :disabled="!form.id_cliente"
+            class="w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white disabled:bg-gray-100"
+          >
+            <option :value="null">Sin proyecto</option>
+            <option v-for="proyecto in proyectosCliente" :key="proyecto.id_proyecto" :value="proyecto.id_proyecto">
+              {{ proyecto.nombre }}
+            </option>
+          </select>
+          <p class="text-xs text-gray-400 mt-1">Vincula la cotización para rentabilidad neta del proyecto.</p>
         </div>
 
         <!-- Product search and line items -->

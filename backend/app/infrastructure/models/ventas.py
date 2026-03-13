@@ -44,6 +44,9 @@ class Cotizacion(Base):
     id_vendedor: Mapped[int] = mapped_column(
         Integer, ForeignKey("usuario.id_usuario"), nullable=False
     )
+    id_proyecto: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("proyecto.id_proyecto", ondelete="SET NULL")
+    )
     estado: Mapped[EstadoCotizacionEnum] = mapped_column(
         Enum(EstadoCotizacionEnum), default=EstadoCotizacionEnum.BORRADOR
     )
@@ -63,6 +66,7 @@ class Cotizacion(Base):
 
     cliente: Mapped["Cliente"] = relationship(back_populates="cotizaciones")
     vendedor: Mapped["Usuario"] = relationship()
+    proyecto: Mapped["Proyecto | None"] = relationship("Proyecto")
     detalles: Mapped[list["DetalleCotizacion"]] = relationship(
         back_populates="cotizacion", cascade="all, delete-orphan"
     )

@@ -18,8 +18,8 @@ const clienteStore = useClienteStore()
 const auth = useAuthStore()
 const route = useRoute()
 
-const isTecnico = computed(() => auth.user?.rol === 'tecnico_taller' || auth.user?.rol === 'tecnico_it')
-const canCreate = computed(() => auth.user?.rol === 'superadmin' || auth.user?.rol === 'admin' || auth.user?.rol === 'tecnico_taller')
+const isTecnico = computed(() => auth.user?.rol === 'ejecutivo' || auth.user?.rol === 'tecnico')
+const canCreate = computed(() => auth.user?.rol === 'superadmin' || auth.user?.rol === 'ejecutivo' || auth.user?.rol === 'tecnico')
 
 const selectedTicket = ref<Ticket | null>(null)
 const reparacion = ref<Reparacion | null>(null)
@@ -68,13 +68,7 @@ const selectedCreateCliente = computed<Cliente | undefined>(() =>
 )
 
 const assignableOptions = computed(() =>
-  assignableUsers.value.filter((usuario) => [
-    'tecnico_taller',
-    'tecnico_it',
-    'consultor_senior',
-    'superadmin',
-    'admin',
-  ].includes(usuario.rol))
+  assignableUsers.value.filter((usuario) => ['ejecutivo', 'tecnico', 'superadmin'].includes(usuario.rol))
 )
 
 const clientProjects = computed(() => {
@@ -280,12 +274,61 @@ function closeDetail(): void {
   reparacion.value = null
 }
 
-function handleScan(): void {
-  if (scannedCode.value.trim()) {
-    alert(`Código escaneado: ${scannedCode.value}`)
-    scannedCode.value = ''
-    scanInput.value?.focus()
+function extractTrackingToken(input: string): string | null {
+  const normalized = input.trim()
+  if (!normalized) return null
+
+  try {
+    const url = new URL(normalized)
+    const parts = url.pathname.split('/').filter(Boolean)
+    const ordenIndex = parts.findIndex((part) => part === 'orden')
+    if (ordenIndex >= 0 && parts[ordenIndex + 1]) {
+      return parts[ordenIndex + 1] || null
+    }
+  } catch {
+    // Not a URL, continue with raw value
   }
+
+  if (/^[A-Za-z0-9_-]{24,}$/.test(normalized)) {
+    return normalized
+  }
+
+  return null
+}
+
+async function handleScan(): Promise<void> {
+  const rawCode = scannedCode.value.trim()
+  if (!rawCode) return
+
+  actionError.value = null
+
+  const byNumero = ticketStore.tickets.find(
+    (ticket) => ticket.numero.toLowerCase() === rawCode.toLowerCase(),
+  )
+  if (byNumero) {
+    scannedCode.value = ''
+    await openExistingTicket(byNumero)
+    scanInput.value?.focus()
+    return
+  }
+
+  const token = extractTrackingToken(rawCode)
+  if (token) {
+    try {
+      const { data } = await api.get<Ticket>(`/api/v1/tickets/seguimiento/${encodeURIComponent(token)}/ticket`)
+      scannedCode.value = ''
+      await openExistingTicket(data)
+      scanInput.value?.focus()
+      return
+    } catch {
+      actionError.value = 'No se encontró un ticket válido para el código escaneado'
+    }
+  } else {
+    actionError.value = 'Código no reconocido. Escanea un número de ticket o enlace de seguimiento.'
+  }
+
+  scannedCode.value = ''
+  scanInput.value?.focus()
 }
 
 function addRepuesto(): void {

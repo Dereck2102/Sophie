@@ -21,7 +21,7 @@ router = APIRouter(prefix="/boveda", tags=["Bóveda de Credenciales"])
 async def list_credenciales(
     db: Annotated[AsyncSession, Depends(get_db)],
     current_user: Annotated[
-        Usuario, Depends(require_roles(RolEnum.TECNICO_IT, RolEnum.CONSULTOR_SENIOR, RolEnum.ADMIN))
+        Usuario, Depends(require_roles(RolEnum.EJECUTIVO))
     ],
 ) -> list[Credencial]:
     result = await db.execute(select(Credencial))
@@ -34,7 +34,7 @@ async def create_credencial(
     db: Annotated[AsyncSession, Depends(get_db)],
     current_user: Annotated[
         Usuario,
-        Depends(require_roles(RolEnum.TECNICO_IT, RolEnum.CONSULTOR_SENIOR, RolEnum.ADMIN)),
+        Depends(require_roles(RolEnum.EJECUTIVO)),
     ],
 ) -> Credencial:
     credencial = Credencial(
@@ -58,7 +58,7 @@ async def reveal_credencial(
     ip: Annotated[str, Depends(get_client_ip)],
 ) -> CredencialWithPassword:
     """Requires MFA-verified session. Access is logged in audit log."""
-    if current_user.rol not in (RolEnum.TECNICO_IT, RolEnum.CONSULTOR_SENIOR, RolEnum.ADMIN):
+    if current_user.rol not in (RolEnum.SUPERADMIN, RolEnum.EJECUTIVO):
         raise HTTPException(status_code=403, detail="Insufficient permissions")
 
     result = await db.execute(
@@ -99,7 +99,7 @@ async def update_credencial(
     db: Annotated[AsyncSession, Depends(get_db)],
     current_user: Annotated[
         Usuario,
-        Depends(require_roles(RolEnum.TECNICO_IT, RolEnum.CONSULTOR_SENIOR, RolEnum.ADMIN)),
+        Depends(require_roles(RolEnum.EJECUTIVO)),
     ],
 ) -> Credencial:
     result = await db.execute(
@@ -126,7 +126,7 @@ async def update_credencial(
 async def delete_credencial(
     id_credencial: int,
     db: Annotated[AsyncSession, Depends(get_db)],
-    current_user: Annotated[Usuario, Depends(require_roles(RolEnum.ADMIN))],
+    current_user: Annotated[Usuario, Depends(require_roles(RolEnum.SUPERADMIN))],
 ) -> None:
     result = await db.execute(
         select(Credencial).where(Credencial.id_credencial == id_credencial)

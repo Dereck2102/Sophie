@@ -16,7 +16,7 @@ async def get_admin_token(client: AsyncClient, suffix: str = "") -> str:
             "username": username,
             "email": f"{username}@bigsolutions.pe",
             "password": "AdminPass123!",
-            "rol": "admin",
+            "rol": "superadmin",
         },
     )
     resp = await client.post(

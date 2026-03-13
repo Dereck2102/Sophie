@@ -4,6 +4,7 @@ export default {
     crm: 'CRM',
     ventas: 'Sales',
     compras: 'Purchases',
+    cajaChica: 'Petty Cash',
     taller: 'Workshop',
     proyectos: 'Projects',
     boveda: 'Vault',

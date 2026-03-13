@@ -26,6 +26,13 @@ class ConfiguracionSistema(Base):
     color_primario: Mapped[str | None] = mapped_column(String(20), default="#2563eb")
     color_secundario: Mapped[str | None] = mapped_column(String(20), default="#0f172a")
     reporte_footer: Mapped[str | None] = mapped_column(Text)
+    iva_default_percent: Mapped[int] = mapped_column(Integer, default=15)
+    descuento_default_percent: Mapped[int] = mapped_column(Integer, default=0)
+    costo_hora_tecnica_default: Mapped[int] = mapped_column(Integer, default=25)
+    costo_movilizacion_default: Mapped[int] = mapped_column(Integer, default=0)
+    costo_software_default: Mapped[int] = mapped_column(Integer, default=0)
+    costo_material_default: Mapped[int] = mapped_column(Integer, default=0)
+    costo_mano_obra_default: Mapped[int] = mapped_column(Integer, default=0)
     fecha_actualizacion: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )

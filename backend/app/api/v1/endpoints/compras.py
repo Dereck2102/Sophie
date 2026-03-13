@@ -34,7 +34,7 @@ def _next_numero_orden(count: int) -> str:
 async def list_ordenes(
     db: Annotated[AsyncSession, Depends(get_db)],
     current_user: Annotated[
-        Usuario, Depends(require_roles(RolEnum.COMPRADOR, RolEnum.ADMIN))
+        Usuario, Depends(require_roles(RolEnum.ADMINISTRATIVO_CONTABLE, RolEnum.SUPERADMIN))
     ],
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=200),
@@ -54,7 +54,7 @@ async def create_orden(
     body: OrdenCompraCreate,
     db: Annotated[AsyncSession, Depends(get_db)],
     current_user: Annotated[
-        Usuario, Depends(require_roles(RolEnum.COMPRADOR, RolEnum.ADMIN))
+        Usuario, Depends(require_roles(RolEnum.ADMINISTRATIVO_CONTABLE, RolEnum.SUPERADMIN))
     ],
 ) -> OrdenCompra:
     count_result = await db.execute(select(func.count(OrdenCompra.id_orden)))
@@ -96,7 +96,7 @@ async def get_orden(
     id_orden: int,
     db: Annotated[AsyncSession, Depends(get_db)],
     current_user: Annotated[
-        Usuario, Depends(require_roles(RolEnum.COMPRADOR, RolEnum.ADMIN))
+        Usuario, Depends(require_roles(RolEnum.ADMINISTRATIVO_CONTABLE, RolEnum.SUPERADMIN))
     ],
 ) -> OrdenCompra:
     result = await db.execute(
@@ -116,7 +116,7 @@ async def update_orden(
     body: OrdenCompraUpdate,
     db: Annotated[AsyncSession, Depends(get_db)],
     current_user: Annotated[
-        Usuario, Depends(require_roles(RolEnum.COMPRADOR, RolEnum.ADMIN))
+        Usuario, Depends(require_roles(RolEnum.ADMINISTRATIVO_CONTABLE, RolEnum.SUPERADMIN))
     ],
 ) -> OrdenCompra:
     result = await db.execute(
@@ -139,7 +139,7 @@ async def delete_orden(
     id_orden: int,
     db: Annotated[AsyncSession, Depends(get_db)],
     current_user: Annotated[
-        Usuario, Depends(require_roles(RolEnum.COMPRADOR, RolEnum.ADMIN))
+        Usuario, Depends(require_roles(RolEnum.ADMINISTRATIVO_CONTABLE, RolEnum.SUPERADMIN))
     ],
 ) -> None:
     result = await db.execute(
@@ -165,7 +165,7 @@ async def recibir_orden(
     body: RecibirOrdenRequest,
     db: Annotated[AsyncSession, Depends(get_db)],
     current_user: Annotated[
-        Usuario, Depends(require_roles(RolEnum.COMPRADOR, RolEnum.ADMIN))
+        Usuario, Depends(require_roles(RolEnum.ADMINISTRATIVO_CONTABLE, RolEnum.SUPERADMIN))
     ],
 ) -> OrdenCompra:
     """

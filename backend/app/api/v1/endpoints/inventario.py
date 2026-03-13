@@ -43,7 +43,7 @@ async def create_producto(
     body: InventarioCreate,
     db: Annotated[AsyncSession, Depends(get_db)],
     current_user: Annotated[
-        Usuario, Depends(require_roles(RolEnum.COMPRADOR, RolEnum.ADMIN))
+        Usuario, Depends(require_roles(RolEnum.ADMINISTRATIVO_CONTABLE, RolEnum.SUPERADMIN))
     ],
 ) -> Inventario:
     producto = Inventario(**body.model_dump())
@@ -73,7 +73,7 @@ async def update_producto(
     body: InventarioUpdate,
     db: Annotated[AsyncSession, Depends(get_db)],
     current_user: Annotated[
-        Usuario, Depends(require_roles(RolEnum.COMPRADOR, RolEnum.ADMIN))
+        Usuario, Depends(require_roles(RolEnum.ADMINISTRATIVO_CONTABLE, RolEnum.SUPERADMIN))
     ],
 ) -> Inventario:
     result = await db.execute(
@@ -93,7 +93,7 @@ async def delete_producto(
     id_producto: int,
     db: Annotated[AsyncSession, Depends(get_db)],
     current_user: Annotated[
-        Usuario, Depends(require_roles(RolEnum.COMPRADOR, RolEnum.ADMIN))
+        Usuario, Depends(require_roles(RolEnum.ADMINISTRATIVO_CONTABLE, RolEnum.SUPERADMIN))
     ],
 ) -> None:
     result = await db.execute(
@@ -137,7 +137,7 @@ async def add_serie(
     body: SerieCreate,
     db: Annotated[AsyncSession, Depends(get_db)],
     current_user: Annotated[
-        Usuario, Depends(require_roles(RolEnum.COMPRADOR, RolEnum.ADMIN))
+        Usuario, Depends(require_roles(RolEnum.ADMINISTRATIVO_CONTABLE, RolEnum.SUPERADMIN))
     ],
 ) -> InventarioSerie:
     serie = InventarioSerie(**body.model_dump())
@@ -159,7 +159,7 @@ async def update_serie(
     body: SerieUpdate,
     db: Annotated[AsyncSession, Depends(get_db)],
     current_user: Annotated[
-        Usuario, Depends(require_roles(RolEnum.COMPRADOR, RolEnum.TECNICO_TALLER, RolEnum.ADMIN))
+        Usuario, Depends(require_roles(RolEnum.ADMINISTRATIVO_CONTABLE, RolEnum.EJECUTIVO, RolEnum.SUPERADMIN))
     ],
 ) -> InventarioSerie:
     result = await db.execute(

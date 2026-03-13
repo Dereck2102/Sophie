@@ -30,9 +30,7 @@ const clienteStore = useClienteStore()
 const usuariosStore = useUsuarioStore()
 const canDeleteProject = computed(() =>
   auth.user?.rol === 'superadmin' ||
-  auth.user?.rol === 'admin' ||
-  auth.user?.rol === 'consultor_senior' ||
-  auth.user?.rol === 'desarrollador'
+  auth.user?.rol === 'ejecutivo'
 )
 
 function initialTareaFormState() {

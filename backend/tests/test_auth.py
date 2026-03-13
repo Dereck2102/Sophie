@@ -22,7 +22,7 @@ async def test_register_first_admin(client: AsyncClient) -> None:
             "username": "admin",
             "email": "admin@bigsolutions.pe",
             "password": "AdminPass123!",
-            "rol": "admin",
+            "rol": "superadmin",
             "nombre_completo": "Administrador",
         },
     )
@@ -43,7 +43,7 @@ async def test_register_second_admin_blocked(client: AsyncClient) -> None:
             "username": "admin2",
             "email": "admin2@bigsolutions.pe",
             "password": "AdminPass123!",
-            "rol": "admin",
+            "rol": "superadmin",
         },
     )
     # Second attempt
@@ -53,7 +53,7 @@ async def test_register_second_admin_blocked(client: AsyncClient) -> None:
             "username": "admin3",
             "email": "admin3@bigsolutions.pe",
             "password": "AdminPass123!",
-            "rol": "admin",
+            "rol": "superadmin",
         },
     )
     assert resp.status_code == 403
@@ -69,7 +69,7 @@ async def test_login_success(client: AsyncClient) -> None:
             "username": "testuser",
             "email": "test@bigsolutions.pe",
             "password": "TestPass123!",
-            "rol": "admin",
+            "rol": "superadmin",
         },
     )
     # Login
@@ -92,7 +92,7 @@ async def test_login_wrong_password(client: AsyncClient) -> None:
             "username": "badpass",
             "email": "badpass@bigsolutions.pe",
             "password": "RealPass123!",
-            "rol": "admin",
+            "rol": "superadmin",
         },
     )
     resp = await client.post(
@@ -111,7 +111,7 @@ async def test_get_me(client: AsyncClient) -> None:
             "username": "meuser",
             "email": "meuser@bigsolutions.pe",
             "password": "MePass123!",
-            "rol": "admin",
+            "rol": "superadmin",
         },
     )
     login = await client.post(
@@ -135,7 +135,7 @@ async def test_refresh_uses_cookie_when_body_missing(client: AsyncClient) -> Non
             "username": "cookie_refresh",
             "email": "cookie_refresh@bigsolutions.pe",
             "password": "CookiePass123!",
-            "rol": "admin",
+            "rol": "superadmin",
         },
     )
     login = await client.post(
@@ -157,7 +157,7 @@ async def test_email_verification_token_flow(client: AsyncClient) -> None:
             "username": "mail_verify",
             "email": "mail_verify@bigsolutions.pe",
             "password": "MailPass123!",
-            "rol": "admin",
+            "rol": "superadmin",
         },
     )
     login = await client.post(
@@ -192,7 +192,7 @@ async def test_update_profile_rejects_invalid_photo_data(client: AsyncClient) ->
             "username": "photo_invalid",
             "email": "photo_invalid@bigsolutions.pe",
             "password": "PhotoPass123!",
-            "rol": "admin",
+            "rol": "superadmin",
         },
     )
     login = await client.post(
@@ -217,7 +217,7 @@ async def test_create_usuario_rejects_duplicate_email(client: AsyncClient) -> No
             "username": "admin_dup",
             "email": "admin_dup@bigsolutions.pe",
             "password": "AdminPass123!",
-            "rol": "admin",
+            "rol": "superadmin",
         },
     )
     login = await client.post(
@@ -233,7 +233,7 @@ async def test_create_usuario_rejects_duplicate_email(client: AsyncClient) -> No
             "username": "vendedor_1",
             "email": "duplicado@bigsolutions.pe",
             "password": "VendPass123!",
-            "rol": "vendedor",
+            "rol": "ejecutivo",
         },
         headers=headers,
     )
@@ -245,7 +245,7 @@ async def test_create_usuario_rejects_duplicate_email(client: AsyncClient) -> No
             "username": "vendedor_2",
             "email": "duplicado@bigsolutions.pe",
             "password": "VendPass123!",
-            "rol": "vendedor",
+            "rol": "ejecutivo",
         },
         headers=headers,
     )

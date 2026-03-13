@@ -25,10 +25,11 @@ const routes: RouteRecordRaw[] = [
       { path: 'crm/:id', name: 'ClienteDetail', component: () => import('../pages/ClienteDetailPage.vue') },
       { path: 'ventas', name: 'Ventas', component: () => import('../pages/VentasPage.vue') },
       { path: 'compras', name: 'Compras', component: () => import('../pages/ComprasPage.vue') },
+      { path: 'caja-chica', name: 'CajaChica', component: () => import('../pages/CajaChicaPage.vue') },
       { path: 'taller', name: 'Taller', component: () => import('../pages/TallerPage.vue') },
       { path: 'proyectos', name: 'Proyectos', component: () => import('../pages/ProyectosPage.vue') },
       { path: 'boveda', name: 'Boveda', component: () => import('../pages/BovedaPage.vue') },
-      { path: 'usuarios', name: 'Usuarios', component: () => import('../pages/UsuariosPage.vue'), meta: { adminOnly: true } },
+      { path: 'usuarios', name: 'Usuarios', component: () => import('../pages/UsuariosPage.vue'), meta: { superadminOnly: true } },
       { path: 'configuracion', name: 'Configuracion', component: () => import('../pages/ConfigPage.vue'), meta: { superadminOnly: true } },
       { path: 'auditoria', name: 'Auditoria', component: () => import('../pages/AuditoriaPage.vue'), meta: { superadminOnly: true } },
       { path: 'perfil', name: 'Perfil', component: () => import('../pages/PerfilPage.vue') },
@@ -48,8 +49,6 @@ router.beforeEach((to, _from, next) => {
   } else if (to.name === 'Login' && auth.accessToken) {
     next({ name: 'Dashboard' })
   } else if (to.meta.superadminOnly && auth.user && auth.user.rol !== 'superadmin') {
-    next({ name: 'Dashboard' })
-  } else if (to.meta.adminOnly && auth.user && auth.user.rol !== 'admin' && auth.user.rol !== 'superadmin') {
     next({ name: 'Dashboard' })
   } else {
     next()

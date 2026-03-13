@@ -6,6 +6,7 @@ import type { Usuario, LoginRequest, TokenResponse } from '../types'
 export const useAuthStore = defineStore('auth', () => {
   const user = ref<Usuario | null>(null)
   const accessToken = ref<string | null>(localStorage.getItem('access_token'))
+  const sessionId = ref<string | null>(localStorage.getItem('session_id'))
   const mfaRequired = ref(false)
   const loading = ref(false)
   const error = ref<string | null>(null)
@@ -23,6 +24,10 @@ export const useAuthStore = defineStore('auth', () => {
       }
       accessToken.value = data.access_token
       localStorage.setItem('access_token', data.access_token)
+      if (data.session_id) {
+        sessionId.value = data.session_id
+        localStorage.setItem('session_id', data.session_id)
+      }
       await fetchMe()
       return true
     } catch (e: unknown) {
@@ -48,6 +53,8 @@ export const useAuthStore = defineStore('auth', () => {
     accessToken.value = null
     mfaRequired.value = false
     localStorage.removeItem('access_token')
+    sessionId.value = null
+    localStorage.removeItem('session_id')
     api.post('/api/v1/auth/logout').catch(() => {})
   }
 
@@ -56,5 +63,5 @@ export const useAuthStore = defineStore('auth', () => {
     fetchMe()
   }
 
-  return { user, accessToken, mfaRequired, loading, error, isAuthenticated, login, fetchMe, logout }
+  return { user, accessToken, sessionId, mfaRequired, loading, error, isAuthenticated, login, fetchMe, logout }
 })

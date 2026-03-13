@@ -26,6 +26,7 @@ class Settings(BaseSettings):
 
     # MFA
     MFA_ISSUER: str = "SOPHIE - Big Solutions"
+    OWNER_SUPERADMIN_USERNAME: str = os.getenv("OWNER_SUPERADMIN_USERNAME", "damacoria")
 
     # Vault encryption (AES-256-GCM key must be 32 bytes base64-encoded)
     VAULT_SECRET_KEY: str = os.getenv("VAULT_SECRET_KEY", "")

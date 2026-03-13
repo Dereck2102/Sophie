@@ -50,6 +50,11 @@ class Cotizacion(Base):
     subtotal: Mapped[float] = mapped_column(Numeric(12, 2), default=0)
     impuesto: Mapped[float] = mapped_column(Numeric(12, 2), default=0)
     total: Mapped[float] = mapped_column(Numeric(12, 2), default=0)
+    costo_mano_obra: Mapped[float] = mapped_column(Numeric(12, 2), default=0)
+    costo_movilizacion: Mapped[float] = mapped_column(Numeric(12, 2), default=0)
+    costo_software: Mapped[float] = mapped_column(Numeric(12, 2), default=0)
+    horas_soporte: Mapped[float] = mapped_column(Numeric(8, 2), default=0)
+    tarifa_hora_soporte: Mapped[float] = mapped_column(Numeric(12, 2), default=0)
     notas: Mapped[str | None] = mapped_column(Text)
     fecha_creacion: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()

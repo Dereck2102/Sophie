@@ -4,9 +4,11 @@ from app.api.v1.endpoints import (
     admin,
     auth,
     boveda,
+    caja_chica,
     clientes,
     compras,
     dashboard,
+    images,
     inventario,
     proyectos,
     tickets,
@@ -26,4 +28,6 @@ api_router.include_router(inventario.router)
 api_router.include_router(tickets.router)
 api_router.include_router(proyectos.router)
 api_router.include_router(boveda.router)
+api_router.include_router(caja_chica.router)
 api_router.include_router(usuarios.router)
+api_router.include_router(images.router)

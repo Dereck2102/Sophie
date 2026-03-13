@@ -64,7 +64,10 @@ def require_roles(*roles: RolEnum):
     async def _checker(
         current_user: Annotated[Usuario, Depends(get_current_user)],
     ) -> Usuario:
-        if current_user.rol not in roles and current_user.rol not in (RolEnum.ADMIN, RolEnum.SUPERADMIN):
+        # Superadmin siempre tiene permiso; otros deben estar en la lista de roles especificados
+        if current_user.rol == RolEnum.SUPERADMIN:
+            return current_user
+        if current_user.rol not in roles:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Insufficient permissions",

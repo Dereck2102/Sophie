@@ -26,6 +26,7 @@ from app.core.security import (
     verify_totp,
 )
 from app.infrastructure.models.auditoria import LogAuditoria
+from app.infrastructure.models.sistema import ConfiguracionSistema
 from app.infrastructure.models.usuario import RolEnum, Usuario
 from app.schemas.usuario import (
     LoginRequest,
@@ -50,14 +51,36 @@ async def login(
     db: Annotated[AsyncSession, Depends(get_db)],
     ip: Annotated[str, Depends(get_client_ip)],
 ) -> TokenResponse:
+    now = datetime.now(timezone.utc)
+
+    settings_result = await db.execute(
+        select(ConfiguracionSistema.max_login_attempts).where(ConfiguracionSistema.id_configuracion == 1)
+    )
+    max_login_attempts = int(settings_result.scalar_one_or_none() or 5)
+
     result = await db.execute(select(Usuario).where(Usuario.username == body.username))
     user = result.scalar_one_or_none()
+    if user and user.locked_until and user.locked_until > now:
+        raise HTTPException(
+            status_code=status.HTTP_423_LOCKED,
+            detail="Cuenta bloqueada temporalmente por intentos fallidos. Intenta más tarde.",
+        )
+
     if not user or not verify_password(body.password, user.password_hash):
+        if user:
+            user.failed_login_attempts = int(user.failed_login_attempts or 0) + 1
+            if user.failed_login_attempts >= max_login_attempts:
+                user.locked_until = now + timedelta(minutes=15)
+                user.failed_login_attempts = 0
+            await db.flush()
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials"
         )
     if not user.activo:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Account disabled")
+
+    user.failed_login_attempts = 0
+    user.locked_until = None
 
     mfa_verified = False
     if user.mfa_habilitado:
@@ -73,6 +96,7 @@ async def login(
     token_data = {
         "sub": str(user.id_usuario),
         "rol": user.rol.value,
+        "sid": secrets.token_urlsafe(24),
         "mfa_verified": mfa_verified,
         "permissions": access["permissions"],
         "views": access["views"],
@@ -102,7 +126,11 @@ async def login(
     )
     await db.flush()
 
-    return TokenResponse(access_token=access_token)
+    return TokenResponse(
+        access_token=access_token,
+        session_id=token_data.get("sid"),
+        access_expires_in=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+    )
 
 
 @router.post("/refresh", response_model=TokenResponse)
@@ -136,6 +164,7 @@ async def refresh_token(
     token_data = {
         "sub": str(user.id_usuario),
         "rol": user.rol.value,
+        "sid": payload.get("sid") or secrets.token_urlsafe(24),
         "mfa_verified": payload.get("mfa_verified", False),
         "permissions": access["permissions"],
         "views": access["views"],
@@ -152,7 +181,11 @@ async def refresh_token(
         samesite=settings.COOKIE_SAMESITE,
         max_age=7 * 24 * 3600,
     )
-    return TokenResponse(access_token=access_token)
+    return TokenResponse(
+        access_token=access_token,
+        session_id=token_data.get("sid"),
+        access_expires_in=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+    )
 
 
 @router.post("/logout")

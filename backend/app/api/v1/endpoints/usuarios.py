@@ -10,18 +10,20 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, require_roles
 from app.core.access import dumps_json_list, get_effective_access
+from app.core.config import get_settings
 from app.core.database import get_db
 from app.core.security import hash_password, verify_password
 from app.infrastructure.models.usuario import RolEnum, Usuario
 from app.schemas.usuario import UsuarioCreate, UsuarioOut, UsuarioSelfUpdate, UsuarioUpdate
+from app.services.image_service import ImageOptimizationError, optimize_image
 
 router = APIRouter(prefix="/usuarios", tags=["Usuarios"])
+settings = get_settings()
 
 _ASSIGNABLE_ROLES = (
-    RolEnum.TECNICO_TALLER,
-    RolEnum.TECNICO_IT,
-    RolEnum.CONSULTOR_SENIOR,
-    RolEnum.ADMIN,
+    RolEnum.EJECUTIVO,
+    RolEnum.ADMINISTRATIVO_CONTABLE,
+    RolEnum.TECNICO,
     RolEnum.SUPERADMIN,
 )
 
@@ -55,6 +57,38 @@ def _assert_superadmin_only(current_user: Usuario, target_user: Usuario | None =
         raise HTTPException(status_code=403, detail="Solo el superadmin puede asignar el rol superadmin")
 
 
+def _owner_superadmin_username() -> str:
+    return settings.OWNER_SUPERADMIN_USERNAME.strip().lower()
+
+
+def _assert_owner_superadmin_policy(
+    current_user: Usuario,
+    *,
+    target_username: str,
+    target_role: RolEnum,
+    target_user: Usuario | None = None,
+) -> None:
+    owner_username = _owner_superadmin_username()
+    if current_user.rol == RolEnum.SUPERADMIN and current_user.username.lower() != owner_username:
+        raise HTTPException(status_code=403, detail="Solo el superadmin propietario puede administrar cuentas")
+
+    if target_role == RolEnum.SUPERADMIN and target_username.lower() != owner_username:
+        raise HTTPException(
+            status_code=403,
+            detail=f"Solo '{settings.OWNER_SUPERADMIN_USERNAME}' puede tener rol superadmin",
+        )
+
+    if target_user is not None and target_user.rol == RolEnum.SUPERADMIN and target_user.username.lower() != owner_username:
+        raise HTTPException(status_code=403, detail="Cuenta superadmin inválida para esta política")
+
+    if (
+        target_user is not None
+        and target_user.username.lower() == owner_username
+        and target_role != RolEnum.SUPERADMIN
+    ):
+        raise HTTPException(status_code=403, detail="No se puede degradar el superadmin propietario")
+
+
 async def _validate_unique_identity(
     db: AsyncSession,
     *,
@@ -83,25 +117,28 @@ async def _validate_unique_identity(
             raise HTTPException(status_code=400, detail="El correo ya está registrado")
 
 
-def _validate_profile_photo_data_url(photo_data_url: str | None) -> None:
+def _validate_and_optimize_photo(photo_data_url: str | None) -> str | None:
+    """Valida y optimiza automáticamente una foto de perfil."""
     if photo_data_url is None:
-        return
+        return None
     if not photo_data_url.startswith("data:image/"):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="La foto debe enviarse como data URL de imagen válida",
         )
-    if len(photo_data_url) > 2_500_000:
+    try:
+        return optimize_image(photo_data_url, image_type="profile", target_width=400)
+    except ImageOptimizationError as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="La foto excede el tamaño máximo permitido",
+            detail=f"Error procesando imagen: {e}",
         )
 
 
 @router.get("/", response_model=List[UsuarioOut])
 async def list_usuarios(
     db: Annotated[AsyncSession, Depends(get_db)],
-    current_user: Annotated[Usuario, Depends(require_roles(RolEnum.ADMIN))],
+    current_user: Annotated[Usuario, Depends(require_roles(RolEnum.SUPERADMIN))],
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=200),
 ) -> list[Usuario]:
@@ -113,10 +150,15 @@ async def list_usuarios(
 async def create_usuario(
     body: UsuarioCreate,
     db: Annotated[AsyncSession, Depends(get_db)],
-    current_user: Annotated[Usuario, Depends(require_roles(RolEnum.ADMIN))],
+    current_user: Annotated[Usuario, Depends(require_roles(RolEnum.SUPERADMIN))],
 ) -> UsuarioOut:
     await _validate_unique_identity(db, username=body.username, email=body.email)
     _assert_superadmin_only(current_user, target_role=body.rol)
+    _assert_owner_superadmin_policy(
+        current_user,
+        target_username=body.username,
+        target_role=body.rol,
+    )
     user = Usuario(
         username=body.username,
         email=body.email,
@@ -174,8 +216,7 @@ async def update_my_profile(
             current_user.email_verificacion_expira = datetime.now(timezone.utc) + timedelta(hours=24)
         current_user.email = body.email
     if body.foto_perfil_url is not None:
-        _validate_profile_photo_data_url(body.foto_perfil_url)
-        current_user.foto_perfil_url = body.foto_perfil_url
+        current_user.foto_perfil_url = _validate_and_optimize_photo(body.foto_perfil_url)
     if body.new_password is not None:
         if not body.current_password:
             raise HTTPException(
@@ -196,7 +237,7 @@ async def update_my_profile(
 async def get_usuario(
     id_usuario: int,
     db: Annotated[AsyncSession, Depends(get_db)],
-    current_user: Annotated[Usuario, Depends(require_roles(RolEnum.ADMIN))],
+    current_user: Annotated[Usuario, Depends(require_roles(RolEnum.SUPERADMIN))],
 ) -> UsuarioOut:
     result = await db.execute(select(Usuario).where(Usuario.id_usuario == id_usuario))
     user = result.scalar_one_or_none()
@@ -210,13 +251,20 @@ async def update_usuario(
     id_usuario: int,
     body: UsuarioUpdate,
     db: Annotated[AsyncSession, Depends(get_db)],
-    current_user: Annotated[Usuario, Depends(require_roles(RolEnum.ADMIN))],
+    current_user: Annotated[Usuario, Depends(require_roles(RolEnum.SUPERADMIN))],
 ) -> UsuarioOut:
     result = await db.execute(select(Usuario).where(Usuario.id_usuario == id_usuario))
     user = result.scalar_one_or_none()
     if not user:
         raise HTTPException(status_code=404, detail="Usuario not found")
     _assert_superadmin_only(current_user, target_user=user, target_role=body.rol)
+    effective_role = body.rol if body.rol is not None else user.rol
+    _assert_owner_superadmin_policy(
+        current_user,
+        target_username=user.username,
+        target_role=effective_role,
+        target_user=user,
+    )
     payload = body.model_dump(exclude_none=True)
     if "email" in payload:
         await _validate_unique_identity(db, email=payload["email"], exclude_user_id=id_usuario)
@@ -250,7 +298,7 @@ async def update_usuario(
 async def delete_usuario(
     id_usuario: int,
     db: Annotated[AsyncSession, Depends(get_db)],
-    current_user: Annotated[Usuario, Depends(require_roles(RolEnum.ADMIN))],
+    current_user: Annotated[Usuario, Depends(require_roles(RolEnum.SUPERADMIN))],
 ) -> None:
     if current_user.id_usuario == id_usuario:
         raise HTTPException(
@@ -263,5 +311,11 @@ async def delete_usuario(
     if not user:
         raise HTTPException(status_code=404, detail="Usuario not found")
     _assert_superadmin_only(current_user, target_user=user)
+    _assert_owner_superadmin_policy(
+        current_user,
+        target_username=user.username,
+        target_role=user.rol,
+        target_user=user,
+    )
     await db.delete(user)
     await db.flush()

@@ -9,7 +9,8 @@ import Modal from '../components/ui/Modal.vue'
 import { useVentasStore } from '../stores/ventas'
 import { useClienteStore } from '../stores/clientes'
 import { useInventarioStore } from '../stores/inventario'
-import type { EstadoCotizacion } from '../types'
+import api from '../services/api'
+import type { ConfiguracionSistema, EstadoCotizacion } from '../types'
 
 const ventasStore = useVentasStore()
 const clienteStore = useClienteStore()
@@ -34,11 +35,19 @@ interface LineItem {
   cantidad: number
   precio_unitario: number
   descuento: number
+  costo_material_unitario: number
 }
+
+const ivaRate = ref(15)
 
 const form = ref({
   id_cliente: 0,
   notas: '',
+  costo_mano_obra: 0,
+  costo_movilizacion: 0,
+  costo_software: 0,
+  horas_soporte: 0,
+  tarifa_hora_soporte: 0,
   items: [] as LineItem[],
 })
 
@@ -60,9 +69,22 @@ const productosFiltered = computed(() =>
 const lineSubtotal = (item: LineItem) =>
   item.cantidad * item.precio_unitario * (1 - item.descuento / 100)
 
+const lineMaterialCost = (item: LineItem) => item.cantidad * item.costo_material_unitario
+const lineMargen = (item: LineItem) => lineSubtotal(item) - lineMaterialCost(item)
+
 const formSubtotal = computed(() => form.value.items.reduce((s, i) => s + lineSubtotal(i), 0))
-const formImpuesto = computed(() => formSubtotal.value * 0.15)
-const formTotal = computed(() => formSubtotal.value + formImpuesto.value)
+const formCostoServicios = computed(() =>
+  Number(form.value.costo_mano_obra || 0) +
+  Number(form.value.costo_movilizacion || 0) +
+  Number(form.value.costo_software || 0) +
+  (Number(form.value.horas_soporte || 0) * Number(form.value.tarifa_hora_soporte || 0))
+)
+const formCostoMaterial = computed(() => form.value.items.reduce((s, i) => s + lineMaterialCost(i), 0))
+const formMargenBruto = computed(() => form.value.items.reduce((s, i) => s + lineMargen(i), 0) - formCostoServicios.value)
+const formSubtotalCotizacion = computed(() => formSubtotal.value + formCostoServicios.value)
+const formRentabilidad = computed(() => (formSubtotalCotizacion.value > 0 ? (formMargenBruto.value / formSubtotalCotizacion.value) * 100 : 0))
+const formImpuesto = computed(() => formSubtotalCotizacion.value * (ivaRate.value / 100))
+const formTotal = computed(() => formSubtotalCotizacion.value + formImpuesto.value)
 
 const columns = [
   { key: 'numero', label: 'Número', class: 'w-36' },
@@ -117,6 +139,12 @@ onMounted(async () => {
     clienteStore.fetchClientes(),
     inventarioStore.fetchProductos(),
   ])
+  try {
+    const { data } = await api.get<ConfiguracionSistema>('/api/v1/admin/settings/public')
+    ivaRate.value = data.iva_default_percent ?? 15
+  } catch {
+    ivaRate.value = 15
+  }
 })
 
 function addProducto(p: typeof inventarioStore.productos[0]): void {
@@ -130,6 +158,7 @@ function addProducto(p: typeof inventarioStore.productos[0]): void {
       cantidad: 1,
       precio_unitario: p.precio_venta,
       descuento: 0,
+      costo_material_unitario: p.costo_adquisicion,
     })
   }
   productoSearch.value = ''
@@ -153,6 +182,11 @@ async function handleCreate(): Promise<void> {
     await ventasStore.createCotizacion({
       id_cliente: form.value.id_cliente,
       notas: form.value.notas || undefined,
+      costo_mano_obra: form.value.costo_mano_obra,
+      costo_movilizacion: form.value.costo_movilizacion,
+      costo_software: form.value.costo_software,
+      horas_soporte: form.value.horas_soporte,
+      tarifa_hora_soporte: form.value.tarifa_hora_soporte,
       detalles: form.value.items.map((i) => ({
         id_producto: i.id_producto,
         cantidad: i.cantidad,
@@ -229,7 +263,16 @@ async function handleDelete(): Promise<void> {
 }
 
 function resetForm(): void {
-  form.value = { id_cliente: 0, notas: '', items: [] }
+  form.value = {
+    id_cliente: 0,
+    notas: '',
+    costo_mano_obra: 0,
+    costo_movilizacion: 0,
+    costo_software: 0,
+    horas_soporte: 0,
+    tarifa_hora_soporte: 0,
+    items: [],
+  }
   clienteSearch.value = ''
   productoSearch.value = ''
   formError.value = null
@@ -392,6 +435,8 @@ function resetForm(): void {
                 <th class="px-3 py-2 text-center text-xs font-semibold text-gray-500 uppercase w-20">Cant.</th>
                 <th class="px-3 py-2 text-right text-xs font-semibold text-gray-500 uppercase w-28">Precio</th>
                 <th class="px-3 py-2 text-right text-xs font-semibold text-gray-500 uppercase w-20">Desc.%</th>
+                <th class="px-3 py-2 text-right text-xs font-semibold text-gray-500 uppercase w-28">Costo Mat.</th>
+                <th class="px-3 py-2 text-right text-xs font-semibold text-gray-500 uppercase w-24">Margen</th>
                 <th class="px-3 py-2 text-right text-xs font-semibold text-gray-500 uppercase w-28">Subtotal</th>
                 <th class="w-10"></th>
               </tr>
@@ -408,6 +453,8 @@ function resetForm(): void {
                 <td class="px-3 py-2">
                   <input v-model.number="item.descuento" type="number" min="0" max="100" class="w-16 text-right px-1 py-1 border rounded text-xs focus:ring-1 focus:ring-blue-500 outline-none" />
                 </td>
+                <td class="px-3 py-2 text-right text-gray-600">${{ lineMaterialCost(item).toFixed(2) }}</td>
+                <td class="px-3 py-2 text-right" :class="lineMargen(item) >= 0 ? 'text-emerald-700 font-medium' : 'text-red-600 font-medium'">${{ lineMargen(item).toFixed(2) }}</td>
                 <td class="px-3 py-2 text-right font-medium">${{ lineSubtotal(item).toFixed(2) }}</td>
                 <td class="px-3 py-2">
                   <button type="button" @click="removeItem(idx)" class="text-red-400 hover:text-red-600"><Trash2 :size="14" /></button>
@@ -416,17 +463,37 @@ function resetForm(): void {
             </tbody>
             <tfoot class="bg-gray-50 text-sm">
               <tr>
-                <td colspan="4" class="px-3 py-2 text-right text-gray-600">Subtotal</td>
-                <td class="px-3 py-2 text-right font-semibold">${{ formSubtotal.toFixed(2) }}</td>
+                <td colspan="6" class="px-3 py-2 text-right text-gray-600">Costo materiales</td>
+                <td class="px-3 py-2 text-right font-semibold">${{ formCostoMaterial.toFixed(2) }}</td>
                 <td></td>
               </tr>
               <tr>
-                <td colspan="4" class="px-3 py-2 text-right text-gray-600">IVA (15%)</td>
+                <td colspan="6" class="px-3 py-2 text-right text-gray-600">Costos de servicios</td>
+                <td class="px-3 py-2 text-right font-semibold">${{ formCostoServicios.toFixed(2) }}</td>
+                <td></td>
+              </tr>
+              <tr>
+                <td colspan="6" class="px-3 py-2 text-right text-gray-600">Margen bruto</td>
+                <td class="px-3 py-2 text-right font-semibold" :class="formMargenBruto >= 0 ? 'text-emerald-700' : 'text-red-600'">${{ formMargenBruto.toFixed(2) }}</td>
+                <td></td>
+              </tr>
+              <tr>
+                <td colspan="6" class="px-3 py-2 text-right text-gray-600">Rentabilidad</td>
+                <td class="px-3 py-2 text-right font-semibold" :class="formRentabilidad >= 0 ? 'text-emerald-700' : 'text-red-600'">{{ formRentabilidad.toFixed(2) }}%</td>
+                <td></td>
+              </tr>
+              <tr>
+                <td colspan="6" class="px-3 py-2 text-right text-gray-600">Subtotal cotización</td>
+                <td class="px-3 py-2 text-right font-semibold">${{ formSubtotalCotizacion.toFixed(2) }}</td>
+                <td></td>
+              </tr>
+              <tr>
+                <td colspan="6" class="px-3 py-2 text-right text-gray-600">IVA ({{ ivaRate }}%)</td>
                 <td class="px-3 py-2 text-right font-semibold">${{ formImpuesto.toFixed(2) }}</td>
                 <td></td>
               </tr>
               <tr class="text-base">
-                <td colspan="4" class="px-3 py-2 text-right font-bold text-gray-800">Total</td>
+                <td colspan="6" class="px-3 py-2 text-right font-bold text-gray-800">Total</td>
                 <td class="px-3 py-2 text-right font-bold text-blue-700">${{ formTotal.toFixed(2) }}</td>
                 <td></td>
               </tr>
@@ -436,6 +503,31 @@ function resetForm(): void {
         <p v-else class="text-sm text-gray-400 text-center py-3 border border-dashed border-gray-200 rounded-xl">
           Busca y agrega productos arriba
         </p>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Costo mano de obra</label>
+            <input v-model.number="form.costo_mano_obra" type="number" min="0" step="0.01" class="w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Costo movilización</label>
+            <input v-model.number="form.costo_movilizacion" type="number" min="0" step="0.01" class="w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Costo software</label>
+            <input v-model.number="form.costo_software" type="number" min="0" step="0.01" class="w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
+          </div>
+          <div class="grid grid-cols-2 gap-2">
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1">Horas soporte</label>
+              <input v-model.number="form.horas_soporte" type="number" min="0" step="0.5" class="w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1">Tarifa/hora</label>
+              <input v-model.number="form.tarifa_hora_soporte" type="number" min="0" step="0.01" class="w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
+            </div>
+          </div>
+        </div>
 
         <!-- Notes -->
         <div>

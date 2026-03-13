@@ -3,6 +3,7 @@ import { onMounted, ref } from 'vue'
 import { CheckCircle, Download, Upload } from 'lucide-vue-next'
 import Card from '../components/ui/Card.vue'
 import Button from '../components/ui/Button.vue'
+import ImageUpload from '../components/ui/ImageUpload.vue'
 import api from '../services/api'
 import type { BackupUsuariosPayload, ConfiguracionSistema } from '../types'
 
@@ -27,6 +28,13 @@ const form = ref<ConfiguracionSistema>({
   color_primario: '#2563eb',
   color_secundario: '#0f172a',
   reporte_footer: '',
+  iva_default_percent: 15,
+  descuento_default_percent: 0,
+  costo_hora_tecnica_default: 25,
+  costo_movilizacion_default: 0,
+  costo_software_default: 0,
+  costo_material_default: 0,
+  costo_mano_obra_default: 0,
 })
 
 async function loadSettings(): Promise<void> {
@@ -106,7 +114,7 @@ onMounted(loadSettings)
   <div class="space-y-6 max-w-5xl">
     <div>
       <h1 class="text-2xl font-bold text-gray-900 dark:text-white">Configuración Global</h1>
-      <p class="text-gray-500 dark:text-gray-400 text-sm mt-1">Branding, seguridad y continuidad operativa del entorno ZOHOGESTIO.</p>
+      <p class="text-gray-500 dark:text-gray-400 text-sm mt-1">Branding, seguridad y continuidad operativa de tu empresa.</p>
     </div>
 
     <div v-if="success" class="flex items-center gap-2 bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-xl text-sm">
@@ -132,8 +140,13 @@ onMounted(loadSettings)
           <input v-model="form.ruc_empresa" type="text" class="w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
         </div>
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">Logo URL / data URL</label>
-          <input v-model="form.logo_empresa_url" type="text" class="w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
+          <label class="block text-sm font-medium text-gray-700 mb-1">Logo de la empresa</label>
+          <ImageUpload
+            v-model="form.logo_empresa_url"
+            image-type="profile"
+            :target-width="600"
+            accept="image/png,image/jpeg,image/webp"
+          />
         </div>
         <div>
           <label class="block text-sm font-medium text-gray-700 mb-1">Color primario</label>
@@ -177,6 +190,39 @@ onMounted(loadSettings)
         <label class="flex items-center gap-3 text-sm text-gray-700 md:col-span-2">
           <input v-model="form.system_notifications" type="checkbox" class="w-4 h-4" /> Notificaciones del sistema
         </label>
+      </div>
+    </Card>
+
+    <Card title="Parámetros Financieros Globales">
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">IVA por defecto (%)</label>
+          <input v-model.number="form.iva_default_percent" type="number" min="0" class="w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">Descuento por defecto (%)</label>
+          <input v-model.number="form.descuento_default_percent" type="number" min="0" class="w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">Costo hora técnica</label>
+          <input v-model.number="form.costo_hora_tecnica_default" type="number" min="0" class="w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">Costo mano de obra</label>
+          <input v-model.number="form.costo_mano_obra_default" type="number" min="0" class="w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">Costo materiales</label>
+          <input v-model.number="form.costo_material_default" type="number" min="0" class="w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">Costo movilización</label>
+          <input v-model.number="form.costo_movilizacion_default" type="number" min="0" class="w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
+        </div>
+        <div class="md:col-span-2">
+          <label class="block text-sm font-medium text-gray-700 mb-1">Costo software</label>
+          <input v-model.number="form.costo_software_default" type="number" min="0" class="w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
+        </div>
       </div>
     </Card>
 

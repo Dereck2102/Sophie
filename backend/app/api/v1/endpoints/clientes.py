@@ -57,7 +57,7 @@ async def create_cliente(
     body: ClienteCreate,
     db: Annotated[AsyncSession, Depends(get_db)],
     current_user: Annotated[
-        Usuario, Depends(require_roles(RolEnum.VENDEDOR, RolEnum.ADMIN))
+        Usuario, Depends(require_roles(RolEnum.EJECUTIVO, RolEnum.SUPERADMIN))
     ],
 ) -> Cliente:
     cliente = Cliente(tipo_cliente=body.tipo_cliente, estado=body.estado)
@@ -108,7 +108,7 @@ async def update_cliente(
     body: ClienteUpdate,
     db: Annotated[AsyncSession, Depends(get_db)],
     current_user: Annotated[
-        Usuario, Depends(require_roles(RolEnum.VENDEDOR, RolEnum.ADMIN))
+        Usuario, Depends(require_roles(RolEnum.EJECUTIVO, RolEnum.SUPERADMIN))
     ],
 ) -> Cliente:
     result = await db.execute(
@@ -138,7 +138,7 @@ async def update_cliente(
 async def delete_cliente(
     id_cliente: int,
     db: Annotated[AsyncSession, Depends(get_db)],
-    current_user: Annotated[Usuario, Depends(require_roles(RolEnum.ADMIN))],
+    current_user: Annotated[Usuario, Depends(require_roles(RolEnum.SUPERADMIN))],
 ) -> None:
     result = await db.execute(
         select(Cliente)

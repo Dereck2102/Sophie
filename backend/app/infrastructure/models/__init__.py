@@ -8,6 +8,7 @@ from app.infrastructure.models.boveda import Credencial
 from app.infrastructure.models.auditoria import LogAuditoria, EventoCliente
 from app.infrastructure.models.proyectos import Proyecto, Tarea, MiembroProyecto, RegistroTiempo, EstadoProyectoEnum
 from app.infrastructure.models.sistema import ConfiguracionSistema
+from app.infrastructure.models.caja_chica import MovimientoCajaChica, TipoMovimientoCajaEnum
 
 __all__ = [
     "Usuario", "RolEnum",
@@ -19,5 +20,6 @@ __all__ = [
     "Credencial",
     "LogAuditoria", "EventoCliente",
     "ConfiguracionSistema",
+    "MovimientoCajaChica", "TipoMovimientoCajaEnum",
     "Proyecto", "Tarea", "MiembroProyecto", "RegistroTiempo", "EstadoProyectoEnum",
 ]

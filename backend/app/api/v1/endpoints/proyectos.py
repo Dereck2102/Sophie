@@ -56,9 +56,9 @@ async def create_proyecto(
         Usuario,
         Depends(
             require_roles(
-                RolEnum.DESARROLLADOR,
-                RolEnum.CONSULTOR_SENIOR,
-                RolEnum.ADMIN,
+                RolEnum.EJECUTIVO,
+                RolEnum.EJECUTIVO,
+                RolEnum.SUPERADMIN,
             )
         ),
     ],
@@ -93,9 +93,9 @@ async def update_proyecto(
         Usuario,
         Depends(
             require_roles(
-                RolEnum.DESARROLLADOR,
-                RolEnum.CONSULTOR_SENIOR,
-                RolEnum.ADMIN,
+                RolEnum.EJECUTIVO,
+                RolEnum.EJECUTIVO,
+                RolEnum.SUPERADMIN,
             )
         ),
     ],
@@ -120,9 +120,9 @@ async def delete_proyecto(
         Usuario,
         Depends(
             require_roles(
-                RolEnum.DESARROLLADOR,
-                RolEnum.CONSULTOR_SENIOR,
-                RolEnum.ADMIN,
+                RolEnum.EJECUTIVO,
+                RolEnum.EJECUTIVO,
+                RolEnum.SUPERADMIN,
             )
         ),
     ],
@@ -254,7 +254,7 @@ async def add_miembro(
     db: Annotated[AsyncSession, Depends(get_db)],
     current_user: Annotated[
         Usuario,
-        Depends(require_roles(RolEnum.DESARROLLADOR, RolEnum.CONSULTOR_SENIOR, RolEnum.ADMIN)),
+        Depends(require_roles(RolEnum.EJECUTIVO, RolEnum.EJECUTIVO, RolEnum.SUPERADMIN)),
     ],
 ) -> MiembroProyecto:
     miembro = MiembroProyecto(

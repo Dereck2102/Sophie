@@ -22,41 +22,73 @@ const formError = ref<string | null>(null)
 
 const roles: RolEnum[] = [
   'superadmin',
-  'admin',
   'ejecutivo',
   'administrativo_contable',
-  'vendedor',
-  'tecnico_taller',
-  'tecnico_it',
-  'comprador',
-  'desarrollador',
-  'consultor_senior',
+  'tecnico',
 ]
 
 const roleLabels: Record<RolEnum, string> = {
   superadmin: 'Superadministrador',
-  admin: 'Administrador',
   ejecutivo: 'Ejecutivo',
   administrativo_contable: 'Administrativo Contable',
-  vendedor: 'Vendedor',
-  tecnico_taller: 'Técnico Taller',
-  tecnico_it: 'Técnico IT',
-  comprador: 'Comprador',
-  desarrollador: 'Desarrollador',
-  consultor_senior: 'Consultor Senior',
+  tecnico: 'Técnico',
 }
+
+interface AccessOption {
+  value: string
+  label: string
+}
+
+const permissionOptions: AccessOption[] = [
+  { value: 'dashboard.view', label: 'Ver dashboard' },
+  { value: 'clientes.manage', label: 'Gestionar clientes' },
+  { value: 'ventas.manage', label: 'Gestionar ventas' },
+  { value: 'compras.manage', label: 'Gestionar compras' },
+  { value: 'proyectos.manage', label: 'Gestionar proyectos' },
+  { value: 'tickets.manage', label: 'Gestionar tickets' },
+  { value: 'inventario.read', label: 'Consultar inventario' },
+  { value: 'reportes.view', label: 'Ver reportes' },
+]
+
+const viewOptions: AccessOption[] = [
+  { value: 'dashboard', label: 'Dashboard' },
+  { value: 'crm', label: 'CRM' },
+  { value: 'ventas', label: 'Ventas' },
+  { value: 'compras', label: 'Compras' },
+  { value: 'proyectos', label: 'Proyectos' },
+  { value: 'taller', label: 'Taller' },
+  { value: 'inventario', label: 'Inventario' },
+  { value: 'perfil', label: 'Perfil' },
+  { value: 'boveda', label: 'Bóveda' },
+  { value: 'usuarios', label: 'Usuarios' },
+  { value: 'configuracion', label: 'Configuración' },
+  { value: 'auditoria', label: 'Auditoría' },
+]
+
+const toolOptions: AccessOption[] = [
+  { value: 'reportes', label: 'Reportes' },
+  { value: 'exportaciones', label: 'Exportaciones' },
+  { value: 'calculadora_margen', label: 'Calculadora de margen' },
+  { value: 'proyecciones_financieras', label: 'Proyecciones financieras' },
+  { value: 'simulador_iva', label: 'Simulador de IVA' },
+  { value: 'simulador_descuentos', label: 'Simulador de descuentos' },
+  { value: 'costeo_cotizaciones', label: 'Costeo de cotizaciones' },
+  { value: 'control_caja_chica', label: 'Control de caja chica' },
+  { value: 'calculo_horas_tecnicas', label: 'Cálculo de horas técnicas' },
+  { value: 'scanner_qr', label: 'Escáner QR de seguimiento' },
+]
 
 const createFormDefaults = () => ({
   username: '',
   email: '',
   password: '',
-  rol: 'vendedor' as RolEnum,
+  rol: 'ejecutivo' as RolEnum,
   nombre_completo: '',
   mfa_habilitado: false,
   force_mfa: false,
-  permisos: '',
-  vistas: '',
-  herramientas: '',
+  permisos: [] as string[],
+  vistas: [] as string[],
+  herramientas: [] as string[],
 })
 
 const createForm = ref(createFormDefaults())
@@ -64,13 +96,13 @@ const createForm = ref(createFormDefaults())
 const editForm = ref({
   email: '',
   nombre_completo: '',
-  rol: 'vendedor' as RolEnum,
+  rol: 'ejecutivo' as RolEnum,
   activo: true,
   mfa_habilitado: false,
   force_mfa: false,
-  permisos: '',
-  vistas: '',
-  herramientas: '',
+  permisos: [] as string[],
+  vistas: [] as string[],
+  herramientas: [] as string[],
 })
 
 const columns = [
@@ -99,17 +131,6 @@ const filteredRows = computed(() =>
 
 onMounted(() => usuarioStore.fetchUsuarios())
 
-function serializeList(values: string[]): string {
-  return values.join(', ')
-}
-
-function parseList(value: string): string[] {
-  return value
-    .split(',')
-    .map((item) => item.trim())
-    .filter(Boolean)
-}
-
 function openEdit(row: Record<string, unknown>): void {
   const user = usuarioStore.usuarios.find((u) => u.id_usuario === row.id_usuario)
   if (user) {
@@ -121,9 +142,9 @@ function openEdit(row: Record<string, unknown>): void {
       activo: user.activo,
       mfa_habilitado: user.mfa_habilitado,
       force_mfa: user.force_mfa,
-      permisos: serializeList(user.permisos),
-      vistas: serializeList(user.vistas),
-      herramientas: serializeList(user.herramientas),
+      permisos: [...user.permisos],
+      vistas: [...user.vistas],
+      herramientas: [...user.herramientas],
     }
     showEditModal.value = true
   }
@@ -141,9 +162,9 @@ async function handleCreate(): Promise<void> {
       nombre_completo: createForm.value.nombre_completo || undefined,
       mfa_habilitado: createForm.value.mfa_habilitado,
       force_mfa: createForm.value.force_mfa,
-      permisos: parseList(createForm.value.permisos),
-      vistas: parseList(createForm.value.vistas),
-      herramientas: parseList(createForm.value.herramientas),
+      permisos: createForm.value.permisos,
+      vistas: createForm.value.vistas,
+      herramientas: createForm.value.herramientas,
     })
     showCreateModal.value = false
     resetCreateForm()
@@ -167,9 +188,9 @@ async function handleEdit(): Promise<void> {
       activo: editForm.value.activo,
       mfa_habilitado: editForm.value.mfa_habilitado,
       force_mfa: editForm.value.force_mfa,
-      permisos: parseList(editForm.value.permisos),
-      vistas: parseList(editForm.value.vistas),
-      herramientas: parseList(editForm.value.herramientas),
+      permisos: editForm.value.permisos,
+      vistas: editForm.value.vistas,
+      herramientas: editForm.value.herramientas,
     })
     showEditModal.value = false
     selectedUser.value = null
@@ -221,7 +242,7 @@ async function handleDelete(): Promise<void> {
         </div>
         <div>
           <h1 class="text-2xl font-bold text-gray-900">Gestión de Usuarios</h1>
-          <p class="text-gray-500 text-sm mt-1">Administración de cuentas y roles del sistema</p>
+          <p class="text-gray-500 text-sm mt-1">Administración de cuentas y roles del sistema (permisos, vistas y herramientas por casillas)</p>
         </div>
       </div>
       <Button @click="showCreateModal = true">
@@ -251,8 +272,8 @@ async function handleDelete(): Promise<void> {
         @row-click="openEdit"
       >
         <template #rol="{ value }">
-          <Badge :variant="value === 'superadmin' ? 'danger' : value === 'admin' ? 'warning' : 'info'">
-            <ShieldCheck v-if="value === 'superadmin' || value === 'admin'" :size="11" class="mr-1" />
+          <Badge :variant="value === 'superadmin' ? 'danger' : value === 'ejecutivo' ? 'warning' : 'info'">
+            <ShieldCheck v-if="value === 'superadmin'" :size="11" class="mr-1" />
             {{ roleLabels[value as RolEnum] ?? value }}
           </Badge>
         </template>
@@ -348,30 +369,30 @@ async function handleDelete(): Promise<void> {
           </div>
           <div class="col-span-2">
             <label class="block text-sm font-medium text-gray-700 mb-1">Permisos</label>
-            <textarea
-              v-model="createForm.permisos"
-              rows="2"
-              placeholder="usuarios:write, auditoria:read"
-              class="w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-            />
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-2 border rounded-lg p-3 bg-gray-50">
+              <label v-for="option in permissionOptions" :key="`create-perm-${option.value}`" class="flex items-center gap-2 text-sm text-gray-700">
+                <input v-model="createForm.permisos" :value="option.value" type="checkbox" class="rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
+                {{ option.label }}
+              </label>
+            </div>
           </div>
           <div class="col-span-2">
             <label class="block text-sm font-medium text-gray-700 mb-1">Vistas</label>
-            <textarea
-              v-model="createForm.vistas"
-              rows="2"
-              placeholder="dashboard, usuarios, auditoria"
-              class="w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-            />
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-2 border rounded-lg p-3 bg-gray-50">
+              <label v-for="option in viewOptions" :key="`create-view-${option.value}`" class="flex items-center gap-2 text-sm text-gray-700">
+                <input v-model="createForm.vistas" :value="option.value" type="checkbox" class="rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
+                {{ option.label }}
+              </label>
+            </div>
           </div>
           <div class="col-span-2">
             <label class="block text-sm font-medium text-gray-700 mb-1">Herramientas</label>
-            <textarea
-              v-model="createForm.herramientas"
-              rows="2"
-              placeholder="backup, restore, export"
-              class="w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-            />
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-2 border rounded-lg p-3 bg-gray-50">
+              <label v-for="option in toolOptions" :key="`create-tool-${option.value}`" class="flex items-center gap-2 text-sm text-gray-700">
+                <input v-model="createForm.herramientas" :value="option.value" type="checkbox" class="rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
+                {{ option.label }}
+              </label>
+            </div>
           </div>
         </div>
 
@@ -445,30 +466,30 @@ async function handleDelete(): Promise<void> {
           </div>
           <div class="col-span-2">
             <label class="block text-sm font-medium text-gray-700 mb-1">Permisos</label>
-            <textarea
-              v-model="editForm.permisos"
-              rows="2"
-              placeholder="usuarios:write, auditoria:read"
-              class="w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-            />
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-2 border rounded-lg p-3 bg-gray-50">
+              <label v-for="option in permissionOptions" :key="`edit-perm-${option.value}`" class="flex items-center gap-2 text-sm text-gray-700">
+                <input v-model="editForm.permisos" :value="option.value" type="checkbox" class="rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
+                {{ option.label }}
+              </label>
+            </div>
           </div>
           <div class="col-span-2">
             <label class="block text-sm font-medium text-gray-700 mb-1">Vistas</label>
-            <textarea
-              v-model="editForm.vistas"
-              rows="2"
-              placeholder="dashboard, usuarios, auditoria"
-              class="w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-            />
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-2 border rounded-lg p-3 bg-gray-50">
+              <label v-for="option in viewOptions" :key="`edit-view-${option.value}`" class="flex items-center gap-2 text-sm text-gray-700">
+                <input v-model="editForm.vistas" :value="option.value" type="checkbox" class="rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
+                {{ option.label }}
+              </label>
+            </div>
           </div>
           <div class="col-span-2">
             <label class="block text-sm font-medium text-gray-700 mb-1">Herramientas</label>
-            <textarea
-              v-model="editForm.herramientas"
-              rows="2"
-              placeholder="backup, restore, export"
-              class="w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-            />
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-2 border rounded-lg p-3 bg-gray-50">
+              <label v-for="option in toolOptions" :key="`edit-tool-${option.value}`" class="flex items-center gap-2 text-sm text-gray-700">
+                <input v-model="editForm.herramientas" :value="option.value" type="checkbox" class="rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
+                {{ option.label }}
+              </label>
+            </div>
           </div>
         </div>
 

@@ -19,16 +19,11 @@ from app.core.database import Base
 
 
 class RolEnum(str, enum.Enum):
-    SUPERADMIN = "superadmin"
-    ADMIN = "admin"
-    EJECUTIVO = "ejecutivo"
-    ADMINISTRATIVO_CONTABLE = "administrativo_contable"
-    VENDEDOR = "vendedor"
-    TECNICO_TALLER = "tecnico_taller"
-    TECNICO_IT = "tecnico_it"
-    COMPRADOR = "comprador"
-    DESARROLLADOR = "desarrollador"
-    CONSULTOR_SENIOR = "consultor_senior"
+    """Roles válidos en SOPHIE con permisos granulares adicionales."""
+    SUPERADMIN = "superadmin"  # Acceso total + administración del sistema
+    EJECUTIVO = "ejecutivo"  # Jefe de área/proyecto + supervisión
+    ADMINISTRATIVO_CONTABLE = "administrativo_contable"  # Gestión financiera + compras
+    TECNICO = "tecnico"  # Soporte técnico, tickets y operación de taller
 
 
 class Usuario(Base):
@@ -53,6 +48,8 @@ class Usuario(Base):
     permisos_json: Mapped[str | None] = mapped_column(Text)
     vistas_json: Mapped[str | None] = mapped_column(Text)
     herramientas_json: Mapped[str | None] = mapped_column(Text)
+    failed_login_attempts: Mapped[int] = mapped_column(Integer, default=0)
+    locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     fecha_creacion: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

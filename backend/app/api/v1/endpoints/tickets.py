@@ -14,6 +14,7 @@ from sqlalchemy.orm import selectinload
 from app.api.deps import get_current_user, require_roles
 from app.core.database import get_db
 from app.infrastructure.models.auditoria import EventoCliente
+from app.services.image_service import ImageOptimizationError, optimize_image
 from app.infrastructure.models.cliente import Cliente
 from app.infrastructure.models.proyectos import Proyecto
 from app.infrastructure.models.tickets import (
@@ -43,10 +44,9 @@ from app.schemas.tickets import (
 router = APIRouter(prefix="/tickets", tags=["Soporte Técnico"])
 
 _VALID_ASSIGNEE_ROLES = {
-    RolEnum.TECNICO_TALLER,
-    RolEnum.TECNICO_IT,
-    RolEnum.CONSULTOR_SENIOR,
-    RolEnum.ADMIN,
+    RolEnum.EJECUTIVO,
+    RolEnum.TECNICO,
+    RolEnum.SUPERADMIN,
 }
 
 
@@ -90,6 +90,23 @@ async def get_orden_by_token(
     )
 
 
+@router.get("/seguimiento/{token}/ticket", response_model=TicketOut)
+async def get_ticket_by_tracking_token(
+    token: str,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[Usuario, Depends(get_current_user)],
+) -> Ticket:
+    result = await db.execute(
+        select(Ticket)
+        .join(ReparacionTaller, ReparacionTaller.id_ticket == Ticket.id_ticket)
+        .where(ReparacionTaller.token_seguimiento == token)
+    )
+    ticket = result.scalar_one_or_none()
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Ticket no encontrado para el token")
+    return ticket
+
+
 @router.get("/", response_model=List[TicketOut])
 async def list_tickets(
     db: Annotated[AsyncSession, Depends(get_db)],
@@ -98,10 +115,9 @@ async def list_tickets(
     limit: int = Query(50, ge=1, le=200),
 ) -> list[Ticket]:
     query = select(Ticket).offset(skip).limit(limit).order_by(Ticket.fecha_creacion.desc())
-    if current_user.rol in (RolEnum.TECNICO_TALLER, RolEnum.TECNICO_IT):
-        query = query.where(
-            or_(Ticket.id_tecnico == current_user.id_usuario, Ticket.id_tecnico.is_(None))
-        )
+    if current_user.rol in (RolEnum.EJECUTIVO, RolEnum.TECNICO):
+        # Los ejecutivos ven todos los tickets pero pueden filtrar por asignados
+        query = query  # Sin filtro extra; ejecutivo ve todos
     result = await db.execute(query)
     return list(result.scalars().all())
 
@@ -269,8 +285,10 @@ async def delete_ticket(
 
 
 def _assert_ticket_assignee(ticket: Ticket, current_user: Usuario) -> None:
-    """Raise 403 if current_user is not the assigned technician (admins are exempt)."""
-    if ticket.id_tecnico != current_user.id_usuario and current_user.rol != RolEnum.ADMIN:
+    """Raise 403 if current_user is not the assigned technician (superadmin y ejecutivo son exentos)."""
+    if current_user.rol in (RolEnum.SUPERADMIN, RolEnum.EJECUTIVO, RolEnum.TECNICO):
+        return
+    if ticket.id_tecnico != current_user.id_usuario:
         raise HTTPException(status_code=403, detail="Not assigned to this ticket")
 
 
@@ -316,7 +334,7 @@ async def get_reparacion(
     id_ticket: int,
     db: Annotated[AsyncSession, Depends(get_db)],
     current_user: Annotated[
-        Usuario, Depends(require_roles(RolEnum.TECNICO_TALLER, RolEnum.ADMIN))
+        Usuario, Depends(require_roles(RolEnum.EJECUTIVO, RolEnum.TECNICO))
     ],
 ) -> ReparacionTaller:
     result = await db.execute(
@@ -336,7 +354,7 @@ async def update_reparacion(
     body: ReparacionUpdate,
     db: Annotated[AsyncSession, Depends(get_db)],
     current_user: Annotated[
-        Usuario, Depends(require_roles(RolEnum.TECNICO_TALLER, RolEnum.ADMIN))
+        Usuario, Depends(require_roles(RolEnum.EJECUTIVO, RolEnum.TECNICO))
     ],
 ) -> ReparacionTaller:
     result = await db.execute(
@@ -360,7 +378,7 @@ async def upload_fotos(
     files: List[UploadFile] = File(...),
     db: AsyncSession = Depends(get_db),
     current_user: Usuario = Depends(
-        require_roles(RolEnum.TECNICO_TALLER, RolEnum.ADMIN)
+        require_roles(RolEnum.EJECUTIVO, RolEnum.TECNICO)
     ),
 ) -> ReparacionTaller:
     if len(files) < 1:
@@ -375,11 +393,19 @@ async def upload_fotos(
         raise HTTPException(status_code=404, detail="Reparacion not found")
 
     existing: list[str] = json.loads(r.fotos_urls or "[]")
+    if len(existing) + len(files) > 10:
+        raise HTTPException(status_code=400, detail="Máximo 10 fotos por reparación")
     for f in files:
+        if f.content_type and not f.content_type.startswith("image/"):
+            raise HTTPException(status_code=400, detail=f"Formato no válido: {f.content_type}")
         content = await f.read()
-        b64 = base64.b64encode(content).decode()
         mime = f.content_type or "image/jpeg"
-        existing.append(f"data:{mime};base64,{b64}")
+        raw_url = f"data:{mime};base64,{base64.b64encode(content).decode()}"
+        try:
+            optimized = optimize_image(raw_url, image_type="gallery", target_width=1200)
+        except ImageOptimizationError:
+            optimized = raw_url  # fallback si falla optimización
+        existing.append(optimized)
     r.fotos_urls = json.dumps(existing)
     await db.flush()
     await db.refresh(r, ["repuestos"])
@@ -392,7 +418,7 @@ async def add_repuesto(
     body: RepuestoUsadoCreate,
     db: Annotated[AsyncSession, Depends(get_db)],
     current_user: Annotated[
-        Usuario, Depends(require_roles(RolEnum.TECNICO_TALLER, RolEnum.ADMIN))
+        Usuario, Depends(require_roles(RolEnum.EJECUTIVO, RolEnum.TECNICO))
     ],
 ) -> RepuestoUsado:
     repuesto = RepuestoUsado(id_ticket=id_ticket, **body.model_dump())
@@ -406,7 +432,7 @@ async def get_incidencia(
     id_ticket: int,
     db: Annotated[AsyncSession, Depends(get_db)],
     current_user: Annotated[
-        Usuario, Depends(require_roles(RolEnum.TECNICO_IT, RolEnum.ADMIN))
+        Usuario, Depends(require_roles(RolEnum.EJECUTIVO, RolEnum.TECNICO))
     ],
 ) -> IncidenciaIT:
     result = await db.execute(
@@ -422,7 +448,7 @@ async def get_incidencia(
 async def list_slas(
     db: Annotated[AsyncSession, Depends(get_db)],
     current_user: Annotated[
-        Usuario, Depends(require_roles(RolEnum.TECNICO_IT, RolEnum.ADMIN))
+        Usuario, Depends(require_roles(RolEnum.EJECUTIVO, RolEnum.TECNICO))
     ],
 ) -> list[SLA]:
     result = await db.execute(select(SLA))
@@ -433,7 +459,7 @@ async def list_slas(
 async def create_sla(
     body: SLACreate,
     db: Annotated[AsyncSession, Depends(get_db)],
-    current_user: Annotated[Usuario, Depends(require_roles(RolEnum.ADMIN))],
+    current_user: Annotated[Usuario, Depends(require_roles(RolEnum.SUPERADMIN))],
 ) -> SLA:
     sla = SLA(**body.model_dump())
     db.add(sla)

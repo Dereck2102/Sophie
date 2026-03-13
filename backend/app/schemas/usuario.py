@@ -90,6 +90,8 @@ class TokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
     mfa_required: bool = False
+    session_id: Optional[str] = None
+    access_expires_in: Optional[int] = None
 
 
 class MFASetupOut(BaseModel):
@@ -130,6 +132,13 @@ class ConfiguracionSistemaOut(BaseModel):
     color_primario: Optional[str] = None
     color_secundario: Optional[str] = None
     reporte_footer: Optional[str] = None
+    iva_default_percent: int = 15
+    descuento_default_percent: int = 0
+    costo_hora_tecnica_default: int = 25
+    costo_movilizacion_default: int = 0
+    costo_software_default: int = 0
+    costo_material_default: int = 0
+    costo_mano_obra_default: int = 0
 
     model_config = {"from_attributes": True}
 
@@ -149,6 +158,13 @@ class ConfiguracionSistemaUpdate(BaseModel):
     color_primario: Optional[str] = None
     color_secundario: Optional[str] = None
     reporte_footer: Optional[str] = None
+    iva_default_percent: Optional[int] = None
+    descuento_default_percent: Optional[int] = None
+    costo_hora_tecnica_default: Optional[int] = None
+    costo_movilizacion_default: Optional[int] = None
+    costo_software_default: Optional[int] = None
+    costo_material_default: Optional[int] = None
+    costo_mano_obra_default: Optional[int] = None
 
 
 class AuditoriaLogOut(BaseModel):

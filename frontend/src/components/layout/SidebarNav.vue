@@ -6,6 +6,7 @@ import {
   Users,
   ShoppingCart,
   Package,
+  Wallet,
   Wrench,
   Code2,
   Lock,
@@ -28,6 +29,7 @@ const navItems = computed(() => [
   { path: '/crm', label: t('nav.crm'), icon: Users, adminOnly: false },
   { path: '/ventas', label: t('nav.ventas'), icon: ShoppingCart, adminOnly: false },
   { path: '/compras', label: t('nav.compras'), icon: Package, adminOnly: false },
+  { path: '/caja-chica', label: t('nav.cajaChica'), icon: Wallet, adminOnly: false, allowedRoles: ['superadmin', 'administrativo_contable'] },
   { path: '/taller', label: t('nav.taller'), icon: Wrench, adminOnly: false },
   { path: '/proyectos', label: t('nav.proyectos'), icon: Code2, adminOnly: false },
   { path: '/boveda', label: t('nav.boveda'), icon: Lock, adminOnly: false },
@@ -39,7 +41,8 @@ const navItems = computed(() => [
 const filteredNavItems = computed(() =>
   navItems.value.filter((item) => {
     if (item.superadminOnly) return auth.user?.rol === 'superadmin'
-    if (item.adminOnly) return auth.user?.rol === 'admin' || auth.user?.rol === 'superadmin'
+    if (item.allowedRoles) return item.allowedRoles.includes(auth.user?.rol ?? '')
+    if (item.adminOnly) return auth.user?.rol === 'superadmin'
     return true
   })
 )

@@ -10,3 +10,6 @@ class DashboardStats(BaseModel):
     productos_bajo_stock: int
     revenue_mes: int
     proyectos_activos: int
+    margen_bruto_mes: float = 0
+    caja_chica_balance: float = 0
+    caja_chica_egresos_mes: float = 0

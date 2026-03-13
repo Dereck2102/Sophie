@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
-import { UserCircle, Lock, Bell, CheckCircle, AlertCircle, Users, Package, Settings, Camera, ShieldCheck } from 'lucide-vue-next'
+import { UserCircle, Lock, Bell, CheckCircle, AlertCircle, Users, Package, Settings, ShieldCheck } from 'lucide-vue-next'
 import Card from '../components/ui/Card.vue'
 import Button from '../components/ui/Button.vue'
+import ImageUpload from '../components/ui/ImageUpload.vue'
 import { useAuthStore } from '../stores/auth'
 import api from '../services/api'
 import type { EmailVerificationTokenResponse, Usuario } from '../types'
@@ -36,15 +37,9 @@ const verificationSuccess = ref<string | null>(null)
 
 const roleLabels: Record<string, string> = {
   superadmin: 'Superadministrador',
-  admin: 'Administrador',
   ejecutivo: 'Ejecutivo',
   administrativo_contable: 'Administrativo Contable',
-  vendedor: 'Vendedor',
-  tecnico_taller: 'Técnico Taller',
-  tecnico_it: 'Técnico IT',
-  comprador: 'Comprador',
-  desarrollador: 'Desarrollador',
-  consultor_senior: 'Consultor Senior',
+  tecnico: 'Técnico',
 }
 
 const userInitials = computed(() => {
@@ -64,7 +59,7 @@ const adminShortcuts = [
   { label: 'Auditoría', route: '/auditoria', icon: ShieldCheck, description: 'Revisar trazabilidad y actividad global' },
 ]
 
-const isAdminArea = computed(() => ['admin', 'superadmin'].includes(auth.user?.rol ?? ''))
+const isAdminArea = computed(() => ['superadmin'].includes(auth.user?.rol ?? ''))
 const visibleAdminShortcuts = computed(() => adminShortcuts.filter((shortcut) => auth.user?.rol === 'superadmin' || shortcut.route !== '/auditoria'))
 
 async function saveProfile(): Promise<void> {
@@ -110,29 +105,6 @@ async function changePassword(): Promise<void> {
   } finally {
     passwordSaving.value = false
   }
-}
-
-function handleProfilePhotoUpload(event: Event): void {
-  const input = event.target as HTMLInputElement
-  const file = input.files?.item(0)
-  if (!file) return
-  if (!file.type.startsWith('image/')) {
-    profileError.value = 'Selecciona una imagen válida'
-    return
-  }
-  if (file.size > 1_500_000) {
-    profileError.value = 'La imagen supera 1.5MB'
-    return
-  }
-  const reader = new FileReader()
-  reader.onload = () => {
-    const result = reader.result
-    if (typeof result === 'string') {
-      profileForm.value.foto_perfil_url = result
-      profileError.value = null
-    }
-  }
-  reader.readAsDataURL(file)
 }
 
 async function requestVerificationToken(): Promise<void> {
@@ -241,21 +213,14 @@ async function verifyEmailToken(): Promise<void> {
           </div>
           <div class="sm:col-span-2">
             <label class="block text-sm font-medium text-gray-700 mb-1">Foto de Perfil</label>
-            <div class="flex items-center gap-4">
-              <img
-                v-if="profileForm.foto_perfil_url"
-                :src="profileForm.foto_perfil_url"
-                alt="Vista previa"
-                class="w-14 h-14 rounded-xl object-cover border"
-              />
-              <div v-else class="w-14 h-14 rounded-xl border bg-gray-50 flex items-center justify-center text-gray-400">
-                <Camera :size="18" />
-              </div>
-              <label class="inline-flex items-center px-3 py-2 text-sm border rounded-lg cursor-pointer hover:bg-gray-50">
-                <input type="file" accept="image/*" class="hidden" @change="handleProfilePhotoUpload" />
-                Cambiar foto
-              </label>
-            </div>
+            <ImageUpload
+              v-model="profileForm.foto_perfil_url"
+              label="Foto de perfil"
+              image-type="profile"
+              :target-width="400"
+              preview-class="w-32 h-32 rounded-xl object-cover"
+              dropzone-class="min-h-[100px]"
+            />
           </div>
         </div>
 

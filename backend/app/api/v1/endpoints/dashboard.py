@@ -4,17 +4,18 @@ from datetime import datetime, timezone
 from typing import Annotated
 
 from fastapi import APIRouter, Depends
-from sqlalchemy import func, select
+from sqlalchemy import case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user
 from app.core.database import get_db
 from app.infrastructure.models.cliente import Cliente, EstadoClienteEnum
+from app.infrastructure.models.caja_chica import MovimientoCajaChica, TipoMovimientoCajaEnum
 from app.infrastructure.models.inventario import Inventario
 from app.infrastructure.models.proyectos import EstadoProyectoEnum, Proyecto
 from app.infrastructure.models.tickets import EstadoTicketEnum, Ticket
 from app.infrastructure.models.usuario import Usuario
-from app.infrastructure.models.ventas import Cotizacion, EstadoCotizacionEnum
+from app.infrastructure.models.ventas import Cotizacion, DetalleCotizacion, EstadoCotizacionEnum
 from app.schemas.dashboard import DashboardStats
 
 router = APIRouter(prefix="/dashboard", tags=["Dashboard"])
@@ -77,6 +78,46 @@ async def get_stats(
     )
     proyectos_activos = proyectos_result.scalar_one() or 0
 
+    margen_result = await db.execute(
+        select(
+            func.coalesce(
+                func.sum(DetalleCotizacion.subtotal - (DetalleCotizacion.cantidad * Inventario.costo_adquisicion)),
+                0,
+            )
+        )
+        .join(Cotizacion, Cotizacion.id_cotizacion == DetalleCotizacion.id_cotizacion)
+        .join(Inventario, Inventario.id_producto == DetalleCotizacion.id_producto)
+        .where(
+            Cotizacion.estado == EstadoCotizacionEnum.FACTURADA,
+            Cotizacion.fecha_creacion >= inicio_mes,
+        )
+    )
+    margen_bruto_mes = float(margen_result.scalar_one() or 0)
+
+    caja_balance_result = await db.execute(
+        select(
+            func.coalesce(
+                func.sum(
+                    case(
+                        (MovimientoCajaChica.tipo == TipoMovimientoCajaEnum.INGRESO, MovimientoCajaChica.monto),
+                        (MovimientoCajaChica.tipo == TipoMovimientoCajaEnum.EGRESO, -MovimientoCajaChica.monto),
+                        else_=MovimientoCajaChica.monto,
+                    )
+                ),
+                0,
+            )
+        )
+    )
+    caja_chica_balance = float(caja_balance_result.scalar_one() or 0)
+
+    caja_egresos_result = await db.execute(
+        select(func.coalesce(func.sum(MovimientoCajaChica.monto), 0)).where(
+            MovimientoCajaChica.tipo == TipoMovimientoCajaEnum.EGRESO,
+            MovimientoCajaChica.fecha >= inicio_mes,
+        )
+    )
+    caja_chica_egresos_mes = float(caja_egresos_result.scalar_one() or 0)
+
     return DashboardStats(
         total_clientes=total_clientes,
         cotizaciones_mes=cotizaciones_mes,
@@ -84,4 +125,7 @@ async def get_stats(
         productos_bajo_stock=productos_bajo_stock,
         revenue_mes=revenue_mes,
         proyectos_activos=proyectos_activos,
+        margen_bruto_mes=round(margen_bruto_mes, 2),
+        caja_chica_balance=round(caja_chica_balance, 2),
+        caja_chica_egresos_mes=round(caja_chica_egresos_mes, 2),
     )

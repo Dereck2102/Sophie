@@ -1,16 +1,6 @@
 // API Types for SOPHIE ERP/CRM
 
-export type RolEnum =
-  | 'superadmin'
-  | 'admin'
-  | 'ejecutivo'
-  | 'administrativo_contable'
-  | 'vendedor'
-  | 'tecnico_taller'
-  | 'tecnico_it'
-  | 'comprador'
-  | 'desarrollador'
-  | 'consultor_senior'
+export type RolEnum = 'superadmin' | 'ejecutivo' | 'administrativo_contable' | 'tecnico'
 
 export type TipoCliente = 'B2B' | 'B2C'
 export type EstadoCliente = 'activo' | 'inactivo' | 'prospecto'
@@ -55,6 +45,13 @@ export interface ConfiguracionSistema {
   color_primario?: string
   color_secundario?: string
   reporte_footer?: string
+  iva_default_percent: number
+  descuento_default_percent: number
+  costo_hora_tecnica_default: number
+  costo_movilizacion_default: number
+  costo_software_default: number
+  costo_material_default: number
+  costo_mano_obra_default: number
 }
 
 export interface AuditoriaLog {
@@ -130,6 +127,11 @@ export interface DetalleCotizacion {
   precio_unitario: number
   descuento: number
   subtotal: number
+  costo_material_unitario?: number
+  costo_material_total?: number
+  margen_unitario?: number
+  margen_total?: number
+  rentabilidad_pct?: number
 }
 
 export interface Cotizacion {
@@ -141,10 +143,40 @@ export interface Cotizacion {
   subtotal: number
   impuesto: number
   total: number
+  costo_mano_obra?: number
+  costo_movilizacion?: number
+  costo_software?: number
+  horas_soporte?: number
+  tarifa_hora_soporte?: number
+  costo_servicios_total?: number
   notas?: string
   fecha_creacion: string
   fecha_vencimiento?: string
+  costo_materiales_total?: number
+  margen_bruto_total?: number
+  utilidad_neta_operativa?: number
+  rentabilidad_pct?: number
   detalles: DetalleCotizacion[]
+}
+
+export type TipoMovimientoCaja = 'ingreso' | 'egreso' | 'ajuste'
+
+export interface MovimientoCajaChica {
+  id_movimiento: number
+  tipo: TipoMovimientoCaja
+  concepto: string
+  categoria?: string
+  monto: number
+  responsable?: string
+  observacion?: string
+  fecha: string
+}
+
+export interface CajaChicaResumen {
+  balance_actual: number
+  ingresos_mes: number
+  egresos_mes: number
+  movimientos_mes: number
 }
 
 export interface Ticket {
@@ -266,6 +298,8 @@ export interface TokenResponse {
   access_token: string
   token_type: string
   mfa_required: boolean
+  session_id?: string
+  access_expires_in?: number
 }
 
 export interface LoginRequest {

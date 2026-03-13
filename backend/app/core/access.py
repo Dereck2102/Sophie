@@ -6,76 +6,80 @@ from app.infrastructure.models.usuario import RolEnum, Usuario
 
 ROLE_ACCESS: dict[RolEnum, dict[str, list[str]]] = {
     RolEnum.SUPERADMIN: {
-        "permissions": ["*"],
+        "permissions": ["*"],  # Acceso total, incluyendo admin y configuración
         "views": ["*"],
         "tools": ["*"],
     },
-    RolEnum.ADMIN: {
+    RolEnum.EJECUTIVO: {
+        # Gestión de operaciones, supervisión de proyectos y equipos
         "permissions": [
-            "usuarios.manage",
+            "dashboard.view",
             "clientes.manage",
             "ventas.manage",
-            "tickets.manage",
-            "inventario.manage",
-            "compras.manage",
             "proyectos.manage",
+            "tickets.manage",
+            "inventario.read",
+            "reportes.view",
+        ],
+        "views": [
+            "dashboard",
+            "crm",
+            "ventas",
+            "proyectos",
+            "taller",
+            "inventario",
+            "perfil",
+        ],
+        "tools": ["reportes", "exportaciones"],
+    },
+    RolEnum.ADMINISTRATIVO_CONTABLE: {
+        # Gestión financiera, compras, contabilidad y documentación
+        "permissions": [
             "dashboard.view",
-            "boveda.manage",
-            "configuracion.manage",
+            "compras.manage",
+            "ventas.manage",
+            "clientes.manage",
+            "inventario.read",
+            "reportes.view",
         ],
         "views": [
             "dashboard",
             "crm",
             "ventas",
             "compras",
-            "taller",
-            "proyectos",
-            "boveda",
-            "usuarios",
-            "configuracion",
+            "inventario",
             "perfil",
         ],
-        "tools": ["reportes", "exportaciones", "ajustes"],
+        "tools": [
+            "reportes",
+            "exportaciones",
+            "calculadora_margen",
+            "proyecciones_financieras",
+            "simulador_iva",
+            "simulador_descuentos",
+            "costeo_cotizaciones",
+            "control_caja_chica",
+        ],
     },
-    RolEnum.EJECUTIVO: {
-        "permissions": ["dashboard.view", "clientes.manage", "ventas.manage", "tickets.manage"],
-        "views": ["dashboard", "crm", "ventas", "taller", "perfil"],
-        "tools": ["reportes"],
-    },
-    RolEnum.ADMINISTRATIVO_CONTABLE: {
-        "permissions": ["dashboard.view", "compras.manage", "ventas.manage", "clientes.manage"],
-        "views": ["dashboard", "crm", "ventas", "compras", "perfil"],
-        "tools": ["reportes", "exportaciones"],
-    },
-    RolEnum.VENDEDOR: {
-        "permissions": ["dashboard.view", "clientes.manage", "ventas.manage"],
-        "views": ["dashboard", "crm", "ventas", "perfil"],
-        "tools": ["reportes"],
-    },
-    RolEnum.TECNICO_TALLER: {
-        "permissions": ["dashboard.view", "tickets.manage", "inventario.read"],
-        "views": ["dashboard", "taller", "perfil"],
-        "tools": ["diagnostico"],
-    },
-    RolEnum.TECNICO_IT: {
-        "permissions": ["dashboard.view", "tickets.manage", "boveda.read"],
-        "views": ["dashboard", "taller", "boveda", "perfil"],
-        "tools": ["diagnostico", "credenciales"],
-    },
-    RolEnum.COMPRADOR: {
-        "permissions": ["dashboard.view", "compras.manage", "inventario.manage"],
-        "views": ["dashboard", "compras", "perfil"],
-        "tools": ["exportaciones"],
-    },
-    RolEnum.DESARROLLADOR: {
-        "permissions": ["dashboard.view", "proyectos.manage", "tickets.manage"],
-        "views": ["dashboard", "proyectos", "taller", "perfil"],
-        "tools": ["reportes"],
-    },
-    RolEnum.CONSULTOR_SENIOR: {
-        "permissions": ["dashboard.view", "proyectos.manage", "boveda.manage", "tickets.manage"],
-        "views": ["dashboard", "proyectos", "boveda", "taller", "perfil"],
-        "tools": ["reportes", "credenciales"],
+    RolEnum.TECNICO: {
+        # Operación técnica, atención de tickets y ejecución de taller
+        "permissions": [
+            "dashboard.view",
+            "tickets.manage",
+            "proyectos.read",
+            "clientes.read",
+            "inventario.read",
+            "reportes.view",
+        ],
+        "views": [
+            "dashboard",
+            "taller",
+            "proyectos",
+            "crm",
+            "inventario",
+            "perfil",
+        ],
+        "tools": ["reportes", "scanner_qr", "calculo_horas_tecnicas"],
     },
 }
 

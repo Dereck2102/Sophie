@@ -39,7 +39,7 @@ export const useNotificationStore = defineStore('notifications', () => {
         api.get<DashboardStats>('/api/v1/dashboard/stats'),
       ]
 
-      const isAdmin = auth.user?.rol === 'admin' || auth.user?.rol === 'superadmin'
+      const isAdmin = auth.user?.rol === 'superadmin'
       if (isAdmin) {
         requests.push(api.get<Usuario[]>('/api/v1/usuarios/', { params: { limit: 200 } }))
       }

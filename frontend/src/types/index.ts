@@ -43,6 +43,10 @@ export interface ConfiguracionSistema {
   system_notifications: boolean
   session_timeout_minutes: number
   require_mfa_global: boolean
+  auth_twofa_enabled: boolean
+  auth_channel_email_enabled: boolean
+  auth_channel_sms_enabled: boolean
+  auth_channel_app_enabled: boolean
   max_login_attempts: number
   color_primario?: string
   color_secundario?: string
@@ -54,6 +58,7 @@ export interface ConfiguracionSistema {
   costo_software_default: number
   costo_material_default: number
   costo_mano_obra_default: number
+  fondo_caja_chica_mensual: number
 }
 
 export interface AuditoriaLog {
@@ -180,6 +185,8 @@ export interface CajaChicaResumen {
   ingresos_mes: number
   egresos_mes: number
   movimientos_mes: number
+  fondo_mensual: number
+  disponible_mes: number
 }
 
 export interface Ticket {
@@ -331,6 +338,7 @@ export interface TokenResponse {
   access_expires_in?: number
   mfa_channel?: string
   mfa_destination?: string
+  mfa_phone_destination?: string
   mfa_debug_code?: string
 }
 

@@ -32,7 +32,13 @@ from app.core.security import (
 from app.infrastructure.models.auditoria import LogAuditoria
 from app.infrastructure.models.sistema import ConfiguracionSistema
 from app.infrastructure.models.usuario import RolEnum, Usuario
-from app.services.email_service import EmailDeliveryError, send_mfa_email_code
+from app.services.email_service import (
+    EmailDeliveryError,
+    send_email_verification_token,
+    send_mfa_email_code,
+    send_password_recovery_email,
+)
+from app.services.sms_service import SmsDeliveryError, send_mfa_sms_code
 from app.schemas.usuario import (
     LoginRequest,
     MFASetupOut,
@@ -70,9 +76,49 @@ def _to_utc_naive(value: datetime) -> datetime:
     return value
 
 
-async def _issue_mfa_email_code(user: Usuario, db: AsyncSession, ip: str) -> tuple[str | None, str | None]:
-    if not user.email:
-        raise HTTPException(status_code=400, detail="La cuenta no tiene correo para MFA por email")
+def _mask_phone(phone: str) -> str:
+    """Show first 3 chars (country code) and last 3 digits; mask middle."""
+    clean = "".join(c for c in phone.strip() if not c.isspace())
+    if len(clean) <= 6:
+        return clean
+    return clean[:3] + "*" * (len(clean) - 6) + clean[-3:]
+
+
+async def _issue_mfa_code(
+    user: Usuario,
+    db: AsyncSession,
+    ip: str,
+    *,
+    allow_email: bool,
+    allow_sms: bool,
+) -> tuple[str, str | None, str | None, str | None]:
+    """Generate an OTP, attempt delivery via email and/or SMS.
+
+    Returns:
+        (channel, email_destination, phone_destination, debug_code)
+        channel is one of: "email", "sms", "email+sms"
+        debug_code is set only when delivery failed and debug fallback is enabled.
+    """
+    if not allow_email and not allow_sms:
+        raise HTTPException(status_code=400, detail="No hay canales OTP habilitados")
+
+    if (allow_email and not user.email) and (allow_sms and not user.telefono_recuperacion):
+        raise HTTPException(
+            status_code=400,
+            detail="La cuenta no tiene correo ni teléfono para el envío del código 2FA",
+        )
+
+    if allow_email and not user.email and not allow_sms:
+        raise HTTPException(status_code=400, detail="La cuenta no tiene correo para el envío del código 2FA")
+
+    if allow_sms and not user.telefono_recuperacion and not allow_email:
+        raise HTTPException(status_code=400, detail="La cuenta no tiene teléfono para el envío del código 2FA")
+
+    if not user.email and not user.telefono_recuperacion:
+        raise HTTPException(
+            status_code=400,
+            detail="La cuenta no tiene correo ni teléfono para el envío del código 2FA",
+        )
 
     code = f"{secrets.randbelow(1_000_000):06d}"
     expires_minutes = max(int(settings.MFA_EMAIL_CODE_EXPIRE_MINUTES or 10), 1)
@@ -84,20 +130,56 @@ async def _issue_mfa_email_code(user: Usuario, db: AsyncSession, ip: str) -> tup
     db.add(
         LogAuditoria(
             id_usuario=user.id_usuario,
-            accion="MFA_EMAIL_CODE_ISSUED",
+            accion="MFA_CODE_ISSUED",
             modulo="auth",
             ip_origen=ip,
-            detalle={"username": user.username, "destination": _mask_email(user.email)},
+            detalle={
+                "username": user.username,
+                "email": _mask_email(user.email) if user.email else None,
+                "phone": _mask_phone(user.telefono_recuperacion) if user.telefono_recuperacion else None,
+            },
         )
     )
 
-    try:
-        send_mfa_email_code(user.email, code=code, expires_minutes=expires_minutes)
-        return _mask_email(user.email), None
-    except EmailDeliveryError:
-        if settings.DEBUG or settings.MFA_EMAIL_DEBUG_FALLBACK:
-            return _mask_email(user.email), code
-        raise HTTPException(status_code=503, detail="No se pudo enviar el código MFA por correo")
+    use_fallback = settings.DEBUG or settings.MFA_EMAIL_DEBUG_FALLBACK
+    debug_code: str | None = None
+    email_dest: str | None = None
+    phone_dest: str | None = None
+
+    # ── Email channel ────────────────────────────────────────────────────────────
+    if allow_email and user.email:
+        try:
+            send_mfa_email_code(user.email, code=code, expires_minutes=expires_minutes)
+            email_dest = _mask_email(user.email)
+        except EmailDeliveryError:
+            if use_fallback:
+                email_dest = _mask_email(user.email)
+                debug_code = code
+
+    # ── SMS channel ──────────────────────────────────────────────────────────────
+    if allow_sms and user.telefono_recuperacion:
+        try:
+            send_mfa_sms_code(user.telefono_recuperacion, code=code, expires_minutes=expires_minutes)
+            phone_dest = _mask_phone(user.telefono_recuperacion)
+        except SmsDeliveryError:
+            if use_fallback:
+                phone_dest = _mask_phone(user.telefono_recuperacion)
+                debug_code = debug_code or code
+
+    if not email_dest and not phone_dest:
+        raise HTTPException(
+            status_code=503,
+            detail="No se pudo enviar el código 2FA por ningún canal",
+        )
+
+    channels: list[str] = []
+    if email_dest:
+        channels.append("email")
+    if phone_dest:
+        channels.append("sms")
+    channel = "+".join(channels)  # "email", "sms", or "email+sms"
+
+    return channel, email_dest, phone_dest, debug_code
 
 
 async def _verify_mfa_email_code(user: Usuario, code: str, db: AsyncSession) -> bool:
@@ -143,9 +225,10 @@ async def login(
     now = datetime.now(timezone.utc)
 
     settings_result = await db.execute(
-        select(ConfiguracionSistema.max_login_attempts).where(ConfiguracionSistema.id_configuracion == 1)
+        select(ConfiguracionSistema).where(ConfiguracionSistema.id_configuracion == 1)
     )
-    max_login_attempts = int(settings_result.scalar_one_or_none() or 5)
+    system_settings = settings_result.scalar_one_or_none()
+    max_login_attempts = int(system_settings.max_login_attempts if system_settings else 5)
 
     result = await db.execute(select(Usuario).where(Usuario.username == body.username))
     user = result.scalar_one_or_none()
@@ -171,18 +254,25 @@ async def login(
     user.failed_login_attempts = 0
     user.locked_until = None
 
-    mfa_verified = False
-    if user.mfa_habilitado:
+    require_mfa_global = bool(system_settings.require_mfa_global) if system_settings else False
+    auth_twofa_enabled = bool(system_settings.auth_twofa_enabled) if system_settings else True
+    allow_email = bool(system_settings.auth_channel_email_enabled) if system_settings else True
+    allow_sms = bool(system_settings.auth_channel_sms_enabled) if system_settings else True
+    allow_app = bool(system_settings.auth_channel_app_enabled) if system_settings else True
+
+    twofa_verified = False
+    if auth_twofa_enabled and (require_mfa_global or user.mfa_habilitado):
         if body.mfa_code:
-            totp_valid = verify_totp(user.mfa_secret or "", body.mfa_code)
-            email_valid = False
-            if not totp_valid:
-                email_valid = await _verify_mfa_email_code(user, body.mfa_code, db)
-            if not (totp_valid or email_valid):
+            code_valid = False
+            if allow_app and user.mfa_secret:
+                code_valid = verify_totp(user.mfa_secret, body.mfa_code)
+            if not code_valid and (allow_email or allow_sms):
+                code_valid = await _verify_mfa_email_code(user, body.mfa_code, db)
+            if not code_valid:
                 raise HTTPException(
-                    status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid MFA code"
+                    status_code=status.HTTP_401_UNAUTHORIZED, detail="Código 2FA incorrecto o expirado"
                 )
-            mfa_verified = True
+            twofa_verified = True
         elif body.recovery_code:
             stored_codes: list[str] = []
             if user.recovery_codes_json:
@@ -199,23 +289,41 @@ async def login(
                     detail="Invalid recovery code",
                 )
             user.recovery_codes_json = json.dumps(updated)
-            mfa_verified = True
+            twofa_verified = True
         else:
-            destination, debug_code = await _issue_mfa_email_code(user, db, ip)
-            return TokenResponse(
-                mfa_required=True,
-                access_token="",
-                mfa_channel="email",
-                mfa_destination=destination,
-                mfa_debug_code=debug_code,
-            )
+            if allow_email or allow_sms:
+                try:
+                    channel, email_dest, phone_dest, debug_code = await _issue_mfa_code(
+                        user,
+                        db,
+                        ip,
+                        allow_email=allow_email,
+                        allow_sms=allow_sms,
+                    )
+                    return TokenResponse(
+                        mfa_required=True,
+                        access_token="",
+                        mfa_channel=channel,
+                        mfa_destination=email_dest,
+                        mfa_phone_destination=phone_dest,
+                        mfa_debug_code=debug_code,
+                    )
+                except HTTPException:
+                    if allow_app and user.mfa_secret:
+                        return TokenResponse(mfa_required=True, access_token="", mfa_channel="app")
+                    raise
+
+            if allow_app and user.mfa_secret:
+                return TokenResponse(mfa_required=True, access_token="", mfa_channel="app")
+
+            raise HTTPException(status_code=503, detail="No hay canales 2FA habilitados para esta cuenta")
 
     access = get_effective_access(user)
     token_data = {
         "sub": str(user.id_usuario),
         "rol": user.rol.value,
         "sid": secrets.token_urlsafe(24),
-        "mfa_verified": mfa_verified,
+        "mfa_verified": twofa_verified,
         "permissions": access["permissions"],
         "views": access["views"],
         "tools": access["tools"],
@@ -388,6 +496,14 @@ async def request_email_verification_token(
     current_user.email_verificacion_token = token
     current_user.email_verificacion_expira = expires_at
     await db.flush()
+
+    if current_user.email:
+        try:
+            send_email_verification_token(current_user.email, verification_token=token, expires_hours=24)
+        except EmailDeliveryError:
+            if not (settings.DEBUG or settings.MFA_EMAIL_DEBUG_FALLBACK):
+                raise HTTPException(status_code=503, detail="No se pudo enviar el correo de verificación")
+
     return EmailVerificationTokenOut(token=token, expires_at=expires_at)
 
 
@@ -454,9 +570,16 @@ async def request_password_recovery(
         )
         await db.flush()
 
+        if user.email:
+            try:
+                send_password_recovery_email(user.email, recovery_token=recovery_token, expires_minutes=30)
+            except EmailDeliveryError:
+                if not (settings.DEBUG or settings.MFA_EMAIL_DEBUG_FALLBACK):
+                    raise HTTPException(status_code=503, detail="No se pudo enviar el correo de recuperación")
+
     return {
         "detail": "Si la cuenta existe, se generó un token temporal de recuperación.",
-        "recovery_token": recovery_token if settings.DEBUG else None,
+        "recovery_token": recovery_token if (settings.DEBUG or settings.MFA_EMAIL_DEBUG_FALLBACK) else None,
     }
 
 

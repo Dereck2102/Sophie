@@ -24,6 +24,10 @@ const form = ref<ConfiguracionSistema>({
   system_notifications: true,
   session_timeout_minutes: 30,
   require_mfa_global: false,
+  auth_twofa_enabled: false,
+  auth_channel_email_enabled: true,
+  auth_channel_sms_enabled: true,
+  auth_channel_app_enabled: true,
   max_login_attempts: 5,
   color_primario: '#2563eb',
   color_secundario: '#0f172a',
@@ -35,6 +39,7 @@ const form = ref<ConfiguracionSistema>({
   costo_software_default: 0,
   costo_material_default: 0,
   costo_mano_obra_default: 0,
+  fondo_caja_chica_mensual: 0,
 })
 
 async function loadSettings(): Promise<void> {
@@ -185,6 +190,18 @@ onMounted(loadSettings)
           <input v-model="form.require_mfa_global" type="checkbox" class="w-4 h-4" /> Requerir MFA globalmente
         </label>
         <label class="flex items-center gap-3 text-sm text-gray-700">
+          <input v-model="form.auth_twofa_enabled" type="checkbox" class="w-4 h-4" /> Activar verificación 2FA en login
+        </label>
+        <label class="flex items-center gap-3 text-sm text-gray-700">
+          <input v-model="form.auth_channel_email_enabled" type="checkbox" class="w-4 h-4" /> Canal 2FA por correo
+        </label>
+        <label class="flex items-center gap-3 text-sm text-gray-700">
+          <input v-model="form.auth_channel_sms_enabled" type="checkbox" class="w-4 h-4" /> Canal 2FA por SMS
+        </label>
+        <label class="flex items-center gap-3 text-sm text-gray-700 md:col-span-2">
+          <input v-model="form.auth_channel_app_enabled" type="checkbox" class="w-4 h-4" /> Canal 2FA por app autenticadora
+        </label>
+        <label class="flex items-center gap-3 text-sm text-gray-700">
           <input v-model="form.email_notifications" type="checkbox" class="w-4 h-4" /> Notificaciones por email
         </label>
         <label class="flex items-center gap-3 text-sm text-gray-700 md:col-span-2">
@@ -222,6 +239,11 @@ onMounted(loadSettings)
         <div class="md:col-span-2">
           <label class="block text-sm font-medium text-gray-700 mb-1">Costo software</label>
           <input v-model.number="form.costo_software_default" type="number" min="0" class="w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
+        </div>
+        <div class="md:col-span-2">
+          <label class="block text-sm font-medium text-gray-700 mb-1">Fondo mensual de caja chica</label>
+          <input v-model.number="form.fondo_caja_chica_mensual" type="number" min="0" step="0.01" class="w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
+          <p class="text-xs text-gray-500 mt-1">Este valor se usa como base mensual para el control de caja chica.</p>
         </div>
       </div>
     </Card>

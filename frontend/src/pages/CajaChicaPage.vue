@@ -21,6 +21,8 @@ const resumen = ref<CajaChicaResumen>({
   ingresos_mes: 0,
   egresos_mes: 0,
   movimientos_mes: 0,
+  fondo_mensual: 0,
+  disponible_mes: 0,
 })
 
 const movimientos = ref<MovimientoCajaChica[]>([])
@@ -135,7 +137,7 @@ onMounted(loadData)
       </Button>
     </div>
 
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
       <Card>
         <div class="flex items-center gap-3">
           <div class="p-2 rounded-lg bg-blue-50"><Wallet class="text-blue-600" :size="18" /></div>
@@ -160,6 +162,18 @@ onMounted(loadData)
           <div>
             <p class="text-xs text-gray-500">Egresos del mes</p>
             <p class="text-lg font-semibold text-red-600">{{ formatUSD(resumen.egresos_mes) }}</p>
+          </div>
+        </div>
+      </Card>
+      <Card>
+        <div class="flex items-center gap-3">
+          <div class="p-2 rounded-lg bg-indigo-50"><Wallet class="text-indigo-600" :size="18" /></div>
+          <div>
+            <p class="text-xs text-gray-500">Disponible del mes</p>
+            <p class="text-lg font-semibold" :class="resumen.disponible_mes >= 0 ? 'text-indigo-700' : 'text-red-600'">
+              {{ formatUSD(resumen.disponible_mes) }}
+            </p>
+            <p class="text-[11px] text-gray-500">Base: {{ formatUSD(resumen.fondo_mensual) }}</p>
           </div>
         </div>
       </Card>

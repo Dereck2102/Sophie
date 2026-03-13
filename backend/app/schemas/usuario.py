@@ -98,8 +98,9 @@ class TokenResponse(BaseModel):
     mfa_required: bool = False
     session_id: Optional[str] = None
     access_expires_in: Optional[int] = None
-    mfa_channel: Optional[str] = None
-    mfa_destination: Optional[str] = None
+    mfa_channel: Optional[str] = None        # "email", "sms", or "email+sms"
+    mfa_destination: Optional[str] = None      # masked email
+    mfa_phone_destination: Optional[str] = None  # masked phone
     mfa_debug_code: Optional[str] = None
 
 
@@ -167,6 +168,10 @@ class ConfiguracionSistemaOut(BaseModel):
     system_notifications: bool
     session_timeout_minutes: int
     require_mfa_global: bool
+    auth_twofa_enabled: bool
+    auth_channel_email_enabled: bool
+    auth_channel_sms_enabled: bool
+    auth_channel_app_enabled: bool
     max_login_attempts: int
     color_primario: Optional[str] = None
     color_secundario: Optional[str] = None
@@ -178,6 +183,7 @@ class ConfiguracionSistemaOut(BaseModel):
     costo_software_default: int = 0
     costo_material_default: int = 0
     costo_mano_obra_default: int = 0
+    fondo_caja_chica_mensual: float = 0
 
     model_config = {"from_attributes": True}
 
@@ -193,6 +199,10 @@ class ConfiguracionSistemaUpdate(BaseModel):
     system_notifications: Optional[bool] = None
     session_timeout_minutes: Optional[int] = None
     require_mfa_global: Optional[bool] = None
+    auth_twofa_enabled: Optional[bool] = None
+    auth_channel_email_enabled: Optional[bool] = None
+    auth_channel_sms_enabled: Optional[bool] = None
+    auth_channel_app_enabled: Optional[bool] = None
     max_login_attempts: Optional[int] = None
     color_primario: Optional[str] = None
     color_secundario: Optional[str] = None
@@ -204,6 +214,7 @@ class ConfiguracionSistemaUpdate(BaseModel):
     costo_software_default: Optional[int] = None
     costo_material_default: Optional[int] = None
     costo_mano_obra_default: Optional[int] = None
+    fondo_caja_chica_mensual: Optional[float] = None
 
 
 class AuditoriaLogOut(BaseModel):

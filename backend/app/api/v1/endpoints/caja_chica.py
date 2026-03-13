@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_current_user, require_roles
 from app.core.database import get_db
 from app.infrastructure.models.caja_chica import MovimientoCajaChica, TipoMovimientoCajaEnum
+from app.infrastructure.models.sistema import ConfiguracionSistema
 from app.infrastructure.models.usuario import RolEnum, Usuario
 from app.schemas.caja_chica import CajaChicaResumenOut, MovimientoCajaChicaCreate, MovimientoCajaChicaOut
 
@@ -112,9 +113,17 @@ async def get_resumen(
     )
     movimientos_mes = int(movimientos_mes_result.scalar_one() or 0)
 
+    settings_result = await db.execute(
+        select(ConfiguracionSistema.fondo_caja_chica_mensual).where(ConfiguracionSistema.id_configuracion == 1)
+    )
+    fondo_mensual = float(settings_result.scalar_one_or_none() or 0)
+    disponible_mes = fondo_mensual + ingresos_mes - egresos_mes
+
     return CajaChicaResumenOut(
         balance_actual=round(balance_actual, 2),
         ingresos_mes=round(ingresos_mes, 2),
         egresos_mes=round(egresos_mes, 2),
         movimientos_mes=movimientos_mes,
+        fondo_mensual=round(fondo_mensual, 2),
+        disponible_mes=round(disponible_mes, 2),
     )

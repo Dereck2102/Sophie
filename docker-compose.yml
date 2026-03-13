@@ -34,6 +34,7 @@ services:
       MFA_ISSUER: "SOPHIE - Big Solutions"
       MFA_EMAIL_CODE_EXPIRE_MINUTES: 10
       MFA_EMAIL_DEBUG_FALLBACK: "true"
+      TWOFA_ENABLED: "true"  # canales y activación 2FA se controlan desde Configuración en Sophie
       SMTP_HOST: smtp.gmail.com
       SMTP_PORT: 587
       SMTP_USERNAME: your_email@gmail.com
@@ -41,6 +42,10 @@ services:
       SMTP_USE_TLS: "true"
       SMTP_FROM_EMAIL: your_email@gmail.com
       SMTP_FROM_NAME: SOPHIE
+      # Twilio SMS (optional - leave blank to skip SMS delivery)
+      TWILIO_ACCOUNT_SID: ""
+      TWILIO_AUTH_TOKEN: ""
+      TWILIO_FROM_PHONE: ""  # e.g. +15017250604
       VAULT_SECRET_KEY: MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=
       CORS_ORIGINS: '["http://localhost:3000", "http://localhost", "http://localhost:5173"]'
     depends_on:

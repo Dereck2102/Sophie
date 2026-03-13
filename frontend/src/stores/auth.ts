@@ -10,6 +10,7 @@ export const useAuthStore = defineStore('auth', () => {
   const mfaRequired = ref(false)
   const mfaChannel = ref<string | null>(null)
   const mfaDestination = ref<string | null>(null)
+  const mfaPhoneDestination = ref<string | null>(null)
   const mfaDebugCode = ref<string | null>(null)
   const loading = ref(false)
   const error = ref<string | null>(null)
@@ -25,12 +26,14 @@ export const useAuthStore = defineStore('auth', () => {
         mfaRequired.value = true
         mfaChannel.value = data.mfa_channel ?? null
         mfaDestination.value = data.mfa_destination ?? null
+        mfaPhoneDestination.value = data.mfa_phone_destination ?? null
         mfaDebugCode.value = data.mfa_debug_code ?? null
         return false
       }
       mfaRequired.value = false
       mfaChannel.value = null
       mfaDestination.value = null
+      mfaPhoneDestination.value = null
       mfaDebugCode.value = null
       accessToken.value = data.access_token
       localStorage.setItem('access_token', data.access_token)
@@ -64,6 +67,7 @@ export const useAuthStore = defineStore('auth', () => {
     mfaRequired.value = false
     mfaChannel.value = null
     mfaDestination.value = null
+    mfaPhoneDestination.value = null
     mfaDebugCode.value = null
     localStorage.removeItem('access_token')
     sessionId.value = null
@@ -83,6 +87,7 @@ export const useAuthStore = defineStore('auth', () => {
     mfaRequired,
     mfaChannel,
     mfaDestination,
+    mfaPhoneDestination,
     mfaDebugCode,
     loading,
     error,

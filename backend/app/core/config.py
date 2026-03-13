@@ -34,9 +34,16 @@ class Settings(BaseSettings):
     SMTP_FROM_EMAIL: str = os.getenv("SMTP_FROM_EMAIL", "no-reply@sophie.local")
     SMTP_FROM_NAME: str = os.getenv("SMTP_FROM_NAME", "SOPHIE")
 
-    # MFA
+    # SMS delivery (Twilio)
+    TWILIO_ACCOUNT_SID: str = os.getenv("TWILIO_ACCOUNT_SID", "")
+    TWILIO_AUTH_TOKEN: str = os.getenv("TWILIO_AUTH_TOKEN", "")
+    TWILIO_FROM_PHONE: str = os.getenv("TWILIO_FROM_PHONE", "")  # e.g. '+15017250604'
+
+    # MFA / 2FA
     MFA_ISSUER: str = "SOPHIE - Big Solutions"
     MFA_EMAIL_DEBUG_FALLBACK: bool = os.getenv("MFA_EMAIL_DEBUG_FALLBACK", "true").lower() in {"1", "true", "yes"}
+    # Set TWOFA_ENABLED=false to bypass all 2FA globally (e.g. during initial setup)
+    TWOFA_ENABLED: bool = os.getenv("TWOFA_ENABLED", "true").lower() in {"1", "true", "yes"}
     OWNER_SUPERADMIN_USERNAME: str = os.getenv("OWNER_SUPERADMIN_USERNAME", "damacoria")
 
     # Vault encryption (AES-256-GCM key must be 32 bytes base64-encoded)

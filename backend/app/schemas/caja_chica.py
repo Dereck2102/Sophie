@@ -35,3 +35,5 @@ class CajaChicaResumenOut(BaseModel):
     ingresos_mes: float
     egresos_mes: float
     movimientos_mes: int
+    fondo_mensual: float = 0
+    disponible_mes: float = 0

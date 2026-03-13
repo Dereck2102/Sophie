@@ -42,3 +42,25 @@ def send_mfa_email_code(to_email: str, code: str, expires_minutes: int) -> None:
         "Si no intentaste iniciar sesión, ignora este mensaje."
     )
     send_email_message(to_email=to_email, subject=subject, text_body=text_body)
+
+
+def send_password_recovery_email(to_email: str, recovery_token: str, expires_minutes: int = 30) -> None:
+    subject = "Recuperación de contraseña - SOPHIE"
+    text_body = (
+        "Solicitaste recuperar tu contraseña en SOPHIE.\n\n"
+        f"Token de recuperación: {recovery_token}\n"
+        f"Este token expira en {expires_minutes} minutos.\n\n"
+        "Si no solicitaste este cambio, ignora este mensaje."
+    )
+    send_email_message(to_email=to_email, subject=subject, text_body=text_body)
+
+
+def send_email_verification_token(to_email: str, verification_token: str, expires_hours: int = 24) -> None:
+    subject = "Verificación de correo - SOPHIE"
+    text_body = (
+        "Usa este token para verificar tu correo en SOPHIE:\n\n"
+        f"Token: {verification_token}\n"
+        f"Validez: {expires_hours} horas.\n\n"
+        "Si no realizaste esta solicitud, ignora este mensaje."
+    )
+    send_email_message(to_email=to_email, subject=subject, text_body=text_body)

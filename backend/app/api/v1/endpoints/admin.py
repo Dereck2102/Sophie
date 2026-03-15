@@ -4,15 +4,19 @@ from datetime import datetime, timezone
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from pydantic import BaseModel, EmailStr
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, require_superadmin
 from app.core.access import dumps_json_list, get_effective_access
+from app.core.config import get_settings
 from app.core.database import get_db
 from app.infrastructure.models.auditoria import LogAuditoria
 from app.infrastructure.models.sistema import ConfiguracionSistema
 from app.infrastructure.models.usuario import Usuario
+from app.services.email_service import EmailDeliveryError, send_email_message
+from app.services.sms_service import SmsDeliveryError, send_sms_message
 from app.schemas.usuario import (
     AuditoriaLogOut,
     BackupUsuariosIn,
@@ -24,6 +28,28 @@ from app.schemas.usuario import (
 )
 
 router = APIRouter(prefix="/admin", tags=["Administración Global"])
+settings = get_settings()
+
+
+class AuthChannelsStatusOut(BaseModel):
+    twofa_env_enabled: bool
+    twofa_enabled: bool
+    channel_email_enabled: bool
+    channel_sms_enabled: bool
+    channel_app_enabled: bool
+    smtp_configured: bool
+    twilio_configured: bool
+    email_effective: bool
+    sms_effective: bool
+    app_effective: bool
+
+
+class TestEmailIn(BaseModel):
+    to_email: EmailStr | None = None
+
+
+class TestSmsIn(BaseModel):
+    to_phone: str
 
 
 def _serialize_user(user: Usuario) -> UsuarioOut:
@@ -83,6 +109,81 @@ async def update_settings(
         setattr(settings, key, value)
     await db.flush()
     return settings
+
+
+@router.get("/auth/channels/status", response_model=AuthChannelsStatusOut)
+async def get_auth_channels_status(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[Usuario, Depends(require_superadmin())],
+) -> AuthChannelsStatusOut:
+    system_settings = await _get_or_create_settings(db)
+    smtp_configured = bool(settings.SMTP_HOST and settings.SMTP_FROM_EMAIL)
+    twilio_configured = bool(
+        settings.TWILIO_ACCOUNT_SID and settings.TWILIO_AUTH_TOKEN and settings.TWILIO_FROM_PHONE
+    )
+
+    email_effective = bool(system_settings.auth_channel_email_enabled and smtp_configured)
+    sms_effective = bool(system_settings.auth_channel_sms_enabled and twilio_configured)
+    app_effective = bool(system_settings.auth_channel_app_enabled)
+
+    return AuthChannelsStatusOut(
+        twofa_env_enabled=bool(settings.TWOFA_ENABLED),
+        twofa_enabled=bool(system_settings.auth_twofa_enabled),
+        channel_email_enabled=bool(system_settings.auth_channel_email_enabled),
+        channel_sms_enabled=bool(system_settings.auth_channel_sms_enabled),
+        channel_app_enabled=bool(system_settings.auth_channel_app_enabled),
+        smtp_configured=smtp_configured,
+        twilio_configured=twilio_configured,
+        email_effective=email_effective,
+        sms_effective=sms_effective,
+        app_effective=app_effective,
+    )
+
+
+@router.post("/auth/channels/test-email")
+async def test_auth_channel_email(
+    body: TestEmailIn,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[Usuario, Depends(require_superadmin())],
+) -> dict[str, str]:
+    destination = body.to_email or current_user.email
+    if not destination:
+        raise HTTPException(status_code=400, detail="Debes indicar un correo de destino")
+
+    try:
+        send_email_message(
+            to_email=str(destination),
+            subject="Prueba de canal de autenticación - SOPHIE",
+            text_body=(
+                "Este es un correo de prueba del canal de autenticación en SOPHIE.\n"
+                "Si recibes este mensaje, el canal EMAIL está funcionando correctamente."
+            ),
+        )
+    except EmailDeliveryError as exc:
+        raise HTTPException(status_code=503, detail=f"Fallo al enviar correo de prueba: {exc}")
+
+    return {"detail": f"Correo de prueba enviado a {destination}"}
+
+
+@router.post("/auth/channels/test-sms")
+async def test_auth_channel_sms(
+    body: TestSmsIn,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[Usuario, Depends(require_superadmin())],
+) -> dict[str, str]:
+    phone = body.to_phone.strip()
+    if not phone:
+        raise HTTPException(status_code=400, detail="Debes indicar un número de teléfono")
+
+    try:
+        send_sms_message(
+            to_phone=phone,
+            body="SOPHIE: prueba de canal SMS completada correctamente.",
+        )
+    except SmsDeliveryError as exc:
+        raise HTTPException(status_code=503, detail=f"Fallo al enviar SMS de prueba: {exc}")
+
+    return {"detail": f"SMS de prueba enviado a {phone}"}
 
 
 @router.get("/auditoria", response_model=list[AuditoriaLogOut])

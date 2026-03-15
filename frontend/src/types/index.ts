@@ -93,6 +93,19 @@ export interface BackupUsuariosPayload {
   users: BackupUsuarioItem[]
 }
 
+export interface AuthChannelsStatus {
+  twofa_env_enabled: boolean
+  twofa_enabled: boolean
+  channel_email_enabled: boolean
+  channel_sms_enabled: boolean
+  channel_app_enabled: boolean
+  smtp_configured: boolean
+  twilio_configured: boolean
+  email_effective: boolean
+  sms_effective: boolean
+  app_effective: boolean
+}
+
 export interface EmailVerificationTokenResponse {
   token: string
   expires_at: string

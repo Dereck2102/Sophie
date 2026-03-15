@@ -160,6 +160,24 @@ function buildOptimizeEndpoints(): string[] {
   return ['/api/v1/images/optimize', '/images/optimize']
 }
 
+function buildOptimizeBase64Endpoints(): string[] {
+  const configuredBase = String(api.defaults.baseURL ?? '')
+  const usesVersionedBase = configuredBase.indexOf('/api/v1') !== -1
+  if (usesVersionedBase) {
+    return ['/images/optimize-base64', '/api/v1/images/optimize-base64']
+  }
+  return ['/api/v1/images/optimize-base64', '/images/optimize-base64']
+}
+
+function readFileAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(String(reader.result ?? ''))
+    reader.onerror = () => reject(new Error('No se pudo leer la imagen'))
+    reader.readAsDataURL(file)
+  })
+}
+
 async function processFile(file: File) {
   if (file.type.indexOf('image/') !== 0) {
     error.value = 'Solo se aceptan imágenes (JPG, PNG, WebP)'
@@ -190,6 +208,31 @@ async function processFile(file: File) {
         const err = attemptError as { response?: { status?: number } }
         if (err.response?.status !== 404) {
           throw attemptError
+        }
+      }
+    }
+
+    if (!result) {
+      const dataUrl = await readFileAsDataUrl(file)
+      for (const endpoint of buildOptimizeBase64Endpoints()) {
+        try {
+          const response = await api.post<ImageOptimizeResult>(
+            endpoint,
+            {
+              data_url: dataUrl,
+              image_type: props.imageType,
+              target_width: props.targetWidth,
+            },
+            { headers },
+          )
+          result = response.data
+          break
+        } catch (base64Error: unknown) {
+          lastError = base64Error
+          const err = base64Error as { response?: { status?: number } }
+          if (err.response?.status !== 404) {
+            throw base64Error
+          }
         }
       }
     }

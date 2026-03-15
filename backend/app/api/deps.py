@@ -95,6 +95,24 @@ def require_permissions(*permissions: str):
     return _checker
 
 
+def require_views(*views: str):
+    async def _checker(
+        current_user: Annotated[Usuario, Depends(get_current_user)],
+    ) -> Usuario:
+        effective_views = getattr(current_user, "effective_views", [])
+        if current_user.rol == RolEnum.SUPERADMIN:
+            return current_user
+        missing = [view for view in views if not has_access_item(effective_views, view)]
+        if missing:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Missing views: {', '.join(missing)}",
+            )
+        return current_user
+
+    return _checker
+
+
 def require_superadmin():
     async def _checker(
         current_user: Annotated[Usuario, Depends(get_current_user)],

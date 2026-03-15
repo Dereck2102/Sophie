@@ -20,6 +20,7 @@ from app.infrastructure.models.usuario import Usuario
 from app.infrastructure.models.ventas import Cotizacion, DetalleCotizacion, EstadoCotizacionEnum, Venta
 from app.schemas.dashboard import (
     DashboardAlert,
+    DashboardCorrelationMetric,
     DashboardExpenseCategory,
     DashboardFinanceAnalytics,
     DashboardReceivableBucket,
@@ -467,6 +468,87 @@ async def get_analytics(
             )
         )
 
+    tickets_abiertos = await db.scalar(
+        select(func.count(Ticket.id_ticket)).where(
+            Ticket.estado.in_([EstadoTicketEnum.ABIERTO, EstadoTicketEnum.EN_PROGRESO])
+        )
+    )
+    cotizaciones_total_mes = await db.scalar(
+        select(func.count(Cotizacion.id_cotizacion)).where(Cotizacion.fecha_creacion >= inicio_mes)
+    )
+    cotizaciones_facturadas_mes = await db.scalar(
+        select(func.count(Cotizacion.id_cotizacion)).where(
+            Cotizacion.estado == EstadoCotizacionEnum.FACTURADA,
+            Cotizacion.fecha_creacion >= inicio_mes,
+        )
+    )
+
+    ingresos_val = float(ingresos_facturados_mes or 0)
+    compras_val = float(compras_registradas_mes or 0)
+    cartera_val = float(cuentas_por_cobrar or 0)
+    caja_ingresos_val = float(caja_ingresos_mes or 0)
+    caja_egresos_val = float(caja_egresos_mes or 0)
+    cotizaciones_mes_val = int(cotizaciones_total_mes or 0)
+    cotizaciones_facturadas_val = int(cotizaciones_facturadas_mes or 0)
+    tickets_abiertos_val = int(tickets_abiertos or 0)
+
+    ratio_compras_ingresos = (compras_val / ingresos_val * 100) if ingresos_val > 0 else 0.0
+    ratio_cartera_ingresos = (cartera_val / ingresos_val * 100) if ingresos_val > 0 else 0.0
+    ratio_egresos_caja_ingresos = (caja_egresos_val / caja_ingresos_val * 100) if caja_ingresos_val > 0 else 0.0
+    conversion_cotizaciones = (
+        (cotizaciones_facturadas_val / cotizaciones_mes_val * 100)
+        if cotizaciones_mes_val > 0
+        else 0.0
+    )
+    carga_tickets_por_factura = (
+        (tickets_abiertos_val / cotizaciones_facturadas_val)
+        if cotizaciones_facturadas_val > 0
+        else float(tickets_abiertos_val)
+    )
+
+    correlaciones = [
+        DashboardCorrelationMetric(
+            key="compras_vs_ingresos",
+            label="Compras vs ingresos",
+            value=round(ratio_compras_ingresos, 2),
+            unit="%",
+            status="ok" if ratio_compras_ingresos <= 70 else "warning" if ratio_compras_ingresos <= 90 else "critical",
+            detail="Mide que parte de lo facturado se esta yendo a compras del mes.",
+        ),
+        DashboardCorrelationMetric(
+            key="cartera_vs_ingresos",
+            label="Cartera vs facturacion",
+            value=round(ratio_cartera_ingresos, 2),
+            unit="%",
+            status="ok" if ratio_cartera_ingresos <= 60 else "warning" if ratio_cartera_ingresos <= 90 else "critical",
+            detail="Mide el peso de cuentas por cobrar frente a los ingresos ya facturados.",
+        ),
+        DashboardCorrelationMetric(
+            key="egresos_caja_vs_ingresos_caja",
+            label="Egresos caja vs ingresos caja",
+            value=round(ratio_egresos_caja_ingresos, 2),
+            unit="%",
+            status="ok" if ratio_egresos_caja_ingresos <= 100 else "warning" if ratio_egresos_caja_ingresos <= 125 else "critical",
+            detail="Detecta si caja chica esta drenando mas de lo que repone durante el mes.",
+        ),
+        DashboardCorrelationMetric(
+            key="conversion_cotizaciones",
+            label="Conversion de cotizaciones",
+            value=round(conversion_cotizaciones, 2),
+            unit="%",
+            status="ok" if conversion_cotizaciones >= 45 else "warning" if conversion_cotizaciones >= 25 else "critical",
+            detail="Porcentaje de cotizaciones del mes que ya se facturaron.",
+        ),
+        DashboardCorrelationMetric(
+            key="carga_tickets_por_factura",
+            label="Carga tickets por factura",
+            value=round(carga_tickets_por_factura, 2),
+            unit="x",
+            status="ok" if carga_tickets_por_factura <= 2 else "warning" if carga_tickets_por_factura <= 4 else "critical",
+            detail="Relacion entre tickets abiertos y cotizaciones ya facturadas en el mes.",
+        ),
+    ]
+
     return DashboardFinanceAnalytics(
         ingresos_facturados_mes=round(float(ingresos_facturados_mes or 0), 2),
         compras_registradas_mes=round(float(compras_registradas_mes or 0), 2),
@@ -483,4 +565,5 @@ async def get_analytics(
         proximos_vencimientos=proximos_vencimientos,
         tendencia_mensual=tendencia_mensual,
         alertas=alertas,
+        correlaciones=correlaciones,
     )

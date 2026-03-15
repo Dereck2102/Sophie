@@ -11,9 +11,11 @@ import type { CajaChicaResumen, MovimientoCajaChica, TipoMovimientoCaja } from '
 const loading = ref(false)
 const saving = ref(false)
 const deleting = ref(false)
+const carryingOver = ref(false)
 const showCreateModal = ref(false)
 const showDeleteModal = ref(false)
 const formError = ref<string | null>(null)
+const carryoverError = ref<string | null>(null)
 const selectedDeleteId = ref<number | null>(null)
 
 const resumen = ref<CajaChicaResumen>({
@@ -121,6 +123,20 @@ async function deleteMovimiento() {
   }
 }
 
+async function cuadrarMesAnterior() {
+  carryingOver.value = true
+  carryoverError.value = null
+  try {
+    await api.post('/api/v1/caja-chica/cuadre-mes-anterior')
+    await loadData()
+  } catch (e: unknown) {
+    const err = e as { response?: { data?: { detail?: string } } }
+    carryoverError.value = err.response?.data?.detail ?? 'No se pudo cuadrar con el mes anterior'
+  } finally {
+    carryingOver.value = false
+  }
+}
+
 onMounted(loadData)
 </script>
 
@@ -131,11 +147,18 @@ onMounted(loadData)
         <h1 class="text-2xl font-bold text-gray-900">Caja Chica</h1>
         <p class="text-gray-500 text-sm mt-1">Control diario de ingresos, egresos y balance operativo</p>
       </div>
-      <Button @click="showCreateModal = true">
-        <Plus :size="16" class="mr-2" />
-        Nuevo movimiento
-      </Button>
+      <div class="flex items-center gap-2">
+        <Button variant="secondary" :loading="carryingOver" @click="cuadrarMesAnterior">
+          Cuadrar mes anterior
+        </Button>
+        <Button @click="showCreateModal = true; formError = null">
+          <Plus :size="16" class="mr-2" />
+          Nuevo movimiento
+        </Button>
+      </div>
     </div>
+
+    <p v-if="carryoverError" class="text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg">{{ carryoverError }}</p>
 
     <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
       <Card>
@@ -242,7 +265,7 @@ onMounted(loadData)
         <p v-if="formError" class="text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg">{{ formError }}</p>
 
         <div class="flex justify-end gap-3 pt-2">
-          <Button variant="secondary" type="button" @click="showCreateModal = false">Cancelar</Button>
+          <Button variant="secondary" type="button" @click="showCreateModal = false; formError = null">Cancelar</Button>
           <Button type="submit" :loading="saving">Guardar</Button>
         </div>
       </form>

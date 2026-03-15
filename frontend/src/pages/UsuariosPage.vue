@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
-import { Plus, Search, UserCog, ShieldCheck, Trash2 } from 'lucide-vue-next'
+import { Plus, Search, UserCog, ShieldCheck, Trash2, Check } from 'lucide-vue-next'
 import Card from '../components/ui/Card.vue'
 import Table from '../components/ui/Table.vue'
 import Badge from '../components/ui/Badge.vue'
@@ -39,6 +39,14 @@ interface AccessOption {
   label: string
 }
 
+type AccessArea = 'permisos' | 'vistas' | 'herramientas'
+
+interface AccessProfile {
+  permisos: string[]
+  vistas: string[]
+  herramientas: string[]
+}
+
 const permissionOptions: AccessOption[] = [
   { value: 'dashboard.view', label: 'Ver dashboard' },
   { value: 'clientes.manage', label: 'Gestionar clientes' },
@@ -47,6 +55,7 @@ const permissionOptions: AccessOption[] = [
   { value: 'proyectos.manage', label: 'Gestionar proyectos' },
   { value: 'tickets.manage', label: 'Gestionar tickets' },
   { value: 'inventario.read', label: 'Consultar inventario' },
+  { value: 'boveda.manage', label: 'Gestionar bóveda de credenciales' },
   { value: 'reportes.view', label: 'Ver reportes' },
 ]
 
@@ -78,6 +87,67 @@ const toolOptions: AccessOption[] = [
   { value: 'scanner_qr', label: 'Escáner QR de seguimiento' },
 ]
 
+const roleProfiles: Record<RolEnum, AccessProfile> = {
+  superadmin: {
+    permisos: ['*'],
+    vistas: ['*'],
+    herramientas: ['*'],
+  },
+  ejecutivo: {
+    permisos: [
+      'dashboard.view',
+      'clientes.manage',
+      'ventas.manage',
+      'proyectos.manage',
+      'tickets.manage',
+      'inventario.read',
+      'boveda.manage',
+      'reportes.view',
+    ],
+    vistas: ['dashboard', 'crm', 'ventas', 'proyectos', 'taller', 'inventario', 'boveda', 'perfil'],
+    herramientas: ['reportes', 'exportaciones'],
+  },
+  administrativo_contable: {
+    permisos: ['dashboard.view', 'compras.manage', 'ventas.manage', 'clientes.manage', 'inventario.read', 'reportes.view'],
+    vistas: ['dashboard', 'crm', 'ventas', 'compras', 'inventario', 'perfil'],
+    herramientas: [
+      'reportes',
+      'exportaciones',
+      'calculadora_margen',
+      'proyecciones_financieras',
+      'simulador_iva',
+      'simulador_descuentos',
+      'costeo_cotizaciones',
+      'control_caja_chica',
+    ],
+  },
+  tecnico: {
+    permisos: ['dashboard.view', 'tickets.manage', 'inventario.read', 'reportes.view'],
+    vistas: ['dashboard', 'taller', 'proyectos', 'crm', 'inventario', 'perfil'],
+    herramientas: ['reportes', 'scanner_qr', 'calculo_horas_tecnicas'],
+  },
+}
+
+const matrixOptions = {
+  permisos: permissionOptions,
+  vistas: viewOptions,
+  herramientas: toolOptions,
+}
+
+function getRolePreset(role: RolEnum): AccessProfile {
+  const profile = roleProfiles[role]
+  return {
+    permisos: profile.permisos.includes('*') ? permissionOptions.map((p) => p.value) : [...profile.permisos],
+    vistas: profile.vistas.includes('*') ? viewOptions.map((v) => v.value) : [...profile.vistas],
+    herramientas: profile.herramientas.includes('*') ? toolOptions.map((t) => t.value) : [...profile.herramientas],
+  }
+}
+
+function hasProfileAccess(role: RolEnum, area: AccessArea, value: string): boolean {
+  const profile = roleProfiles[role]
+  return profile[area].includes('*') || profile[area].includes(value)
+}
+
 const createFormDefaults = () => ({
   username: '',
   email: '',
@@ -86,9 +156,9 @@ const createFormDefaults = () => ({
   nombre_completo: '',
   mfa_habilitado: false,
   force_mfa: false,
-  permisos: [] as string[],
-  vistas: [] as string[],
-  herramientas: [] as string[],
+  permisos: getRolePreset('ejecutivo').permisos,
+  vistas: getRolePreset('ejecutivo').vistas,
+  herramientas: getRolePreset('ejecutivo').herramientas,
 })
 
 const createForm = ref(createFormDefaults())
@@ -207,6 +277,20 @@ function resetCreateForm(): void {
   formError.value = null
 }
 
+function applyCreateRolePreset(): void {
+  const preset = getRolePreset(createForm.value.rol)
+  createForm.value.permisos = [...preset.permisos]
+  createForm.value.vistas = [...preset.vistas]
+  createForm.value.herramientas = [...preset.herramientas]
+}
+
+function applyEditRolePreset(): void {
+  const preset = getRolePreset(editForm.value.rol)
+  editForm.value.permisos = [...preset.permisos]
+  editForm.value.vistas = [...preset.vistas]
+  editForm.value.herramientas = [...preset.herramientas]
+}
+
 function confirmDelete(row: Record<string, unknown>): void {
   const user = usuarioStore.usuarios.find((u) => u.id_usuario === row.id_usuario)
   if (!user) return
@@ -297,6 +381,39 @@ async function handleDelete(): Promise<void> {
       </Table>
     </Card>
 
+    <Card title="Matriz de acceso por rol (referencia)">
+      <p class="text-sm text-gray-500 mb-3">Esta matriz muestra el preset recomendado por rol. Puedes partir de esto y ajustar casillas por usuario.</p>
+
+      <div class="space-y-4">
+        <div v-for="area in (['permisos', 'vistas', 'herramientas'] as const)" :key="area" class="border rounded-xl overflow-hidden">
+          <div class="bg-gray-50 px-3 py-2 text-sm font-semibold text-gray-700 capitalize">{{ area }}</div>
+          <div class="overflow-x-auto">
+            <table class="min-w-full text-sm">
+              <thead class="bg-white border-b">
+                <tr>
+                  <th class="text-left px-3 py-2 font-medium text-gray-600 w-72">Elemento</th>
+                  <th v-for="rol in roles" :key="`${area}-${rol}`" class="text-center px-3 py-2 font-medium text-gray-600">
+                    {{ roleLabels[rol] }}
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="opt in matrixOptions[area]" :key="`${area}-${opt.value}`" class="border-b last:border-b-0">
+                  <td class="px-3 py-2 text-gray-700">{{ opt.label }}</td>
+                  <td v-for="rol in roles" :key="`${area}-${opt.value}-${rol}`" class="px-3 py-2 text-center">
+                    <span v-if="hasProfileAccess(rol, area, opt.value)" class="inline-flex items-center justify-center w-5 h-5 rounded-full bg-emerald-50 text-emerald-700">
+                      <Check :size="13" />
+                    </span>
+                    <span v-else class="text-gray-300">—</span>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </Card>
+
     <!-- Create User Modal -->
     <Modal
       :open="showCreateModal"
@@ -348,12 +465,16 @@ async function handleDelete(): Promise<void> {
           </div>
           <div class="col-span-2">
             <label class="block text-sm font-medium text-gray-700 mb-1">Rol *</label>
-            <select
-              v-model="createForm.rol"
-              class="w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white"
-            >
-              <option v-for="rol in roles" :key="rol" :value="rol">{{ roleLabels[rol] }}</option>
-            </select>
+            <div class="flex gap-2">
+              <select
+                v-model="createForm.rol"
+                class="w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white"
+              >
+                <option v-for="rol in roles" :key="rol" :value="rol">{{ roleLabels[rol] }}</option>
+              </select>
+              <Button type="button" variant="secondary" @click="applyCreateRolePreset">Aplicar preset</Button>
+            </div>
+            <p class="text-xs text-gray-500 mt-1">Aplica permisos/vistas/herramientas sugeridos para el rol seleccionado.</p>
           </div>
           <div>
             <label class="flex items-center gap-2 text-sm font-medium text-gray-700">
@@ -435,12 +556,16 @@ async function handleDelete(): Promise<void> {
           </div>
           <div>
             <label class="block text-sm font-medium text-gray-700 mb-1">Rol *</label>
-            <select
-              v-model="editForm.rol"
-              class="w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white"
-            >
-              <option v-for="rol in roles" :key="rol" :value="rol">{{ roleLabels[rol] }}</option>
-            </select>
+            <div class="flex gap-2">
+              <select
+                v-model="editForm.rol"
+                class="w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white"
+              >
+                <option v-for="rol in roles" :key="rol" :value="rol">{{ roleLabels[rol] }}</option>
+              </select>
+              <Button type="button" variant="secondary" @click="applyEditRolePreset">Aplicar preset</Button>
+            </div>
+            <p class="text-xs text-gray-500 mt-1">Si cambias el rol, aplica preset y luego ajusta casillas finas si hace falta.</p>
           </div>
           <div>
             <label class="block text-sm font-medium text-gray-700 mb-1">Estado</label>

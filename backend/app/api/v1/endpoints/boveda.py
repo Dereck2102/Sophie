@@ -6,7 +6,13 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_current_user, get_current_user_mfa_verified, get_client_ip, require_roles
+from app.api.deps import (
+    get_client_ip,
+    get_current_user_mfa_verified,
+    require_permissions,
+    require_roles,
+    require_views,
+)
 from app.core.database import get_db
 from app.core.security import decrypt_vault, encrypt_vault
 from app.infrastructure.models.auditoria import LogAuditoria
@@ -20,9 +26,8 @@ router = APIRouter(prefix="/boveda", tags=["Bóveda de Credenciales"])
 @router.get("/", response_model=List[CredencialOut])
 async def list_credenciales(
     db: Annotated[AsyncSession, Depends(get_db)],
-    current_user: Annotated[
-        Usuario, Depends(require_roles(RolEnum.EJECUTIVO))
-    ],
+    current_user: Annotated[Usuario, Depends(require_views("boveda"))],
+    authorized: Annotated[Usuario, Depends(require_permissions("boveda.manage"))],
 ) -> list[Credencial]:
     result = await db.execute(select(Credencial))
     return list(result.scalars().all())
@@ -32,10 +37,8 @@ async def list_credenciales(
 async def create_credencial(
     body: CredencialCreate,
     db: Annotated[AsyncSession, Depends(get_db)],
-    current_user: Annotated[
-        Usuario,
-        Depends(require_roles(RolEnum.EJECUTIVO)),
-    ],
+    current_user: Annotated[Usuario, Depends(require_views("boveda"))],
+    authorized: Annotated[Usuario, Depends(require_permissions("boveda.manage"))],
 ) -> Credencial:
     credencial = Credencial(
         id_empresa=body.id_empresa,
@@ -58,7 +61,11 @@ async def reveal_credencial(
     ip: Annotated[str, Depends(get_client_ip)],
 ) -> CredencialWithPassword:
     """Requires MFA-verified session. Access is logged in audit log."""
-    if current_user.rol not in (RolEnum.SUPERADMIN, RolEnum.EJECUTIVO):
+    effective_permissions = getattr(current_user, "effective_permissions", [])
+    effective_views = getattr(current_user, "effective_views", [])
+    has_boveda_permission = "*" in effective_permissions or "boveda.manage" in effective_permissions
+    has_boveda_view = "*" in effective_views or "boveda" in effective_views
+    if current_user.rol != RolEnum.SUPERADMIN and (not has_boveda_permission or not has_boveda_view):
         raise HTTPException(status_code=403, detail="Insufficient permissions")
 
     result = await db.execute(
@@ -97,10 +104,8 @@ async def update_credencial(
     id_credencial: int,
     body: CredencialUpdate,
     db: Annotated[AsyncSession, Depends(get_db)],
-    current_user: Annotated[
-        Usuario,
-        Depends(require_roles(RolEnum.EJECUTIVO)),
-    ],
+    current_user: Annotated[Usuario, Depends(require_views("boveda"))],
+    authorized: Annotated[Usuario, Depends(require_permissions("boveda.manage"))],
 ) -> Credencial:
     result = await db.execute(
         select(Credencial).where(Credencial.id_credencial == id_credencial)

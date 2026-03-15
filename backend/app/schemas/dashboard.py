@@ -45,6 +45,15 @@ class DashboardAlert(BaseModel):
     link: Optional[str] = None
 
 
+class DashboardCorrelationMetric(BaseModel):
+    key: str
+    label: str
+    value: float
+    unit: str
+    status: str
+    detail: str
+
+
 class DashboardReceivableBucket(BaseModel):
     bucket: str
     total: float
@@ -79,3 +88,4 @@ class DashboardFinanceAnalytics(BaseModel):
     proximos_vencimientos: List[DashboardReceivableDueItem] = []
     tendencia_mensual: List[DashboardTrendPoint] = []
     alertas: List[DashboardAlert] = []
+    correlaciones: List[DashboardCorrelationMetric] = []

@@ -165,9 +165,10 @@ async def create_cotizacion(
         Usuario, Depends(require_roles(RolEnum.EJECUTIVO, RolEnum.SUPERADMIN))
     ],
 ) -> CotizacionOut:
-    count_result = await db.execute(select(func.count(Cotizacion.id_cotizacion)))
-    count = count_result.scalar_one() or 0
-    numero = _next_numero_cotizacion(count)
+    # Use MAX(id)+1 rather than COUNT to avoid duplicate numbers after deletions
+    max_id_result = await db.execute(select(func.coalesce(func.max(Cotizacion.id_cotizacion), 0)))
+    max_id = int(max_id_result.scalar_one() or 0)
+    numero = f"COT-{max_id + 1:06d}"
 
     if body.id_proyecto is not None:
         proyecto_result = await db.execute(

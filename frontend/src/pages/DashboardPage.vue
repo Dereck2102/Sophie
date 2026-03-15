@@ -82,6 +82,15 @@ interface DashboardAlert {
   link?: string | null
 }
 
+interface DashboardCorrelationMetric {
+  key: string
+  label: string
+  value: number
+  unit: string
+  status: 'ok' | 'warning' | 'critical' | string
+  detail: string
+}
+
 interface DashboardFinanceAnalytics {
   ingresos_facturados_mes: number
   compras_registradas_mes: number
@@ -98,6 +107,7 @@ interface DashboardFinanceAnalytics {
   proximos_vencimientos: DashboardReceivableDueItem[]
   tendencia_mensual: DashboardTrendPoint[]
   alertas: DashboardAlert[]
+  correlaciones: DashboardCorrelationMetric[]
 }
 
 interface CotizacionSummary {
@@ -142,6 +152,7 @@ const analytics = ref<DashboardFinanceAnalytics>({
   proximos_vencimientos: [],
   tendencia_mensual: [],
   alertas: [],
+  correlaciones: [],
 })
 
 const recentTickets = ref<Ticket[]>([])
@@ -213,7 +224,7 @@ const financialCards = computed(() => [
     icon: analytics.value.flujo_neto_mes >= 0 ? Landmark : TrendingDown,
     tone: analytics.value.flujo_neto_mes >= 0 ? 'text-sky-700' : 'text-red-700',
     bg: analytics.value.flujo_neto_mes >= 0 ? 'bg-sky-50' : 'bg-red-50',
-    link: '/dashboard',
+    link: '/flujo-operativo',
     detail: 'Ventas + caja menos compras y egresos',
   },
   {
@@ -320,6 +331,12 @@ function dueBadgeClass(item: DashboardReceivableDueItem): string {
   if ((item.dias_vencido ?? 0) > 0) return 'bg-red-100 text-red-700'
   if ((item.dias_para_vencer ?? 999) <= 3) return 'bg-amber-100 text-amber-700'
   return 'bg-emerald-100 text-emerald-700'
+}
+
+function correlationClass(status: string): string {
+  if (status === 'critical') return 'border-red-200 bg-red-50 text-red-800'
+  if (status === 'warning') return 'border-amber-200 bg-amber-50 text-amber-800'
+  return 'border-emerald-200 bg-emerald-50 text-emerald-800'
 }
 
 async function loadData(): Promise<void> {
@@ -538,6 +555,25 @@ onUnmounted(() => {
               </span>
               <ArrowRight class="h-4 w-4" />
             </button>
+          </div>
+        </Card>
+
+        <Card title="Correlación operativa">
+          <div v-if="analytics.correlaciones.length === 0" class="rounded-2xl border border-dashed border-slate-200 p-4 text-sm text-slate-500">
+            Sin datos suficientes para correlaciones.
+          </div>
+          <div v-else class="space-y-2">
+            <div
+              v-for="metric in analytics.correlaciones"
+              :key="metric.key"
+              :class="['rounded-xl border px-3 py-2', correlationClass(metric.status)]"
+            >
+              <div class="flex items-center justify-between gap-3">
+                <p class="text-sm font-semibold">{{ metric.label }}</p>
+                <p class="text-sm font-bold">{{ metric.value.toFixed(2) }}{{ metric.unit }}</p>
+              </div>
+              <p class="mt-1 text-xs opacity-90">{{ metric.detail }}</p>
+            </div>
           </div>
         </Card>
       </div>

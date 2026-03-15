@@ -1,6 +1,7 @@
 export default {
   nav: {
     dashboard: 'Dashboard',
+    flujoOperativo: 'Flujo Operativo',
     crm: 'CRM',
     ventas: 'Ventas',
     compras: 'Compras',

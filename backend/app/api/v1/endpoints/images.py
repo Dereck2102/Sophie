@@ -13,6 +13,7 @@ import base64
 from typing import Annotated, Optional
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from pydantic import BaseModel
 
 from app.api.deps import get_current_user
 from app.infrastructure.models.usuario import Usuario
@@ -23,6 +24,12 @@ router = APIRouter(prefix="/images", tags=["Imágenes"])
 
 class ImageUploadOut:
     pass
+
+
+class OptimizeBase64In(BaseModel):
+    data_url: str
+    image_type: str = "default"
+    target_width: Optional[int] = None
 
 
 @router.post("/optimize")
@@ -79,15 +86,17 @@ async def optimize_image_endpoint(
 
 @router.post("/optimize-base64")
 async def optimize_base64_endpoint(
-    data_url: str,
-    image_type: str = "default",
-    target_width: Optional[int] = None,
+    body: OptimizeBase64In,
     current_user: Annotated[Usuario, Depends(get_current_user)] = None,
 ) -> dict:
     """
     Optimiza una imagen enviada como data URL (base64).
     Útil para imágenes capturadas desde el browser.
     """
+    data_url = body.data_url
+    image_type = body.image_type
+    target_width = body.target_width
+
     if not data_url.startswith("data:image/"):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

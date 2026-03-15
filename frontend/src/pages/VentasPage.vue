@@ -44,6 +44,13 @@ interface LineItem {
 }
 
 const ivaRate = ref(15)
+const serviceCostMode = ref<'auto' | 'manual'>('auto')
+const defaultServiceCosts = ref({
+  costo_mano_obra_default: 0,
+  costo_movilizacion_default: 0,
+  costo_software_default: 0,
+  costo_hora_tecnica_default: 0,
+})
 
 const form = ref({
   id_cliente: 0,
@@ -147,6 +154,13 @@ const selectedCliente = computed(() =>
   clienteStore.clientes.find((c) => c.id_cliente === form.value.id_cliente)
 )
 
+function applyServiceDefaults(): void {
+  form.value.costo_mano_obra = defaultServiceCosts.value.costo_mano_obra_default
+  form.value.costo_movilizacion = defaultServiceCosts.value.costo_movilizacion_default
+  form.value.costo_software = defaultServiceCosts.value.costo_software_default
+  form.value.tarifa_hora_soporte = defaultServiceCosts.value.costo_hora_tecnica_default
+}
+
 onMounted(async () => {
   await Promise.all([
     ventasStore.fetchCotizaciones(),
@@ -161,6 +175,13 @@ onMounted(async () => {
   try {
     const { data } = await api.get<ConfiguracionSistema>('/api/v1/admin/settings/public')
     ivaRate.value = data.iva_default_percent ?? 15
+    defaultServiceCosts.value = {
+      costo_mano_obra_default: Number(data.costo_mano_obra_default ?? 0),
+      costo_movilizacion_default: Number(data.costo_movilizacion_default ?? 0),
+      costo_software_default: Number(data.costo_software_default ?? 0),
+      costo_hora_tecnica_default: Number(data.costo_hora_tecnica_default ?? 0),
+    }
+    applyServiceDefaults()
   } catch {
     ivaRate.value = 15
   }
@@ -192,6 +213,12 @@ watch(
     }
   },
 )
+
+watch(serviceCostMode, (mode) => {
+  if (mode === 'auto') {
+    applyServiceDefaults()
+  }
+})
 
 function addProducto(p: typeof inventarioStore.productos[0]): void {
   const existing = form.value.items.find((i) => i.id_producto === p.id_producto)
@@ -322,6 +349,8 @@ function resetForm(): void {
     tarifa_hora_soporte: 0,
     items: [],
   }
+  serviceCostMode.value = 'auto'
+  applyServiceDefaults()
   clienteSearch.value = ''
   productoSearch.value = ''
   formError.value = null
@@ -576,18 +605,30 @@ function clearContextFilters(): void {
           Busca y agrega productos arriba
         </p>
 
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <div class="space-y-3">
+          <div class="flex items-center justify-between border border-gray-200 rounded-lg px-3 py-2">
+            <div>
+              <p class="text-sm font-medium text-gray-800">Costos de servicios</p>
+              <p class="text-xs text-gray-500">Materiales se calculan desde inventario y no se editan aquí.</p>
+            </div>
+            <select v-model="serviceCostMode" class="px-2 py-1 text-sm border rounded-lg bg-white">
+              <option value="auto">Automático</option>
+              <option value="manual">Manual</option>
+            </select>
+          </div>
+
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
           <div>
             <label class="block text-sm font-medium text-gray-700 mb-1">Costo mano de obra</label>
-            <input v-model.number="form.costo_mano_obra" type="number" min="0" step="0.01" class="w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
+            <input v-model.number="form.costo_mano_obra" :disabled="serviceCostMode === 'auto'" type="number" min="0" step="0.01" class="w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none disabled:bg-gray-100" />
           </div>
           <div>
             <label class="block text-sm font-medium text-gray-700 mb-1">Costo movilización</label>
-            <input v-model.number="form.costo_movilizacion" type="number" min="0" step="0.01" class="w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
+            <input v-model.number="form.costo_movilizacion" :disabled="serviceCostMode === 'auto'" type="number" min="0" step="0.01" class="w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none disabled:bg-gray-100" />
           </div>
           <div>
             <label class="block text-sm font-medium text-gray-700 mb-1">Costo software</label>
-            <input v-model.number="form.costo_software" type="number" min="0" step="0.01" class="w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
+            <input v-model.number="form.costo_software" :disabled="serviceCostMode === 'auto'" type="number" min="0" step="0.01" class="w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none disabled:bg-gray-100" />
           </div>
           <div class="grid grid-cols-2 gap-2">
             <div>
@@ -596,9 +637,10 @@ function clearContextFilters(): void {
             </div>
             <div>
               <label class="block text-sm font-medium text-gray-700 mb-1">Tarifa/hora</label>
-              <input v-model.number="form.tarifa_hora_soporte" type="number" min="0" step="0.01" class="w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
+              <input v-model.number="form.tarifa_hora_soporte" :disabled="serviceCostMode === 'auto'" type="number" min="0" step="0.01" class="w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none disabled:bg-gray-100" />
             </div>
           </div>
+        </div>
         </div>
 
         <!-- Notes -->

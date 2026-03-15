@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, computed } from 'vue'
+import { ref, onMounted, onUnmounted, computed, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { Plus, ScanLine, Camera, Trash2, AlertTriangle, Play, CheckSquare, Clock, X, ImageIcon, Printer, Link2, Copy, Check } from 'lucide-vue-next'
 import Card from '../components/ui/Card.vue'
@@ -65,6 +65,14 @@ const form = ref(initialFormState())
 
 const selectedCreateCliente = computed<Cliente | undefined>(() =>
   clienteStore.clientes.find((cliente) => cliente.id_cliente === form.value.id_cliente)
+)
+
+const selectedCreateClienteEmail = computed(() =>
+  selectedCreateCliente.value?.empresa?.email || selectedCreateCliente.value?.cliente_b2c?.email || ''
+)
+
+const selectedCreateClientePhone = computed(() =>
+  selectedCreateCliente.value?.empresa?.telefono || selectedCreateCliente.value?.cliente_b2c?.telefono || ''
 )
 
 const assignableOptions = computed(() =>
@@ -495,6 +503,30 @@ const ticketIsStarted = computed(() =>
   !!selectedTicket.value?.fecha_inicio_trabajo && !selectedTicket.value?.fecha_fin_trabajo
 )
 const ticketIsFinished = computed(() => !!selectedTicket.value?.fecha_fin_trabajo)
+
+watch(
+  () => form.value.id_cliente,
+  (newClienteId) => {
+    // Only reset project selection if it no longer belongs to the newly selected client.
+    // This preserves URL-preloaded project IDs that were set in the same synchronous tick.
+    if (form.value.id_proyecto !== null) {
+      const stillValid = proyectos.value.some(
+        (p) => p.id_proyecto === form.value.id_proyecto && p.id_cliente === newClienteId,
+      )
+      if (!stillValid) {
+        form.value.id_proyecto = null
+      }
+    }
+
+    if (!selectedCreateClienteEmail.value) {
+      form.value.email_cliente = ''
+      return
+    }
+    if (!form.value.email_cliente || form.value.email_cliente === selectedCreateClienteEmail.value) {
+      form.value.email_cliente = selectedCreateClienteEmail.value
+    }
+  },
+)
 </script>
 
 <template>
@@ -620,6 +652,11 @@ const ticketIsFinished = computed(() => !!selectedTicket.value?.fecha_fin_trabaj
           <div>
             <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Email del Cliente</label>
             <input v-model="form.email_cliente" type="email" placeholder="Para enviar enlace de seguimiento" class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none dark:bg-gray-700 dark:text-gray-100" />
+            <p v-if="selectedCreateClienteEmail || selectedCreateClientePhone" class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              <span v-if="selectedCreateClienteEmail">Email sugerido: {{ selectedCreateClienteEmail }}</span>
+              <span v-if="selectedCreateClienteEmail && selectedCreateClientePhone"> · </span>
+              <span v-if="selectedCreateClientePhone">Teléfono: {{ selectedCreateClientePhone }}</span>
+            </p>
           </div>
         </div>
 

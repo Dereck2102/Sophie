@@ -62,6 +62,8 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   function logout(): void {
+    // Capture the token BEFORE clearing it so the logout request can be authenticated
+    const currentToken = localStorage.getItem('access_token')
     user.value = null
     accessToken.value = null
     mfaRequired.value = false
@@ -72,7 +74,11 @@ export const useAuthStore = defineStore('auth', () => {
     localStorage.removeItem('access_token')
     sessionId.value = null
     localStorage.removeItem('session_id')
-    api.post('/api/v1/auth/logout').catch(() => {})
+    if (currentToken) {
+      api
+        .post('/api/v1/auth/logout', null, { headers: { Authorization: `Bearer ${currentToken}` } })
+        .catch(() => {})
+    }
   }
 
   // Initialize on store creation

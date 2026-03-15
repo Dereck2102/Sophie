@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -127,3 +127,43 @@ async def get_resumen(
         fondo_mensual=round(fondo_mensual, 2),
         disponible_mes=round(disponible_mes, 2),
     )
+
+
+@router.post("/cuadre-mes-anterior")
+async def cuadrar_con_mes_anterior(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[Usuario, Depends(require_roles(*_ALLOWED_ROLES))],
+) -> dict[str, float | str]:
+    """Set monthly petty-cash fund to previous month's closing balance."""
+    now = datetime.now(timezone.utc)
+    inicio_mes_actual = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    fin_mes_anterior = inicio_mes_actual - timedelta(microseconds=1)
+    inicio_mes_anterior = (inicio_mes_actual - timedelta(days=1)).replace(
+        day=1, hour=0, minute=0, second=0, microsecond=0
+    )
+
+    previous_balance_result = await db.execute(
+        select(func.coalesce(func.sum(_signed_amount_expr()), 0)).where(
+            MovimientoCajaChica.fecha < inicio_mes_actual
+        )
+    )
+    previous_balance = float(previous_balance_result.scalar_one() or 0)
+
+    settings_result = await db.execute(
+        select(ConfiguracionSistema).where(ConfiguracionSistema.id_configuracion == 1)
+    )
+    settings = settings_result.scalar_one_or_none()
+    if not settings:
+        settings = ConfiguracionSistema(id_configuracion=1)
+        db.add(settings)
+
+    settings.fondo_caja_chica_mensual = round(previous_balance, 2)
+    await db.flush()
+
+    return {
+        "detail": (
+            f"Fondo mensual actualizado con saldo de {inicio_mes_anterior.strftime('%Y-%m')} "
+            f"al {fin_mes_anterior.strftime('%Y-%m-%d')}"
+        ),
+        "fondo_caja_chica_mensual": float(settings.fondo_caja_chica_mensual or 0),
+    }

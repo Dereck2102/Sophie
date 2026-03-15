@@ -3,6 +3,7 @@ import { ref, computed } from 'vue'
 import { useRoute } from 'vue-router'
 import {
   LayoutDashboard,
+  Landmark,
   Users,
   ShoppingCart,
   Package,
@@ -25,14 +26,15 @@ const { t } = useI18n()
 const collapsed = ref(false)
 
 const navItems = computed(() => [
-  { path: '/', label: t('nav.dashboard'), icon: LayoutDashboard, adminOnly: false },
-  { path: '/crm', label: t('nav.crm'), icon: Users, adminOnly: false },
-  { path: '/ventas', label: t('nav.ventas'), icon: ShoppingCart, adminOnly: false },
-  { path: '/compras', label: t('nav.compras'), icon: Package, adminOnly: false },
+  { path: '/', label: t('nav.dashboard'), icon: LayoutDashboard, adminOnly: false, requiredView: 'dashboard' },
+  { path: '/flujo-operativo', label: t('nav.flujoOperativo'), icon: Landmark, adminOnly: false, requiredView: 'dashboard' },
+  { path: '/crm', label: t('nav.crm'), icon: Users, adminOnly: false, requiredView: 'crm' },
+  { path: '/ventas', label: t('nav.ventas'), icon: ShoppingCart, adminOnly: false, requiredView: 'ventas' },
+  { path: '/compras', label: t('nav.compras'), icon: Package, adminOnly: false, requiredView: 'compras' },
   { path: '/caja-chica', label: t('nav.cajaChica'), icon: Wallet, adminOnly: false, allowedRoles: ['superadmin', 'administrativo_contable'] },
-  { path: '/taller', label: t('nav.taller'), icon: Wrench, adminOnly: false },
-  { path: '/proyectos', label: t('nav.proyectos'), icon: Code2, adminOnly: false },
-  { path: '/boveda', label: t('nav.boveda'), icon: Lock, adminOnly: false },
+  { path: '/taller', label: t('nav.taller'), icon: Wrench, adminOnly: false, requiredView: 'taller' },
+  { path: '/proyectos', label: t('nav.proyectos'), icon: Code2, adminOnly: false, requiredView: 'proyectos' },
+  { path: '/boveda', label: t('nav.boveda'), icon: Lock, adminOnly: false, requiredView: 'boveda', allowedRoles: ['superadmin', 'ejecutivo'] },
   { path: '/usuarios', label: t('nav.usuarios'), icon: UserCog, adminOnly: true },
   { path: '/configuracion', label: t('nav.configuracion'), icon: Settings, adminOnly: true },
   { path: '/auditoria', label: 'Auditoría', icon: ClipboardList, adminOnly: true, superadminOnly: true },
@@ -40,9 +42,17 @@ const navItems = computed(() => [
 
 const filteredNavItems = computed(() =>
   navItems.value.filter((item) => {
-    if (item.superadminOnly) return auth.user?.rol === 'superadmin'
+    if (auth.user?.rol === 'superadmin') {
+      if (item.superadminOnly) return true
+      if (item.adminOnly) return true
+      return true
+    }
+    const userViews = auth.user?.vistas ?? []
+    const hasRequiredView = !item.requiredView || userViews.includes('*') || userViews.includes(item.requiredView)
+    if (!hasRequiredView) return false
+    if (item.superadminOnly) return false
     if (item.allowedRoles) return item.allowedRoles.includes(auth.user?.rol ?? '')
-    if (item.adminOnly) return auth.user?.rol === 'superadmin'
+    if (item.adminOnly) return false
     return true
   })
 )

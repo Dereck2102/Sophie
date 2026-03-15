@@ -19,6 +19,7 @@ ROLE_ACCESS: dict[RolEnum, dict[str, list[str]]] = {
             "proyectos.manage",
             "tickets.manage",
             "inventario.read",
+            "boveda.manage",
             "reportes.view",
         ],
         "views": [
@@ -28,6 +29,7 @@ ROLE_ACCESS: dict[RolEnum, dict[str, list[str]]] = {
             "proyectos",
             "taller",
             "inventario",
+            "boveda",
             "perfil",
         ],
         "tools": ["reportes", "exportaciones"],
@@ -103,9 +105,19 @@ def dumps_json_list(items: list[str] | None) -> str | None:
 
 def get_effective_access(user: Usuario) -> dict[str, list[str]]:
     defaults = ROLE_ACCESS.get(user.rol, {"permissions": [], "views": [], "tools": []})
-    permissions = sorted({*defaults["permissions"], *_load_json_list(user.permisos_json)})
-    views = sorted({*defaults["views"], *_load_json_list(user.vistas_json)})
-    tools = sorted({*defaults["tools"], *_load_json_list(user.herramientas_json)})
+
+    if user.rol == RolEnum.SUPERADMIN:
+        return {
+            "permissions": sorted(defaults["permissions"]),
+            "views": sorted(defaults["views"]),
+            "tools": sorted(defaults["tools"]),
+        }
+
+    # If granular lists are explicitly configured (JSON field set, even to []),
+    # they become authoritative. If not set (None), role defaults apply.
+    permissions = sorted(_load_json_list(user.permisos_json)) if user.permisos_json is not None else sorted(defaults["permissions"])
+    views = sorted(_load_json_list(user.vistas_json)) if user.vistas_json is not None else sorted(defaults["views"])
+    tools = sorted(_load_json_list(user.herramientas_json)) if user.herramientas_json is not None else sorted(defaults["tools"])
     return {"permissions": permissions, "views": views, "tools": tools}
 
 

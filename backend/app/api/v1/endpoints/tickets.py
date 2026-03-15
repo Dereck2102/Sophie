@@ -159,8 +159,8 @@ async def create_ticket(
                 detail="El proyecto seleccionado no pertenece al cliente del ticket",
             )
 
-    count_result = await db.execute(select(func.count(Ticket.id_ticket)))
-    count = count_result.scalar_one() or 0
+    count_result = await db.execute(select(func.coalesce(func.max(Ticket.id_ticket), 0)))
+    count = int(count_result.scalar_one() or 0)
     numero = _next_ticket_numero(count)
 
     ticket_data = body.model_dump(exclude={

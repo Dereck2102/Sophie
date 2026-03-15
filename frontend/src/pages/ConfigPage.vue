@@ -5,13 +5,20 @@ import Card from '../components/ui/Card.vue'
 import Button from '../components/ui/Button.vue'
 import ImageUpload from '../components/ui/ImageUpload.vue'
 import api from '../services/api'
-import type { BackupUsuariosPayload, ConfiguracionSistema } from '../types'
+import type { AuthChannelsStatus, BackupUsuariosPayload, ConfiguracionSistema } from '../types'
 
 const loading = ref(true)
 const saving = ref(false)
 const restoring = ref(false)
+const checkingChannels = ref(false)
+const testingEmail = ref(false)
+const testingSms = ref(false)
 const success = ref<string | null>(null)
 const error = ref<string | null>(null)
+
+const channelStatus = ref<AuthChannelsStatus | null>(null)
+const testEmail = ref('')
+const testPhone = ref('')
 
 const form = ref<ConfiguracionSistema>({
   nombre_instancia: 'SOPHIE',
@@ -56,6 +63,18 @@ async function loadSettings(): Promise<void> {
   }
 }
 
+async function loadChannelStatus(): Promise<void> {
+  checkingChannels.value = true
+  try {
+    const { data } = await api.get<AuthChannelsStatus>('/api/v1/admin/auth/channels/status')
+    channelStatus.value = data
+  } catch {
+    channelStatus.value = null
+  } finally {
+    checkingChannels.value = false
+  }
+}
+
 async function saveSettings(): Promise<void> {
   saving.value = true
   success.value = null
@@ -64,11 +83,52 @@ async function saveSettings(): Promise<void> {
     const { data } = await api.patch<ConfiguracionSistema>('/api/v1/admin/settings', form.value)
     form.value = data
     success.value = 'Configuración guardada correctamente'
+    await loadChannelStatus()
   } catch (e: unknown) {
     const err = e as { response?: { data?: { detail?: string } } }
     error.value = err.response?.data?.detail ?? 'No se pudo guardar la configuración'
   } finally {
     saving.value = false
+  }
+}
+
+async function runEmailTest(): Promise<void> {
+  testingEmail.value = true
+  success.value = null
+  error.value = null
+  try {
+    const { data } = await api.post<{ detail: string }>('/api/v1/admin/auth/channels/test-email', {
+      to_email: testEmail.value || undefined,
+    })
+    success.value = data.detail
+    await loadChannelStatus()
+  } catch (e: unknown) {
+    const err = e as { response?: { data?: { detail?: string } } }
+    error.value = err.response?.data?.detail ?? 'No se pudo enviar correo de prueba'
+  } finally {
+    testingEmail.value = false
+  }
+}
+
+async function runSmsTest(): Promise<void> {
+  if (!testPhone.value.trim()) {
+    error.value = 'Ingresa un número para probar SMS'
+    return
+  }
+  testingSms.value = true
+  success.value = null
+  error.value = null
+  try {
+    const { data } = await api.post<{ detail: string }>('/api/v1/admin/auth/channels/test-sms', {
+      to_phone: testPhone.value,
+    })
+    success.value = data.detail
+    await loadChannelStatus()
+  } catch (e: unknown) {
+    const err = e as { response?: { data?: { detail?: string } } }
+    error.value = err.response?.data?.detail ?? 'No se pudo enviar SMS de prueba'
+  } finally {
+    testingSms.value = false
   }
 }
 
@@ -112,7 +172,10 @@ async function handleRestore(event: Event): Promise<void> {
   }
 }
 
-onMounted(loadSettings)
+onMounted(async () => {
+  await loadSettings()
+  await loadChannelStatus()
+})
 </script>
 
 <template>
@@ -207,6 +270,62 @@ onMounted(loadSettings)
         <label class="flex items-center gap-3 text-sm text-gray-700 md:col-span-2">
           <input v-model="form.system_notifications" type="checkbox" class="w-4 h-4" /> Notificaciones del sistema
         </label>
+      </div>
+    </Card>
+
+    <Card title="Estado de Canales de Autenticación">
+      <div class="space-y-4">
+        <div v-if="checkingChannels" class="text-sm text-gray-500">Verificando estado de canales...</div>
+        <div v-else-if="channelStatus" class="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+          <div class="flex items-center justify-between rounded-lg border px-3 py-2">
+            <span>2FA (entorno)</span>
+            <span :class="channelStatus.twofa_env_enabled ? 'text-green-700' : 'text-red-600'" class="font-medium">
+              {{ channelStatus.twofa_env_enabled ? 'Activo' : 'Inactivo' }}
+            </span>
+          </div>
+          <div class="flex items-center justify-between rounded-lg border px-3 py-2">
+            <span>2FA (configuración)</span>
+            <span :class="channelStatus.twofa_enabled ? 'text-green-700' : 'text-red-600'" class="font-medium">
+              {{ channelStatus.twofa_enabled ? 'Activo' : 'Inactivo' }}
+            </span>
+          </div>
+          <div class="flex items-center justify-between rounded-lg border px-3 py-2">
+            <span>Canal correo</span>
+            <span :class="channelStatus.email_effective ? 'text-green-700' : 'text-amber-700'" class="font-medium">
+              {{ channelStatus.email_effective ? 'Operativo' : 'No operativo' }}
+            </span>
+          </div>
+          <div class="flex items-center justify-between rounded-lg border px-3 py-2">
+            <span>Canal SMS</span>
+            <span :class="channelStatus.sms_effective ? 'text-green-700' : 'text-amber-700'" class="font-medium">
+              {{ channelStatus.sms_effective ? 'Operativo' : 'No operativo' }}
+            </span>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div class="space-y-2">
+            <label class="block text-sm font-medium text-gray-700">Probar correo</label>
+            <input
+              v-model="testEmail"
+              type="email"
+              placeholder="correo@dominio.com (opcional)"
+              class="w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+            />
+            <Button :loading="testingEmail" type="button" @click="runEmailTest">Enviar correo de prueba</Button>
+          </div>
+
+          <div class="space-y-2">
+            <label class="block text-sm font-medium text-gray-700">Probar SMS</label>
+            <input
+              v-model="testPhone"
+              type="text"
+              placeholder="+593..."
+              class="w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+            />
+            <Button :loading="testingSms" type="button" @click="runSmsTest">Enviar SMS de prueba</Button>
+          </div>
+        </div>
       </div>
     </Card>
 

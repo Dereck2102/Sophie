@@ -7,6 +7,7 @@ import Table from '../components/ui/Table.vue'
 import Button from '../components/ui/Button.vue'
 import Modal from '../components/ui/Modal.vue'
 import api from '../services/api'
+import { useI18n } from 'vue-i18n'
 import { useBovedaStore } from '../stores/boveda'
 import type { Cliente } from '../types'
 import type { CredencialReveal } from '../types/boveda'
@@ -22,6 +23,7 @@ const revealData = ref<CredencialReveal | null>(null)
 const saving = ref(false)
 const revealing = ref(false)
 const formError = ref<string | null>(null)
+const { t } = useI18n()
 
 const form = ref({
   id_empresa: 0,
@@ -84,12 +86,12 @@ async function loadData(): Promise<void> {
     if (bovedaResult.status === 'rejected') {
       const err = bovedaResult.reason as { response?: { status?: number; data?: { detail?: string } } }
       if (err.response?.status === 403) mfaRequired.value = true
-      formError.value = err.response?.data?.detail ?? bovedaError.value ?? 'No se pudo cargar la bóveda'
+      formError.value = err.response?.data?.detail ?? bovedaError.value ?? t('bovedaPage.loadError')
     }
 
     if (clientesResult.status === 'rejected') {
       const err = clientesResult.reason as { response?: { status?: number; data?: { detail?: string } } }
-      formError.value = formError.value ?? err.response?.data?.detail ?? 'No se pudo cargar el catálogo de empresas'
+      formError.value = formError.value ?? err.response?.data?.detail ?? t('bovedaPage.companiesLoadError')
     }
   } catch (e: unknown) {
     const err = e as { response?: { status?: number; data?: { detail?: string } } }
@@ -121,7 +123,7 @@ async function handleCreate(): Promise<void> {
   } catch (e: unknown) {
     const err = e as { response?: { status?: number; data?: { detail?: string } } }
     if (err.response?.status === 403) mfaRequired.value = true
-    formError.value = err.response?.data?.detail ?? bovedaError.value ?? 'No se pudo crear la credencial'
+    formError.value = err.response?.data?.detail ?? bovedaError.value ?? t('bovedaPage.createError')
   } finally {
     saving.value = false
   }
@@ -137,10 +139,10 @@ async function handleReveal(id: number): Promise<void> {
     const err = e as { response?: { status?: number; data?: { detail?: string } } }
     if (err.response?.status === 403) {
       mfaRequired.value = true
-      formError.value = 'Necesitas una sesión MFA verificada para revelar contraseñas'
+      formError.value = t('bovedaPage.mfaVerifiedSessionRequired')
       return
     }
-    formError.value = err.response?.data?.detail ?? bovedaError.value ?? 'No se pudo revelar la credencial'
+    formError.value = err.response?.data?.detail ?? bovedaError.value ?? t('bovedaPage.revealError')
   } finally {
     revealing.value = false
   }
@@ -163,23 +165,23 @@ onMounted(loadData)
         <Lock class="text-white" :size="22" />
       </div>
       <div>
-        <h1 class="text-2xl font-bold text-gray-900">Bóveda de Credenciales</h1>
-        <p class="text-gray-500 text-sm mt-1">Credenciales B2B cifradas con AES-256-GCM</p>
+        <h1 class="text-2xl font-bold text-gray-900 dark:text-gray-100">{{ t('boveda.title') }}</h1>
+        <p class="text-gray-500 dark:text-gray-400 text-sm mt-1">{{ t('bovedaPage.subtitleSecure') }}</p>
       </div>
     </div>
 
     <div class="flex justify-end">
       <Button @click="showCreateModal = true">
         <Plus :size="14" class="mr-2" />
-        Nueva credencial
+        {{ t('bovedaPage.newCredential') }}
       </Button>
     </div>
 
     <div v-if="mfaRequired" class="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-center gap-3">
       <span class="text-2xl">🔒</span>
       <div>
-        <p class="font-semibold text-amber-800">MFA requerido</p>
-        <p class="text-sm text-amber-700">Necesitas tener MFA activo para acceder a la bóveda.</p>
+        <p class="font-semibold text-amber-800">{{ t('bovedaPage.mfaRequired') }}</p>
+        <p class="text-sm text-amber-700">{{ t('bovedaPage.mfaRequiredHint') }}</p>
       </div>
     </div>
 
@@ -187,7 +189,7 @@ onMounted(loadData)
 
     <Card :padding="false">
       <div v-if="!loading && !bovedaLoading && credenciales.length === 0" class="text-center py-10 text-sm text-gray-500">
-        No hay credenciales registradas todavía. Crea la primera desde “Nueva credencial”.
+        {{ t('bovedaPage.emptyState') }}
       </div>
       <Table v-else :columns="columns" :rows="credenciales.map((c) => ({ ...c, id: c.id_credencial }))" :loading="loading || bovedaLoading">
         <template #id_empresa="{ value }">
@@ -204,58 +206,58 @@ onMounted(loadData)
             :disabled="revealing"
             @click.stop="handleReveal(Number((row as Record<string, unknown>).id_credencial))"
             class="px-2 py-1 text-xs bg-gray-900 text-white rounded-lg hover:bg-gray-800 disabled:opacity-60 inline-flex items-center gap-1"
-            title="Revelar contraseña"
+            :title="t('bovedaPage.revealPassword')"
           >
             <Eye :size="12" />
-            Revelar
+            {{ t('bovedaPage.reveal') }}
           </button>
         </template>
       </Table>
     </Card>
 
-    <Modal :open="showCreateModal" title="Nueva credencial" size="md" @close="showCreateModal = false; resetForm()">
+    <Modal :open="showCreateModal" :title="t('bovedaPage.newCredential')" size="md" @close="showCreateModal = false; resetForm()">
       <form class="space-y-3" @submit.prevent="handleCreate">
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">Empresa *</label>
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ t('bovedaPage.company') }} *</label>
           <select v-model.number="form.id_empresa" required class="w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white">
-            <option :value="0">Selecciona una empresa</option>
+            <option :value="0">{{ t('bovedaPage.selectCompany') }}</option>
             <option v-for="empresa in empresas" :key="empresa.id_cliente" :value="empresa.id_cliente">{{ empresa.nombre }}</option>
           </select>
         </div>
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">Nombre *</label>
-          <input v-model="form.nombre" type="text" required class="w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" placeholder="Servidor, Portal SAT, ERP cliente..." />
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ t('bovedaPage.name') }} *</label>
+          <input v-model="form.nombre" type="text" required class="w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" :placeholder="t('bovedaPage.namePlaceholder')" />
         </div>
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">Usuario</label>
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ t('bovedaPage.username') }}</label>
           <input v-model="form.usuario_acceso" type="text" class="w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
         </div>
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">Contraseña *</label>
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ t('bovedaPage.password') }} *</label>
           <input v-model="form.password_plain" type="password" required class="w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
         </div>
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">URL</label>
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">URL</label>
           <input v-model="form.url" type="url" class="w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
         </div>
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">Notas</label>
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ t('ventas.notes') }}</label>
           <textarea v-model="form.notas" rows="2" class="w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none resize-none" />
         </div>
         <div class="flex justify-end gap-3 pt-2">
-          <Button variant="secondary" type="button" @click="showCreateModal = false; resetForm()">Cancelar</Button>
-          <Button type="submit" :loading="saving">Guardar</Button>
+          <Button variant="secondary" type="button" @click="showCreateModal = false; resetForm()">{{ t('common.cancel') }}</Button>
+          <Button type="submit" :loading="saving">{{ t('common.save') }}</Button>
         </div>
       </form>
     </Modal>
 
-    <Modal :open="showRevealModal" title="Contraseña revelada" size="sm" @close="closeRevealModal">
+    <Modal :open="showRevealModal" :title="t('bovedaPage.revealedPassword')" size="sm" @close="closeRevealModal">
       <div class="space-y-3" v-if="revealData">
         <p class="text-xs text-gray-500">{{ revealData.nombre }} · {{ getEmpresaNombre(revealData.id_empresa) }}</p>
         <div class="bg-gray-100 border border-gray-200 rounded-lg px-3 py-2 font-mono text-sm break-all">
           {{ revealData.password_plain }}
         </div>
-        <p class="text-xs text-amber-700">Este acceso queda registrado en auditoría.</p>
+        <p class="text-xs text-amber-700">{{ t('bovedaPage.auditNotice') }}</p>
       </div>
     </Modal>
   </div>

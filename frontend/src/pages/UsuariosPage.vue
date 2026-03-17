@@ -7,9 +7,11 @@ import Badge from '../components/ui/Badge.vue'
 import Button from '../components/ui/Button.vue'
 import Modal from '../components/ui/Modal.vue'
 import { useUsuarioStore } from '../stores/usuarios'
+import { useI18n } from 'vue-i18n'
 import type { Usuario, RolEnum } from '../types'
 
 const usuarioStore = useUsuarioStore()
+const { t } = useI18n()
 
 const searchQuery = ref('')
 const showCreateModal = ref(false)
@@ -36,20 +38,8 @@ const roles: RolEnum[] = [
   'desarrollador',
 ]
 
-const roleLabels: Record<RolEnum, string> = {
-  superadmin: 'Superadmin',
-  admin: 'Administrador',
-  jefe_tecnologias: 'Jefe de Tecnologías',
-  jefe_taller: 'Jefe de Taller',
-  jefe_administrativo: 'Jefe Administrativo',
-  jefe_contable: 'Jefe Contable',
-  ejecutivo: 'Ejecutivo',
-  administrativo_contable: 'Administrativo Contable',
-  tecnico: 'Técnico',
-  tecnico_taller: 'Técnico de Taller',
-  agente_soporte_l1: 'Agente Soporte L1',
-  agente_soporte_l2: 'Agente Soporte L2',
-  desarrollador: 'Desarrollador',
+function roleLabel(role: RolEnum): string {
+  return t(`roles.${role}`)
 }
 
 interface AccessOption {
@@ -233,7 +223,7 @@ const columns = [
   { key: 'username', label: 'Usuario' },
   { key: 'nombre_completo', label: 'Nombre Completo' },
   { key: 'email', label: 'Email' },
-  { key: 'rol', label: 'Rol', class: 'w-40' },
+  { key: 'rol', label: t('usuarios.role'), class: 'w-40' },
   { key: 'activo', label: 'Estado', class: 'w-24' },
   { key: 'acciones', label: '', class: 'w-20' },
 ]
@@ -378,13 +368,13 @@ async function handleDelete(): Promise<void> {
           <UserCog class="text-white" :size="22" />
         </div>
         <div>
-          <h1 class="text-2xl font-bold text-gray-900">Gestión de Usuarios</h1>
-          <p class="text-gray-500 text-sm mt-1">Administración de cuentas y roles del sistema (permisos, vistas y herramientas por casillas)</p>
+          <h1 class="text-2xl font-bold text-gray-900 dark:text-gray-100">{{ t('usuarios.title') }}</h1>
+          <p class="text-gray-500 dark:text-gray-400 text-sm mt-1">{{ t('usuarios.subtitle') }}</p>
         </div>
       </div>
       <Button @click="showCreateModal = true">
         <Plus :size="16" class="mr-2" />
-        Nuevo Usuario
+        {{ t('usuarios.newUser') }}
       </Button>
     </div>
 
@@ -396,7 +386,7 @@ async function handleDelete(): Promise<void> {
           <input
             v-model="searchQuery"
             type="text"
-            placeholder="Buscar por usuario, nombre o email..."
+            :placeholder="t('usuarios.searchPlaceholder')"
             class="w-full pl-9 pr-4 py-2 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
           />
         </div>
@@ -418,12 +408,12 @@ async function handleDelete(): Promise<void> {
             'default'
           ">
             <ShieldCheck v-if="value === 'superadmin' || value === 'admin'" :size="11" class="mr-1" />
-            {{ roleLabels[value as RolEnum] ?? value }}
+            {{ roleLabel(value as RolEnum) }}
           </Badge>
         </template>
         <template #activo="{ value }">
           <Badge :variant="value ? 'success' : 'default'">
-            {{ value ? 'Activo' : 'Inactivo' }}
+            {{ value ? t('usuarios.active') : t('usuarios.inactive') }}
           </Badge>
         </template>
         <template #nombre_completo="{ value }">
@@ -453,7 +443,7 @@ async function handleDelete(): Promise<void> {
                 <tr>
                   <th class="text-left px-3 py-2 font-medium text-gray-600 w-72">Elemento</th>
                   <th v-for="rol in roles" :key="`${area}-${rol}`" class="text-center px-3 py-2 font-medium text-gray-600">
-                    {{ roleLabels[rol] }}
+                    {{ roleLabel(rol) }}
                   </th>
                 </tr>
               </thead>
@@ -530,7 +520,7 @@ async function handleDelete(): Promise<void> {
                 v-model="createForm.rol"
                 class="w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white"
               >
-                <option v-for="rol in roles" :key="rol" :value="rol">{{ roleLabels[rol] }}</option>
+                <option v-for="rol in roles" :key="rol" :value="rol">{{ roleLabel(rol) }}</option>
               </select>
               <Button type="button" variant="secondary" @click="applyCreateRolePreset">Aplicar preset</Button>
             </div>
@@ -621,7 +611,7 @@ async function handleDelete(): Promise<void> {
                 v-model="editForm.rol"
                 class="w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white"
               >
-                <option v-for="rol in roles" :key="rol" :value="rol">{{ roleLabels[rol] }}</option>
+                <option v-for="rol in roles" :key="rol" :value="rol">{{ roleLabel(rol) }}</option>
               </select>
               <Button type="button" variant="secondary" @click="applyEditRolePreset">Aplicar preset</Button>
             </div>

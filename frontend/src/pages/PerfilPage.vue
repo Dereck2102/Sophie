@@ -6,9 +6,11 @@ import Button from '../components/ui/Button.vue'
 import ImageUpload from '../components/ui/ImageUpload.vue'
 import { useAuthStore } from '../stores/auth'
 import api from '../services/api'
+import { useI18n } from 'vue-i18n'
 import type { EmailVerificationTokenResponse, RecoveryCodesResponse, Usuario } from '../types'
 
 const auth = useAuthStore()
+const { t, locale } = useI18n()
 
 // Profile form
 const profileForm = ref({
@@ -41,11 +43,9 @@ const recoveryCodesError = ref<string | null>(null)
 const recoveryCodesGeneratedAt = ref<string | null>(null)
 const recoveryPassword = ref('')
 
-const roleLabels: Record<string, string> = {
-  superadmin: 'Superadministrador',
-  ejecutivo: 'Ejecutivo',
-  administrativo_contable: 'Administrativo Contable',
-  tecnico: 'Técnico',
+function roleLabel(role?: string): string {
+  if (!role) return ''
+  return t(`roles.${role}`)
 }
 
 const userInitials = computed(() => {
@@ -126,10 +126,10 @@ async function requestVerificationToken(): Promise<void> {
     const { data } = await api.post<EmailVerificationTokenResponse>('/api/v1/auth/email/verification-token')
     verificationToken.value = data.token
     verificationTokenExpires.value = data.expires_at
-    verificationSuccess.value = 'Token generado correctamente'
+    verificationSuccess.value = t('perfil.tokenGenerated')
   } catch (e: unknown) {
     const err = e as { response?: { data?: { detail?: string } } }
-    verificationError.value = err.response?.data?.detail ?? 'No se pudo generar el token'
+    verificationError.value = err.response?.data?.detail ?? t('perfil.tokenGenerateError')
   } finally {
     verificationLoading.value = false
   }
@@ -137,7 +137,7 @@ async function requestVerificationToken(): Promise<void> {
 
 async function verifyEmailToken(): Promise<void> {
   if (!verificationToken.value) {
-    verificationError.value = 'Ingresa un token de verificación'
+    verificationError.value = t('perfil.enterVerificationToken')
     return
   }
   verificationLoading.value = true
@@ -147,10 +147,10 @@ async function verifyEmailToken(): Promise<void> {
     await api.post('/api/v1/auth/email/verify', { token: verificationToken.value })
     await auth.fetchMe()
     profileForm.value.email = auth.user?.email ?? profileForm.value.email
-    verificationSuccess.value = 'Correo verificado correctamente'
+    verificationSuccess.value = t('perfil.emailVerifiedOk')
   } catch (e: unknown) {
     const err = e as { response?: { data?: { detail?: string } } }
-    verificationError.value = err.response?.data?.detail ?? 'No se pudo verificar el token'
+    verificationError.value = err.response?.data?.detail ?? t('perfil.emailVerifyError')
   } finally {
     verificationLoading.value = false
   }
@@ -158,7 +158,7 @@ async function verifyEmailToken(): Promise<void> {
 
 async function rotateRecoveryCodes(): Promise<void> {
   if (!recoveryPassword.value) {
-    recoveryCodesError.value = 'Ingresa tu contraseña actual para generar códigos de recuperación'
+    recoveryCodesError.value = t('perfil.enterCurrentPasswordForRecoveryCodes')
     return
   }
   recoveryCodesLoading.value = true
@@ -172,7 +172,7 @@ async function rotateRecoveryCodes(): Promise<void> {
     recoveryPassword.value = ''
   } catch (e: unknown) {
     const err = e as { response?: { data?: { detail?: string } } }
-    recoveryCodesError.value = err.response?.data?.detail ?? 'No se pudieron generar los códigos'
+    recoveryCodesError.value = err.response?.data?.detail ?? t('perfil.recoveryCodesError')
   } finally {
     recoveryCodesLoading.value = false
   }
@@ -197,46 +197,46 @@ async function rotateRecoveryCodes(): Promise<void> {
           {{ auth.user?.nombre_completo ?? auth.user?.username }}
         </h1>
         <p class="break-words text-gray-500 text-sm">
-          {{ roleLabels[auth.user?.rol ?? ''] ?? auth.user?.rol }} ·
+          {{ roleLabel(auth.user?.rol) || auth.user?.rol }} ·
           {{ auth.user?.email }}
         </p>
       </div>
     </div>
 
     <!-- Profile Information -->
-    <Card title="Información del Perfil">
+    <Card :title="t('perfil.profileInfo')">
       <form @submit.prevent="saveProfile" class="space-y-4">
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
-            <label class="block text-sm font-medium text-gray-700 mb-1">Usuario</label>
+            <label class="block text-sm font-medium text-gray-700 mb-1">{{ t('perfil.username') }}</label>
             <input
               :value="auth.user?.username"
               type="text"
               disabled
               class="w-full px-3 py-2 text-sm border rounded-lg bg-gray-50 text-gray-400 cursor-not-allowed"
             />
-            <p class="text-xs text-gray-400 mt-1">El nombre de usuario no se puede cambiar</p>
+            <p class="text-xs text-gray-400 mt-1">{{ t('perfil.usernameNoChange') }}</p>
           </div>
           <div>
-            <label class="block text-sm font-medium text-gray-700 mb-1">Rol</label>
+            <label class="block text-sm font-medium text-gray-700 mb-1">{{ t('usuarios.role') }}</label>
             <input
-              :value="roleLabels[auth.user?.rol ?? ''] ?? auth.user?.rol"
+              :value="roleLabel(auth.user?.rol) || auth.user?.rol"
               type="text"
               disabled
               class="w-full px-3 py-2 text-sm border rounded-lg bg-gray-50 text-gray-400 cursor-not-allowed"
             />
           </div>
           <div class="sm:col-span-2">
-            <label class="block text-sm font-medium text-gray-700 mb-1">Nombre Completo</label>
+            <label class="block text-sm font-medium text-gray-700 mb-1">{{ t('perfil.fullName') }}</label>
             <input
               v-model="profileForm.nombre_completo"
               type="text"
               class="w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-              placeholder="Tu nombre completo"
+              :placeholder="t('perfil.fullNamePlaceholder')"
             />
           </div>
           <div class="sm:col-span-2">
-            <label class="block text-sm font-medium text-gray-700 mb-1">Email *</label>
+            <label class="block text-sm font-medium text-gray-700 mb-1">{{ t('perfil.email') }} *</label>
             <input
               v-model="profileForm.email"
               type="email"
@@ -245,7 +245,7 @@ async function rotateRecoveryCodes(): Promise<void> {
             />
           </div>
           <div class="sm:col-span-2">
-            <label class="block text-sm font-medium text-gray-700 mb-1">Teléfono de recuperación</label>
+            <label class="block text-sm font-medium text-gray-700 mb-1">{{ t('perfil.recoveryPhone') }}</label>
             <input
               v-model="profileForm.telefono_recuperacion"
               type="tel"
@@ -253,13 +253,13 @@ async function rotateRecoveryCodes(): Promise<void> {
               class="w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
               placeholder="+593..."
             />
-            <p class="text-xs text-gray-400 mt-1">Se usa para recuperación de cuenta y verificación futura.</p>
+            <p class="text-xs text-gray-400 mt-1">{{ t('perfil.recoveryPhoneHelp') }}</p>
           </div>
           <div class="sm:col-span-2">
-            <label class="block text-sm font-medium text-gray-700 mb-1">Foto de Perfil</label>
+            <label class="block text-sm font-medium text-gray-700 mb-1">{{ t('perfil.photo') }}</label>
             <ImageUpload
               v-model="profileForm.foto_perfil_url"
-              label="Foto de perfil"
+              :label="t('perfil.photo')"
               image-type="profile"
               :target-width="360"
               preview-class="w-24 h-24 sm:w-32 sm:h-32 rounded-xl object-cover"
@@ -270,7 +270,7 @@ async function rotateRecoveryCodes(): Promise<void> {
 
         <div v-if="profileSuccess" class="flex items-center gap-2 text-sm text-green-700 bg-green-50 px-3 py-2 rounded-lg">
           <CheckCircle :size="16" />
-          Perfil actualizado correctamente
+          {{ t('perfil.profileSaved') }}
         </div>
         <div v-if="profileError" class="flex items-center gap-2 text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg">
           <AlertCircle :size="16" />
@@ -280,18 +280,18 @@ async function rotateRecoveryCodes(): Promise<void> {
         <div class="flex justify-end">
           <Button type="submit" :loading="profileSaving">
             <UserCircle :size="16" class="mr-2" />
-            Guardar Perfil
+            {{ t('perfil.saveProfile') }}
           </Button>
         </div>
       </form>
     </Card>
 
     <!-- Change Password -->
-    <Card title="Cambiar Contraseña">
+    <Card :title="t('perfil.changePassword')">
       <form @submit.prevent="changePassword" class="space-y-4">
         <div class="space-y-4">
           <div>
-            <label class="block text-sm font-medium text-gray-700 mb-1">Contraseña Actual *</label>
+            <label class="block text-sm font-medium text-gray-700 mb-1">{{ t('perfil.currentPassword') }} *</label>
             <input
               v-model="passwordForm.current_password"
               type="password"
@@ -302,7 +302,7 @@ async function rotateRecoveryCodes(): Promise<void> {
           </div>
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label class="block text-sm font-medium text-gray-700 mb-1">Nueva Contraseña *</label>
+              <label class="block text-sm font-medium text-gray-700 mb-1">{{ t('perfil.newPassword') }} *</label>
               <input
                 v-model="passwordForm.new_password"
                 type="password"
@@ -311,10 +311,10 @@ async function rotateRecoveryCodes(): Promise<void> {
                 autocomplete="new-password"
                 class="w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
               />
-              <p class="text-xs text-gray-400 mt-1">Mínimo 8 caracteres</p>
+              <p class="text-xs text-gray-400 mt-1">{{ t('perfil.passwordMin') }}</p>
             </div>
             <div>
-              <label class="block text-sm font-medium text-gray-700 mb-1">Confirmar Contraseña *</label>
+              <label class="block text-sm font-medium text-gray-700 mb-1">{{ t('perfil.confirmPassword') }} *</label>
               <input
                 v-model="passwordForm.confirm_password"
                 type="password"
@@ -329,7 +329,7 @@ async function rotateRecoveryCodes(): Promise<void> {
 
         <div v-if="passwordSuccess" class="flex items-center gap-2 text-sm text-green-700 bg-green-50 px-3 py-2 rounded-lg">
           <CheckCircle :size="16" />
-          Contraseña cambiada correctamente
+          {{ t('perfil.passwordSaved') }}
         </div>
         <div v-if="passwordError" class="flex items-center gap-2 text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg">
           <AlertCircle :size="16" />
@@ -339,46 +339,46 @@ async function rotateRecoveryCodes(): Promise<void> {
         <div class="flex justify-end">
           <Button type="submit" :loading="passwordSaving">
             <Lock :size="16" class="mr-2" />
-            Cambiar Contraseña
+            {{ t('perfil.changePassword') }}
           </Button>
         </div>
       </form>
     </Card>
 
     <!-- Account Info -->
-    <Card title="Información de la Cuenta">
+    <Card :title="t('perfil.accountInfo')">
       <div class="space-y-3 text-sm">
         <div class="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between py-2 border-b border-gray-50">
-          <span class="text-gray-500">Miembro desde</span>
+          <span class="text-gray-500">{{ t('perfil.memberSince') }}</span>
           <span class="font-medium text-gray-800">
-            {{ auth.user?.fecha_creacion ? new Date(auth.user.fecha_creacion).toLocaleDateString('es-PE', { year: 'numeric', month: 'long', day: 'numeric' }) : '—' }}
+            {{ auth.user?.fecha_creacion ? new Date(auth.user.fecha_creacion).toLocaleDateString(locale === 'es' ? 'es-EC' : 'en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : '—' }}
           </span>
         </div>
         <div class="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between py-2 border-b border-gray-50">
-          <span class="text-gray-500">Autenticación de dos factores (MFA)</span>
+          <span class="text-gray-500">{{ t('perfil.mfa') }}</span>
           <span :class="auth.user?.mfa_habilitado ? 'text-green-600 font-medium' : 'text-gray-400'">
-            {{ auth.user?.mfa_habilitado ? 'Activado' : 'Desactivado' }}
+            {{ auth.user?.mfa_habilitado ? t('common.enabled') : t('common.disabled') }}
           </span>
         </div>
         <div class="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between py-2 border-b border-gray-50">
-          <span class="text-gray-500">Teléfono recuperación</span>
+          <span class="text-gray-500">{{ t('perfil.recoveryPhone') }}</span>
           <span :class="auth.user?.telefono_recuperacion ? 'text-green-600 font-medium' : 'text-gray-400'">
-            {{ auth.user?.telefono_recuperacion ? auth.user.telefono_recuperacion : 'No configurado' }}
+            {{ auth.user?.telefono_recuperacion ? auth.user.telefono_recuperacion : t('common.notConfigured') }}
           </span>
         </div>
         <div class="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between py-2">
-          <span class="text-gray-500">Estado de cuenta</span>
+          <span class="text-gray-500">{{ t('perfil.accountStatus') }}</span>
           <span :class="auth.user?.activo ? 'text-green-600 font-medium' : 'text-red-500 font-medium'">
-            {{ auth.user?.activo ? 'Activa' : 'Inactiva' }}
+            {{ auth.user?.activo ? t('common.activeF') : t('common.inactiveF') }}
           </span>
         </div>
       </div>
       <div v-if="!auth.user?.mfa_habilitado" class="mt-4 p-3 bg-amber-50 border border-amber-200 rounded-lg flex items-start gap-3">
         <Bell class="text-amber-500 shrink-0 mt-0.5" :size="16" />
         <div>
-          <p class="text-sm font-medium text-amber-800">Aumenta la seguridad de tu cuenta</p>
+          <p class="text-sm font-medium text-amber-800">{{ t('perfil.improveSecurity') }}</p>
           <p class="text-xs text-amber-700 mt-1">
-            Activa la autenticación de dos factores (MFA) desde el endpoint <code class="bg-amber-100 px-1 rounded">/api/v1/auth/mfa/setup</code> para proteger mejor tu cuenta.
+            {{ t('perfil.mfaSetupHint') }} <code class="bg-amber-100 px-1 rounded">/api/v1/auth/mfa/setup</code>.
           </p>
         </div>
       </div>
@@ -387,50 +387,50 @@ async function rotateRecoveryCodes(): Promise<void> {
         <div class="flex items-start gap-2 text-blue-800">
           <ShieldCheck :size="16" class="mt-0.5" />
           <div>
-            <p class="text-sm font-medium">Verificación de correo pendiente</p>
-            <p class="text-xs text-blue-700">Genera un token y confírmalo para validar tu correo en la plataforma.</p>
+            <p class="text-sm font-medium">{{ t('perfil.emailVerificationPending') }}</p>
+            <p class="text-xs text-blue-700">{{ t('perfil.emailVerificationHint') }}</p>
           </div>
         </div>
         <div class="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-2">
           <Button variant="secondary" :loading="verificationLoading" @click="requestVerificationToken">
-            Generar token
+            {{ t('perfil.generateToken') }}
           </Button>
           <input
             v-model="verificationToken"
             type="text"
-            placeholder="Pega o escribe token"
+            :placeholder="t('perfil.tokenPlaceholder')"
             class="w-full sm:w-auto px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none sm:min-w-[250px]"
           />
-          <Button :loading="verificationLoading" @click="verifyEmailToken">Verificar</Button>
+          <Button :loading="verificationLoading" @click="verifyEmailToken">{{ t('perfil.verify') }}</Button>
         </div>
         <p v-if="verificationTokenExpires" class="text-xs text-blue-700">
-          Expira: {{ new Date(verificationTokenExpires).toLocaleString('es-EC') }}
+          {{ t('perfil.expires') }}: {{ new Date(verificationTokenExpires).toLocaleString(locale === 'es' ? 'es-EC' : 'en-US') }}
         </p>
         <p v-if="verificationSuccess" class="text-xs text-green-700 bg-green-50 border border-green-200 rounded px-2 py-1">{{ verificationSuccess }}</p>
         <p v-if="verificationError" class="text-xs text-red-700 bg-red-50 border border-red-200 rounded px-2 py-1">{{ verificationError }}</p>
       </div>
       <div v-else class="mt-4 p-3 bg-green-50 border border-green-200 rounded-lg text-sm text-green-700">
-        Correo verificado correctamente.
+        {{ t('perfil.emailVerifiedOk') }}
       </div>
 
       <div v-if="auth.user?.mfa_habilitado" class="mt-4 p-3 bg-slate-50 border border-slate-200 rounded-lg space-y-3">
         <div>
-          <p class="text-sm font-medium text-slate-800">Códigos de recuperación MFA</p>
-          <p class="text-xs text-slate-600 mt-1">Guárdalos offline. Cada código sirve una sola vez cuando no tengas tu app TOTP.</p>
+          <p class="text-sm font-medium text-slate-800">{{ t('perfil.recoveryCodes') }}</p>
+          <p class="text-xs text-slate-600 mt-1">{{ t('perfil.recoveryCodesHint') }}</p>
         </div>
         <div class="flex flex-col sm:flex-row gap-2">
           <input
             v-model="recoveryPassword"
             type="password"
             autocomplete="current-password"
-            placeholder="Confirma tu contraseña actual"
+            :placeholder="t('perfil.confirmCurrentPassword')"
             class="w-full sm:w-auto sm:min-w-[280px] px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
           />
-          <Button :loading="recoveryCodesLoading" @click="rotateRecoveryCodes">Generar códigos</Button>
+          <Button :loading="recoveryCodesLoading" @click="rotateRecoveryCodes">{{ t('perfil.generateCodes') }}</Button>
         </div>
         <p v-if="recoveryCodesError" class="text-xs text-red-700 bg-red-50 border border-red-200 rounded px-2 py-1">{{ recoveryCodesError }}</p>
         <div v-if="recoveryCodes.length > 0" class="bg-white border border-slate-200 rounded-lg p-3">
-          <p class="text-xs text-slate-500 mb-2">Generados: {{ recoveryCodesGeneratedAt ? new Date(recoveryCodesGeneratedAt).toLocaleString('es-EC') : 'ahora' }}</p>
+          <p class="text-xs text-slate-500 mb-2">{{ t('perfil.generated') }}: {{ recoveryCodesGeneratedAt ? new Date(recoveryCodesGeneratedAt).toLocaleString(locale === 'es' ? 'es-EC' : 'en-US') : t('common.now') }}</p>
           <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
             <code v-for="code in recoveryCodes" :key="code" class="px-2 py-1 rounded bg-slate-100 text-slate-800 text-xs text-center">{{ code }}</code>
           </div>
@@ -438,7 +438,7 @@ async function rotateRecoveryCodes(): Promise<void> {
       </div>
     </Card>
 
-    <Card v-if="isAdminArea" title="Herramientas de Administración">
+    <Card v-if="isAdminArea" :title="t('perfil.adminTools')">
       <div class="grid gap-3 sm:grid-cols-3">
         <router-link
           v-for="shortcut in visibleAdminShortcuts"

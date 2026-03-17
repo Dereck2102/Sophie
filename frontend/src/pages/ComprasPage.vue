@@ -8,11 +8,13 @@ import Button from '../components/ui/Button.vue'
 import Modal from '../components/ui/Modal.vue'
 import { useInventarioStore } from '../stores/inventario'
 import { useAuthStore } from '../stores/auth'
+import { useI18n } from 'vue-i18n'
 import type { Inventario, InventarioSerie, EstadoSerie } from '../types'
 import { formatUSD } from '../utils/currency'
 
 const inventarioStore = useInventarioStore()
 const auth = useAuthStore()
+const { t } = useI18n()
 
 const searchQuery = ref('')
 const showCreateModal = ref(false)
@@ -285,13 +287,13 @@ function resetCreateForm(): void {
           <Package class="text-white" :size="22" />
         </div>
         <div>
-          <h1 class="text-2xl font-bold text-gray-900">Compras & Inventario</h1>
-          <p class="text-gray-500 text-sm mt-1">Control de stock y catálogo de productos</p>
+          <h1 class="text-2xl font-bold text-gray-900 dark:text-gray-100">{{ t('compras.title') }}</h1>
+          <p class="text-gray-500 dark:text-gray-400 text-sm mt-1">{{ t('compras.subtitle') }}</p>
         </div>
       </div>
       <Button v-if="canEdit" @click="showCreateModal = true">
         <Plus :size="16" class="mr-2" />
-        Nuevo Producto
+        {{ t('comprasPage.newProduct') }}
       </Button>
     </div>
 
@@ -370,12 +372,12 @@ function resetCreateForm(): void {
           <input
             v-model="searchQuery"
             type="text"
-            placeholder="Buscar por nombre o código..."
+            :placeholder="t('comprasPage.searchByNameOrCode')"
             class="w-full pl-9 pr-4 py-2 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
           />
         </div>
         <select v-model="filterCategoria" class="px-3 py-2 text-sm border border-gray-200 rounded-lg bg-white focus:ring-2 focus:ring-blue-500 outline-none">
-          <option value="all">Todas las categorías</option>
+          <option value="all">{{ t('comprasPage.allCategories') }}</option>
           <option v-for="cat in categorias" :key="cat" :value="cat" class="capitalize">{{ cat }}</option>
         </select>
         <p class="text-xs text-gray-400 self-center">{{ filteredRows.length }} productos</p>
@@ -427,7 +429,7 @@ function resetCreateForm(): void {
     </Card>
 
     <!-- Create Product Modal -->
-    <Modal :open="showCreateModal" title="Nuevo Producto" size="md" @close="showCreateModal = false; resetCreateForm()">
+    <Modal :open="showCreateModal" :title="t('comprasPage.newProduct')" size="md" @close="showCreateModal = false; resetCreateForm()">
       <form @submit.prevent="handleCreate" class="space-y-4">
         <div class="grid grid-cols-2 gap-4">
           <div>
@@ -473,8 +475,8 @@ function resetCreateForm(): void {
         </div>
         <p v-if="formError" class="text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg">{{ formError }}</p>
         <div class="flex justify-end gap-3 pt-2">
-          <Button variant="secondary" type="button" @click="showCreateModal = false; resetCreateForm()">Cancelar</Button>
-          <Button type="submit" :loading="saving">Crear Producto</Button>
+          <Button variant="secondary" type="button" @click="showCreateModal = false; resetCreateForm()">{{ t('common.cancel') }}</Button>
+          <Button type="submit" :loading="saving">{{ t('comprasPage.createProduct') }}</Button>
         </div>
       </form>
     </Modal>
@@ -535,21 +537,21 @@ function resetCreateForm(): void {
             <Trash2 :size="14" class="mr-2" />
             Eliminar
           </Button>
-          <Button variant="secondary" type="button" @click="showEditModal = false; selectedProducto = null">Cancelar</Button>
-          <Button type="submit" :loading="saving">Guardar Cambios</Button>
+          <Button variant="secondary" type="button" @click="showEditModal = false; selectedProducto = null">{{ t('common.cancel') }}</Button>
+          <Button type="submit" :loading="saving">{{ t('comprasPage.saveChanges') }}</Button>
         </div>
       </form>
     </Modal>
 
-    <Modal :open="showDeleteModal" title="Eliminar Producto" size="sm" @close="showDeleteModal = false; formError = null">
+    <Modal :open="showDeleteModal" :title="t('comprasPage.deleteProduct')" size="sm" @close="showDeleteModal = false; formError = null">
       <div class="space-y-4">
         <p class="text-sm text-gray-600">
           Vas a eliminar el producto <strong>{{ selectedProducto?.nombre }}</strong> del catálogo.
         </p>
         <p v-if="formError" class="text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg">{{ formError }}</p>
         <div class="flex justify-end gap-3">
-          <Button variant="secondary" type="button" @click="showDeleteModal = false">Cancelar</Button>
-          <Button :loading="deleting" @click="handleDelete">Eliminar Producto</Button>
+          <Button variant="secondary" type="button" @click="showDeleteModal = false">{{ t('common.cancel') }}</Button>
+          <Button :loading="deleting" @click="handleDelete">{{ t('comprasPage.deleteProduct') }}</Button>
         </div>
       </div>
     </Modal>

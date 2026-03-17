@@ -9,4 +9,38 @@
   .dark body {
     @apply bg-gray-950 text-gray-100;
   }
+
+  input,
+  select,
+  textarea {
+    @apply bg-white text-gray-900 border-gray-300;
+  }
+
+  .dark input,
+  .dark select,
+  .dark textarea {
+    @apply bg-gray-800 text-gray-100 border-gray-600;
+  }
+
+  input::placeholder,
+  textarea::placeholder {
+    @apply text-gray-400;
+  }
+
+  .dark input::placeholder,
+  .dark textarea::placeholder {
+    @apply text-gray-500;
+  }
+
+  input:disabled,
+  select:disabled,
+  textarea:disabled {
+    @apply bg-gray-100 text-gray-500;
+  }
+
+  .dark input:disabled,
+  .dark select:disabled,
+  .dark textarea:disabled {
+    @apply bg-gray-700 text-gray-400;
+  }
 }

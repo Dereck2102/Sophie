@@ -109,16 +109,16 @@ function notificationIcon(severity: 'info' | 'warning' | 'critical') {
       <div v-if="showNotifications" class="absolute right-0 mt-2 w-96 max-w-[calc(100vw-2rem)] bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl shadow-xl z-50 overflow-hidden">
         <div class="px-4 py-3 border-b border-gray-100 dark:border-gray-700 flex items-center justify-between">
           <div>
-            <p class="text-sm font-semibold text-gray-800 dark:text-gray-100">Notificaciones</p>
-            <p class="text-xs text-gray-500 dark:text-gray-400">Alertas operativas del ERP</p>
+            <p class="text-sm font-semibold text-gray-800 dark:text-gray-100">{{ t('topbar.notifications') }}</p>
+            <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('topbar.erpAlerts') }}</p>
           </div>
-          <button @click="notificationStore.fetchNotifications(true)" class="text-xs text-blue-600 hover:text-blue-700">Actualizar</button>
+          <button @click="notificationStore.fetchNotifications(true)" class="text-xs text-blue-600 hover:text-blue-700">{{ t('topbar.refresh') }}</button>
         </div>
         <div v-if="notificationStore.loading" class="px-4 py-6 text-sm text-gray-500 dark:text-gray-400">
-          Cargando alertas...
+          {{ t('topbar.loadingAlerts') }}
         </div>
         <div v-else-if="notificationStore.items.length === 0" class="px-4 py-6 text-sm text-gray-500 dark:text-gray-400">
-          No hay alertas pendientes.
+          {{ t('topbar.noAlerts') }}
         </div>
         <div v-else class="max-h-96 overflow-y-auto divide-y divide-gray-100 dark:divide-gray-800">
           <button

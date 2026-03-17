@@ -5,6 +5,7 @@ import Card from '../components/ui/Card.vue'
 import Button from '../components/ui/Button.vue'
 import ImageUpload from '../components/ui/ImageUpload.vue'
 import api from '../services/api'
+import { useI18n } from 'vue-i18n'
 import type { AuthChannelsStatus, BackupUsuariosPayload, ConfiguracionSistema } from '../types'
 
 const loading = ref(true)
@@ -15,6 +16,7 @@ const testingEmail = ref(false)
 const testingSms = ref(false)
 const success = ref<string | null>(null)
 const error = ref<string | null>(null)
+const { t } = useI18n()
 
 const channelStatus = ref<AuthChannelsStatus | null>(null)
 const testEmail = ref('')
@@ -57,7 +59,7 @@ async function loadSettings(): Promise<void> {
     form.value = data
   } catch (e: unknown) {
     const err = e as { response?: { data?: { detail?: string } } }
-    error.value = err.response?.data?.detail ?? 'No se pudo cargar la configuración'
+    error.value = err.response?.data?.detail ?? t('configPage.loadError')
   } finally {
     loading.value = false
   }
@@ -82,11 +84,11 @@ async function saveSettings(): Promise<void> {
   try {
     const { data } = await api.patch<ConfiguracionSistema>('/api/v1/admin/settings', form.value)
     form.value = data
-    success.value = 'Configuración guardada correctamente'
+    success.value = t('configPage.saved')
     await loadChannelStatus()
   } catch (e: unknown) {
     const err = e as { response?: { data?: { detail?: string } } }
-    error.value = err.response?.data?.detail ?? 'No se pudo guardar la configuración'
+    error.value = err.response?.data?.detail ?? t('configPage.saveError')
   } finally {
     saving.value = false
   }
@@ -104,7 +106,7 @@ async function runEmailTest(): Promise<void> {
     await loadChannelStatus()
   } catch (e: unknown) {
     const err = e as { response?: { data?: { detail?: string } } }
-    error.value = err.response?.data?.detail ?? 'No se pudo enviar correo de prueba'
+    error.value = err.response?.data?.detail ?? t('configPage.testEmailError')
   } finally {
     testingEmail.value = false
   }
@@ -112,7 +114,7 @@ async function runEmailTest(): Promise<void> {
 
 async function runSmsTest(): Promise<void> {
   if (!testPhone.value.trim()) {
-    error.value = 'Ingresa un número para probar SMS'
+    error.value = t('configPage.enterSmsNumber')
     return
   }
   testingSms.value = true
@@ -126,7 +128,7 @@ async function runSmsTest(): Promise<void> {
     await loadChannelStatus()
   } catch (e: unknown) {
     const err = e as { response?: { data?: { detail?: string } } }
-    error.value = err.response?.data?.detail ?? 'No se pudo enviar SMS de prueba'
+    error.value = err.response?.data?.detail ?? t('configPage.testSmsError')
   } finally {
     testingSms.value = false
   }
@@ -144,10 +146,10 @@ async function downloadBackup(): Promise<void> {
     link.download = `sophie-backup-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}.json`
     link.click()
     URL.revokeObjectURL(url)
-    success.value = 'Backup descargado correctamente'
+    success.value = t('configPage.backupDownloaded')
   } catch (e: unknown) {
     const err = e as { response?: { data?: { detail?: string } } }
-    error.value = err.response?.data?.detail ?? 'No se pudo descargar el backup'
+    error.value = err.response?.data?.detail ?? t('configPage.backupDownloadError')
   }
 }
 
@@ -162,10 +164,10 @@ async function handleRestore(event: Event): Promise<void> {
     const raw = await file.text()
     const payload = JSON.parse(raw)
     await api.post('/api/v1/admin/restore/usuarios', payload)
-    success.value = 'Backup restaurado correctamente'
+    success.value = t('configPage.backupRestored')
   } catch (e: unknown) {
     const err = e as { response?: { data?: { detail?: string } } }
-    error.value = err.response?.data?.detail ?? 'No se pudo restaurar el backup'
+    error.value = err.response?.data?.detail ?? t('configPage.backupRestoreError')
   } finally {
     restoring.value = false
     input.value = ''
@@ -181,8 +183,8 @@ onMounted(async () => {
 <template>
   <div class="space-y-6 max-w-5xl">
     <div>
-      <h1 class="text-2xl font-bold text-gray-900 dark:text-white">Configuración Global</h1>
-      <p class="text-gray-500 dark:text-gray-400 text-sm mt-1">Branding, seguridad y continuidad operativa de tu empresa.</p>
+      <h1 class="text-2xl font-bold text-gray-900 dark:text-white">{{ t('configPage.globalTitle') }}</h1>
+      <p class="text-gray-500 dark:text-gray-400 text-sm mt-1">{{ t('configPage.globalSubtitle') }}</p>
     </div>
 
     <div v-if="success" class="flex items-center gap-2 bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-xl text-sm">
@@ -192,23 +194,23 @@ onMounted(async () => {
       {{ error }}
     </div>
 
-    <Card title="Identidad y Branding">
-      <div v-if="loading" class="text-sm text-gray-500">Cargando...</div>
+    <Card :title="t('configPage.brandingTitle')">
+      <div v-if="loading" class="text-sm text-gray-500 dark:text-gray-400">{{ t('common.loading') }}</div>
       <div v-else class="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">Nombre de la instancia</label>
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ t('configPage.instanceName') }}</label>
           <input v-model="form.nombre_instancia" type="text" class="w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
         </div>
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">Nombre de la empresa</label>
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ t('config.companyName') }}</label>
           <input v-model="form.nombre_empresa" type="text" class="w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
         </div>
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">RUC</label>
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ t('configPage.taxId') }}</label>
           <input v-model="form.ruc_empresa" type="text" class="w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
         </div>
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">Logo de la empresa</label>
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ t('config.companyLogo') }}</label>
           <ImageUpload
             v-model="form.logo_empresa_url"
             image-type="profile"
@@ -217,40 +219,40 @@ onMounted(async () => {
           />
         </div>
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">Color primario</label>
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ t('configPage.primaryColor') }}</label>
           <input v-model="form.color_primario" type="text" class="w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
         </div>
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">Color secundario</label>
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ t('configPage.secondaryColor') }}</label>
           <input v-model="form.color_secundario" type="text" class="w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
         </div>
         <div class="md:col-span-2">
-          <label class="block text-sm font-medium text-gray-700 mb-1">Pie de reporte / impresión</label>
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ t('configPage.reportFooter') }}</label>
           <textarea v-model="form.reporte_footer" rows="2" class="w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none resize-none" />
         </div>
       </div>
     </Card>
 
-    <Card title="Seguridad del Sistema">
+    <Card :title="t('configPage.securityTitle')">
       <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">Zona horaria</label>
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ t('config.timezone') }}</label>
           <input v-model="form.timezone" type="text" class="w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
         </div>
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">Mercado</label>
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ t('config.market') }}</label>
           <input v-model="form.market" type="text" class="w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
         </div>
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">Timeout de sesión (min)</label>
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ t('config.sessionTimeout') }}</label>
           <input v-model.number="form.session_timeout_minutes" type="number" min="5" class="w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
         </div>
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">Máx. intentos de login</label>
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ t('config.maxLoginAttempts') }}</label>
           <input v-model.number="form.max_login_attempts" type="number" min="1" class="w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
         </div>
-        <label class="flex items-center gap-3 text-sm text-gray-700">
-          <input v-model="form.require_mfa_global" type="checkbox" class="w-4 h-4" /> Requerir MFA globalmente
+        <label class="flex items-center gap-3 text-sm text-gray-700 dark:text-gray-300">
+          <input v-model="form.require_mfa_global" type="checkbox" class="w-4 h-4" /> {{ t('config.requireMFA') }}
         </label>
         <label class="flex items-center gap-3 text-sm text-gray-700">
           <input v-model="form.auth_twofa_enabled" type="checkbox" class="w-4 h-4" /> Activar verificación 2FA en login
@@ -273,9 +275,9 @@ onMounted(async () => {
       </div>
     </Card>
 
-    <Card title="Estado de Canales de Autenticación">
+    <Card :title="t('configPage.authChannelsTitle')">
       <div class="space-y-4">
-        <div v-if="checkingChannels" class="text-sm text-gray-500">Verificando estado de canales...</div>
+        <div v-if="checkingChannels" class="text-sm text-gray-500 dark:text-gray-400">{{ t('configPage.checkingChannels') }}</div>
         <div v-else-if="channelStatus" class="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
           <div class="flex items-center justify-between rounded-lg border px-3 py-2">
             <span>2FA (entorno)</span>
@@ -312,7 +314,7 @@ onMounted(async () => {
               placeholder="correo@dominio.com (opcional)"
               class="w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
             />
-            <Button :loading="testingEmail" type="button" @click="runEmailTest">Enviar correo de prueba</Button>
+            <Button :loading="testingEmail" type="button" @click="runEmailTest">{{ t('configPage.sendTestEmail') }}</Button>
           </div>
 
           <div class="space-y-2">
@@ -323,13 +325,13 @@ onMounted(async () => {
               placeholder="+593..."
               class="w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
             />
-            <Button :loading="testingSms" type="button" @click="runSmsTest">Enviar SMS de prueba</Button>
+            <Button :loading="testingSms" type="button" @click="runSmsTest">{{ t('configPage.sendTestSms') }}</Button>
           </div>
         </div>
       </div>
     </Card>
 
-    <Card title="Parámetros Financieros Globales">
+    <Card :title="t('configPage.financialTitle')">
       <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>
           <label class="block text-sm font-medium text-gray-700 mb-1">IVA por defecto (%)</label>
@@ -367,21 +369,21 @@ onMounted(async () => {
       </div>
     </Card>
 
-    <Card title="Continuidad y Respaldo">
+    <Card :title="t('configPage.backupTitle')">
       <div class="flex flex-wrap gap-3">
         <Button @click="downloadBackup">
-          <Download :size="16" class="mr-2" /> Descargar backup de usuarios
+          <Download :size="16" class="mr-2" /> {{ t('configPage.downloadUsersBackup') }}
         </Button>
-        <label class="inline-flex items-center px-4 py-2 rounded-xl border cursor-pointer hover:bg-gray-50 text-sm font-medium">
-          <Upload :size="16" class="mr-2" /> Restaurar backup
+        <label class="inline-flex items-center px-4 py-2 rounded-xl border cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 text-sm font-medium">
+          <Upload :size="16" class="mr-2" /> {{ t('configPage.restoreBackup') }}
           <input type="file" accept="application/json" class="hidden" @change="handleRestore" />
         </label>
       </div>
-      <p class="text-xs text-gray-500 mt-3">La restauración reemplaza usuarios y configuración global actual.</p>
+      <p class="text-xs text-gray-500 dark:text-gray-400 mt-3">{{ t('configPage.restoreWarning') }}</p>
     </Card>
 
     <div class="flex justify-end">
-      <Button :loading="saving || restoring" @click="saveSettings">Guardar configuración</Button>
+      <Button :loading="saving || restoring" @click="saveSettings">{{ t('configPage.saveSettings') }}</Button>
     </div>
   </div>
 </template>

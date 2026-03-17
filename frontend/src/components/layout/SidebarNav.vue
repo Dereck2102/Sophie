@@ -25,27 +25,57 @@ const route = useRoute()
 const { t } = useI18n()
 const collapsed = ref(false)
 
-const navItems = computed(() => [
-  { path: '/', label: t('nav.dashboard'), icon: LayoutDashboard, requiredView: 'dashboard' },
-  { path: '/flujo-operativo', label: t('nav.flujoOperativo'), icon: Landmark, requiredView: 'dashboard' },
-  { path: '/crm', label: t('nav.crm'), icon: Users, requiredView: 'crm' },
-  { path: '/ventas', label: t('nav.ventas'), icon: ShoppingCart, requiredView: 'ventas' },
-  { path: '/compras', label: t('nav.compras'), icon: Package, requiredView: 'compras' },
-  { path: '/caja-chica', label: t('nav.cajaChica'), icon: Wallet, requiredView: 'caja_chica' },
-  { path: '/taller', label: t('nav.taller'), icon: Wrench, requiredView: 'taller' },
-  { path: '/proyectos', label: t('nav.proyectos'), icon: Code2, requiredView: 'proyectos' },
-  { path: '/boveda', label: t('nav.boveda'), icon: Lock, requiredView: 'boveda' },
-  { path: '/usuarios', label: t('nav.usuarios'), icon: UserCog, requiredView: 'usuarios' },
-  { path: '/configuracion', label: t('nav.configuracion'), icon: Settings, requiredView: 'configuracion' },
-  { path: '/auditoria', label: 'Auditoría', icon: ClipboardList, requiredView: 'auditoria' },
-])
-
-const filteredNavItems = computed(() => {
+const navGroups = computed(() => {
   const userViews = auth.user?.vistas ?? []
   const hasStar = userViews.includes('*')
-  return navItems.value.filter((item) =>
-    hasStar || userViews.includes(item.requiredView)
-  )
+  const canSee = (view: string) => hasStar || userViews.includes(view)
+
+  const groups = [
+    {
+      key: 'overview',
+      label: t('nav.groups.overview'),
+      items: [
+        { path: '/', label: t('nav.dashboard'), icon: LayoutDashboard, requiredView: 'dashboard' },
+        { path: '/flujo-operativo', label: t('nav.flujoOperativo'), icon: Landmark, requiredView: 'dashboard' },
+      ].filter(i => canSee(i.requiredView)),
+    },
+    {
+      key: 'crm',
+      label: t('nav.groups.crm'),
+      items: [
+        { path: '/crm', label: t('nav.crm'), icon: Users, requiredView: 'crm' },
+        { path: '/ventas', label: t('nav.ventas'), icon: ShoppingCart, requiredView: 'ventas' },
+      ].filter(i => canSee(i.requiredView)),
+    },
+    {
+      key: 'operations',
+      label: t('nav.groups.operations'),
+      items: [
+        { path: '/taller', label: t('nav.taller'), icon: Wrench, requiredView: 'taller' },
+        { path: '/proyectos', label: t('nav.proyectos'), icon: Code2, requiredView: 'proyectos' },
+        { path: '/compras', label: t('nav.compras'), icon: Package, requiredView: 'compras' },
+      ].filter(i => canSee(i.requiredView)),
+    },
+    {
+      key: 'finance',
+      label: t('nav.groups.finance'),
+      items: [
+        { path: '/caja-chica', label: t('nav.cajaChica'), icon: Wallet, requiredView: 'caja_chica' },
+        { path: '/boveda', label: t('nav.boveda'), icon: Lock, requiredView: 'boveda' },
+      ].filter(i => canSee(i.requiredView)),
+    },
+    {
+      key: 'system',
+      label: t('nav.groups.system'),
+      items: [
+        { path: '/usuarios', label: t('nav.usuarios'), icon: UserCog, requiredView: 'usuarios' },
+        { path: '/configuracion', label: t('nav.configuracion'), icon: Settings, requiredView: 'configuracion' },
+        { path: '/auditoria', label: 'Auditoría', icon: ClipboardList, requiredView: 'auditoria' },
+      ].filter(i => canSee(i.requiredView)),
+    },
+  ]
+
+  return groups.filter(g => g.items.length > 0)
 })
 
 function isActive(path: string): boolean {
@@ -86,24 +116,37 @@ function isActive(path: string): boolean {
       <ChevronRight :size="18" />
     </button>
 
-    <!-- Nav Items -->
-    <nav class="flex-1 px-2 py-4 space-y-1 overflow-y-auto">
-      <router-link
-        v-for="item in filteredNavItems"
-        :key="item.path"
-        :to="item.path"
-        :class="[
-          'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors',
-          isActive(item.path)
-            ? 'bg-blue-600 text-white'
-            : 'text-gray-400 hover:bg-gray-800 hover:text-white',
-          collapsed && 'justify-center',
-        ]"
-        :title="collapsed ? item.label : undefined"
-      >
-        <component :is="item.icon" :size="20" class="shrink-0" />
-        <span v-if="!collapsed">{{ item.label }}</span>
-      </router-link>
+    <!-- Nav Items (grouped) -->
+    <nav class="flex-1 px-2 py-4 space-y-4 overflow-y-auto">
+      <div v-for="group in navGroups" :key="group.key">
+        <!-- Section header (only in expanded mode) -->
+        <p
+          v-if="!collapsed"
+          class="px-3 mb-1 text-[10px] font-semibold uppercase tracking-widest text-gray-500 select-none"
+        >
+          {{ group.label }}
+        </p>
+        <!-- Section divider in collapsed mode -->
+        <div v-else class="border-t border-gray-700 mx-2 mb-1" />
+        <div class="space-y-0.5">
+          <router-link
+            v-for="item in group.items"
+            :key="item.path"
+            :to="item.path"
+            :class="[
+              'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors',
+              isActive(item.path)
+                ? 'bg-blue-600 text-white'
+                : 'text-gray-400 hover:bg-gray-800 hover:text-white',
+              collapsed && 'justify-center',
+            ]"
+            :title="collapsed ? item.label : undefined"
+          >
+            <component :is="item.icon" :size="20" class="shrink-0" />
+            <span v-if="!collapsed">{{ item.label }}</span>
+          </router-link>
+        </div>
+      </div>
     </nav>
 
     <!-- User info -->

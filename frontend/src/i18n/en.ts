@@ -12,6 +12,13 @@ export default {
     usuarios: 'Users',
     configuracion: 'Settings',
     perfil: 'Profile',
+    groups: {
+      overview: 'Overview',
+      crm: 'CRM',
+      operations: 'Operations',
+      finance: 'Finance',
+      system: 'System',
+    },
   },
   common: {
     save: 'Save',

@@ -24,10 +24,29 @@ const VIEW_PRIORITY = [
   'compras', 'caja_chica', 'boveda', 'auditoria',
 ]
 
+// Role-specific landing page priority: technical roles land on their primary domain
+const ROLE_VIEW_PRIORITY: Partial<Record<string, string[]>> = {
+  tecnico:            ['taller'],
+  tecnico_taller:     ['taller'],
+  desarrollador:      ['proyectos', 'taller', 'boveda'],
+  agente_soporte_l1:  ['crm', 'taller'],
+  agente_soporte_l2:  ['crm', 'proyectos', 'taller'],
+  jefe_taller:        ['taller', 'dashboard', 'crm'],
+  jefe_tecnologias:   ['proyectos', 'dashboard', 'taller'],
+}
+
 function getHomeRoute(user: Usuario | null): { name: string } {
   if (!user) return { name: 'Login' }
   const views = user.vistas ?? []
   if (views.includes('*')) return { name: 'Dashboard' }
+
+  // Role-specific landing view takes priority
+  const rolePriority = ROLE_VIEW_PRIORITY[user.rol] ?? []
+  for (const v of rolePriority) {
+    if (views.includes(v) && VIEW_ROUTE_MAP[v]) return { name: VIEW_ROUTE_MAP[v] }
+  }
+
+  // Generic fallback priority
   for (const v of VIEW_PRIORITY) {
     if (views.includes(v) && VIEW_ROUTE_MAP[v]) return { name: VIEW_ROUTE_MAP[v] }
   }

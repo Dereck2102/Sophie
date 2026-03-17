@@ -43,10 +43,50 @@ from app.schemas.tickets import (
 
 router = APIRouter(prefix="/tickets", tags=["Soporte Técnico"])
 
+# Roles que pueden ser asignados como técnico responsable de un ticket
 _VALID_ASSIGNEE_ROLES = {
     RolEnum.EJECUTIVO,
     RolEnum.TECNICO,
+    RolEnum.TECNICO_TALLER,
+    RolEnum.AGENTE_SOPORTE_L1,
+    RolEnum.AGENTE_SOPORTE_L2,
+    RolEnum.DESARROLLADOR,
     RolEnum.SUPERADMIN,
+}
+
+# Roles que pueden CREAR tickets (jefaturas + roles CRM; técnicos puros no crean)
+_TICKET_CREATOR_ROLES = {
+    RolEnum.SUPERADMIN,
+    RolEnum.ADMIN,
+    RolEnum.JEFE_TECNOLOGIAS,
+    RolEnum.JEFE_TALLER,
+    RolEnum.JEFE_ADMINISTRATIVO,
+    RolEnum.JEFE_CONTABLE,
+    RolEnum.EJECUTIVO,
+    RolEnum.ADMINISTRATIVO_CONTABLE,
+    RolEnum.AGENTE_SOPORTE_L1,
+    RolEnum.AGENTE_SOPORTE_L2,
+    # RolEnum.DESARROLLADOR puede crear, pero solo tipo incidencia_it (verificado dentro del endpoint)
+}
+
+# Roles de gestión que pueden ELIMINAR tickets y editar cualquier campo
+_TICKET_MANAGER_ROLES = {
+    RolEnum.SUPERADMIN,
+    RolEnum.ADMIN,
+    RolEnum.JEFE_TECNOLOGIAS,
+    RolEnum.JEFE_TALLER,
+    RolEnum.JEFE_ADMINISTRATIVO,
+    RolEnum.JEFE_CONTABLE,
+    RolEnum.EJECUTIVO,
+}
+
+# Roles técnicos que solo pueden actualizar el estado del ticket asignado a ellos
+_TICKET_TECH_ROLES = {
+    RolEnum.TECNICO,
+    RolEnum.TECNICO_TALLER,
+    RolEnum.AGENTE_SOPORTE_L1,
+    RolEnum.AGENTE_SOPORTE_L2,
+    RolEnum.DESARROLLADOR,
 }
 
 
@@ -128,6 +168,19 @@ async def create_ticket(
     db: Annotated[AsyncSession, Depends(get_db)],
     current_user: Annotated[Usuario, Depends(get_current_user)],
 ) -> Ticket:
+    # --- Permiso de creación por rol ---
+    if current_user.rol in (RolEnum.TECNICO, RolEnum.TECNICO_TALLER):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Los técnicos no pueden crear tickets; solo pueden resolverlos.",
+        )
+    if current_user.rol == RolEnum.DESARROLLADOR:
+        if body.tipo != TipoTicketEnum.INCIDENCIA_IT:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Los desarrolladores solo pueden abrir tickets de tipo incidencia IT (software).",
+            )
+
     client_result = await db.execute(
         select(Cliente).where(Cliente.id_cliente == body.id_cliente)
     )
@@ -240,6 +293,29 @@ async def update_ticket(
     ticket = result.scalar_one_or_none()
     if not ticket:
         raise HTTPException(status_code=404, detail="Ticket not found")
+
+    # --- Restricción de campos por rol ---
+    if current_user.rol in _TICKET_TECH_ROLES:
+        # Los roles técnicos solo pueden actualizar el estado del ticket
+        # (no pueden reasignar técnico, cambiar prioridad ni editar descripción)
+        update_data = body.model_dump(exclude_none=True)
+        forbidden = [k for k in update_data if k != "estado"]
+        if forbidden:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=(
+                    "Los roles técnicos solo pueden actualizar el estado del ticket. "
+                    f"Campos no permitidos: {', '.join(forbidden)}."
+                ),
+            )
+        # Verificar que el ticket esté asignado al técnico
+        if current_user.rol not in (RolEnum.AGENTE_SOPORTE_L1, RolEnum.AGENTE_SOPORTE_L2):
+            if ticket.id_tecnico != current_user.id_usuario:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Solo puedes actualizar el estado de tickets asignados a ti.",
+                )
+
     for k, v in body.model_dump(exclude_none=True).items():
         setattr(ticket, k, v)
     if body.estado and body.estado.value in ("resuelto", "cerrado"):
@@ -254,6 +330,13 @@ async def delete_ticket(
     db: Annotated[AsyncSession, Depends(get_db)],
     current_user: Annotated[Usuario, Depends(get_current_user)],
 ) -> None:
+    # Solo roles de gestión pueden eliminar tickets
+    if current_user.rol not in _TICKET_MANAGER_ROLES:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Solo roles de gestión pueden eliminar tickets.",
+        )
+
     result = await db.execute(select(Ticket).where(Ticket.id_ticket == id_ticket))
     ticket = result.scalar_one_or_none()
     if not ticket:

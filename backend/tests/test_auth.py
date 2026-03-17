@@ -4,8 +4,11 @@ import pytest
 import pytest_asyncio
 import pyotp
 from httpx import AsyncClient
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.endpoints import auth as auth_endpoints
+from app.infrastructure.models.auditoria import LogAuditoria
 
 
 @pytest.mark.asyncio
@@ -103,6 +106,35 @@ async def test_login_wrong_password(client: AsyncClient) -> None:
         json={"username": "badpass", "password": "WrongPass!"},
     )
     assert resp.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_login_failed_writes_audit_log(client: AsyncClient, db_session: AsyncSession) -> None:
+    await client.post(
+        "/api/v1/auth/register",
+        json={
+            "username": "audit_fail",
+            "email": "audit_fail@bigsolutions.pe",
+            "password": "RealPass123!",
+            "rol": "superadmin",
+        },
+    )
+
+    resp = await client.post(
+        "/api/v1/auth/login",
+        json={"username": "audit_fail", "password": "WrongPass!"},
+    )
+    assert resp.status_code == 401
+
+    log_result = await db_session.execute(
+        select(LogAuditoria).where(
+            LogAuditoria.modulo == "auth",
+            LogAuditoria.accion == "LOGIN_FAILED",
+        )
+    )
+    logs = list(log_result.scalars().all())
+    assert logs
+    assert any((log.detalle or {}).get("username") == "audit_fail" for log in logs)
 
 
 @pytest.mark.asyncio
@@ -217,15 +249,15 @@ async def test_create_usuario_rejects_duplicate_email(client: AsyncClient) -> No
     await client.post(
         "/api/v1/auth/register",
         json={
-            "username": "admin_dup",
-            "email": "admin_dup@bigsolutions.pe",
-            "password": "AdminPass123!",
+            "username": "damacoria",
+            "email": "damacoria@bigsolutions.pe",
+            "password": "OwnerPass123!",
             "rol": "superadmin",
         },
     )
     login = await client.post(
         "/api/v1/auth/login",
-        json={"username": "admin_dup", "password": "AdminPass123!"},
+        json={"username": "damacoria", "password": "OwnerPass123!"},
     )
     token = login.json()["access_token"]
     headers = {"Authorization": f"Bearer {token}"}

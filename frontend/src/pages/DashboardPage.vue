@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { storeToRefs } from 'pinia'
 import { useRouter } from 'vue-router'
 import {
   AlertTriangle,
@@ -21,98 +22,11 @@ import {
 import Card from '../components/ui/Card.vue'
 import Badge from '../components/ui/Badge.vue'
 import { useAuthStore } from '../stores/auth'
-import api from '../services/api'
+import { useDashboardStore } from '../stores/dashboard'
+import { useTicketStore } from '../stores/tickets'
+import { useVentasStore } from '../stores/ventas'
 import type { Ticket } from '../types'
-
-interface DashboardStats {
-  total_clientes: number
-  cotizaciones_mes: number
-  tickets_abiertos: number
-  productos_bajo_stock: number
-  revenue_mes: number
-  proyectos_activos: number
-  margen_bruto_mes: number
-  caja_chica_balance: number
-  caja_chica_egresos_mes: number
-}
-
-interface DashboardTrendPoint {
-  label: string
-  ingresos: number
-  compras: number
-  caja_ingresos: number
-  caja_egresos: number
-  flujo_neto: number
-}
-
-interface DashboardTopClient {
-  id_cliente: number
-  nombre: string
-  total_facturado: number
-  participacion_pct: number
-}
-
-interface DashboardExpenseCategory {
-  categoria: string
-  total: number
-}
-
-interface DashboardReceivableBucket {
-  bucket: string
-  total: number
-  cantidad: number
-}
-
-interface DashboardReceivableDueItem {
-  id_cotizacion: number
-  numero: string
-  id_cliente: number
-  cliente_nombre: string
-  estado: string
-  total: number
-  fecha_vencimiento?: string | null
-  dias_para_vencer?: number | null
-  dias_vencido?: number | null
-}
-
-interface DashboardAlert {
-  severity: 'critical' | 'warning' | 'info'
-  title: string
-  detail: string
-  link?: string | null
-}
-
-interface DashboardCorrelationMetric {
-  key: string
-  label: string
-  value: number
-  unit: string
-  status: 'ok' | 'warning' | 'critical' | string
-  detail: string
-}
-
-interface DashboardFinanceAnalytics {
-  ingresos_facturados_mes: number
-  compras_registradas_mes: number
-  caja_ingresos_mes: number
-  caja_egresos_mes: number
-  flujo_neto_mes: number
-  cuentas_por_cobrar: number
-  ordenes_pendientes_monto: number
-  margen_bruto_mes: number
-  caja_chica_balance: number
-  top_clientes: DashboardTopClient[]
-  egresos_por_categoria: DashboardExpenseCategory[]
-  cartera_aging: DashboardReceivableBucket[]
-  proximos_vencimientos: DashboardReceivableDueItem[]
-  tendencia_mensual: DashboardTrendPoint[]
-  alertas: DashboardAlert[]
-  correlaciones: DashboardCorrelationMetric[]
-}
-
-interface CotizacionSummary {
-  estado: string
-}
+import type { DashboardAlert, DashboardReceivableDueItem } from '../stores/dashboard'
 
 interface PipelineStage {
   label: string
@@ -123,37 +37,10 @@ interface PipelineStage {
 
 const router = useRouter()
 const auth = useAuthStore()
-
-const stats = ref<DashboardStats>({
-  total_clientes: 0,
-  cotizaciones_mes: 0,
-  tickets_abiertos: 0,
-  productos_bajo_stock: 0,
-  revenue_mes: 0,
-  proyectos_activos: 0,
-  margen_bruto_mes: 0,
-  caja_chica_balance: 0,
-  caja_chica_egresos_mes: 0,
-})
-
-const analytics = ref<DashboardFinanceAnalytics>({
-  ingresos_facturados_mes: 0,
-  compras_registradas_mes: 0,
-  caja_ingresos_mes: 0,
-  caja_egresos_mes: 0,
-  flujo_neto_mes: 0,
-  cuentas_por_cobrar: 0,
-  ordenes_pendientes_monto: 0,
-  margen_bruto_mes: 0,
-  caja_chica_balance: 0,
-  top_clientes: [],
-  egresos_por_categoria: [],
-  cartera_aging: [],
-  proximos_vencimientos: [],
-  tendencia_mensual: [],
-  alertas: [],
-  correlaciones: [],
-})
+const dashboardStore = useDashboardStore()
+const ticketStore = useTicketStore()
+const ventasStore = useVentasStore()
+const { stats, analytics } = storeToRefs(dashboardStore)
 
 const recentTickets = ref<Ticket[]>([])
 const cotizacionStats = ref<Record<string, number>>({})
@@ -341,19 +228,17 @@ function correlationClass(status: string): string {
 
 async function loadData(): Promise<void> {
   try {
-    const [statsRes, analyticsRes, ticketRes, cotRes] = await Promise.all([
-      api.get<DashboardStats>('/api/v1/dashboard/stats'),
-      api.get<DashboardFinanceAnalytics>('/api/v1/dashboard/analytics'),
-      api.get<Ticket[]>('/api/v1/tickets/', { params: { limit: 6 } }),
-      api.get<CotizacionSummary[]>('/api/v1/ventas/cotizaciones', { params: { limit: 200 } }),
+    await Promise.all([
+      dashboardStore.fetchAll(false),
+      ticketStore.fetchTickets(false),
+      ventasStore.fetchCotizaciones(false, 200),
     ])
-
-    stats.value = statsRes.data
-    analytics.value = analyticsRes.data
-    recentTickets.value = ticketRes.data
+    recentTickets.value = [...ticketStore.tickets]
+      .sort((a, b) => new Date(b.fecha_creacion).getTime() - new Date(a.fecha_creacion).getTime())
+      .slice(0, 6)
 
     const counts: Record<string, number> = {}
-    cotRes.data.forEach((cotizacion) => {
+    ventasStore.cotizaciones.forEach((cotizacion) => {
       counts[cotizacion.estado] = (counts[cotizacion.estado] ?? 0) + 1
     })
     cotizacionStats.value = counts

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, computed, watch } from 'vue'
+import { storeToRefs } from 'pinia'
 import { useRoute } from 'vue-router'
 import { Plus, ScanLine, Camera, Trash2, AlertTriangle, Play, CheckSquare, Clock, X, ImageIcon, Printer, Link2, Copy, Check } from 'lucide-vue-next'
 import Card from '../components/ui/Card.vue'
@@ -9,16 +10,20 @@ import Button from '../components/ui/Button.vue'
 import Modal from '../components/ui/Modal.vue'
 import { useClienteStore } from '../stores/clientes'
 import { useTicketStore } from '../stores/tickets'
+import { useProyectoStore } from '../stores/proyectos'
 import { useAuthStore } from '../stores/auth'
 import api from '../services/api'
-import type { Ticket, Reparacion, Cliente, Usuario, Proyecto } from '../types'
+import type { Ticket, Reparacion, Cliente, Usuario } from '../types'
 
 const ticketStore = useTicketStore()
 const clienteStore = useClienteStore()
+const proyectoStore = useProyectoStore()
 const auth = useAuthStore()
 const route = useRoute()
+const { proyectos } = storeToRefs(proyectoStore)
 
 const isTecnico = computed(() => auth.user?.rol === 'ejecutivo' || auth.user?.rol === 'tecnico')
+const isTecnicoRole = computed(() => auth.user?.rol === 'tecnico')
 const canCreate = computed(() => auth.user?.rol === 'superadmin' || auth.user?.rol === 'ejecutivo' || auth.user?.rol === 'tecnico')
 
 const selectedTicket = ref<Ticket | null>(null)
@@ -41,7 +46,6 @@ const formError = ref<string | null>(null)
 const linkCopied = ref(false)
 const reparacionLoading = ref(false)
 const assignableUsers = ref<Usuario[]>([])
-const proyectos = ref<Proyecto[]>([])
 
 // New ticket form
 function initialFormState() {
@@ -141,6 +145,7 @@ function ticketElapsed(ticket: Ticket): string {
 const rows = computed(() =>
   ticketStore.tickets
     .filter((t) => t.tipo === 'reparacion')
+    .filter((t) => !isTecnicoRole.value || t.id_tecnico === auth.user?.id_usuario)
     .map((t) => ({
       ...t,
       id: t.id_ticket,
@@ -156,13 +161,9 @@ const trackingUrl = computed(() => {
 
 onMounted(async () => {
   await Promise.all([
-    ticketStore.fetchTickets(),
+    ticketStore.fetchTickets(false),
     clienteStore.fetchClientes(),
-    api.get<Proyecto[]>('/api/v1/proyectos/').then((response) => {
-      proyectos.value = response.data
-    }).catch(() => {
-      proyectos.value = []
-    }),
+    proyectoStore.fetchProyectos(false),
     api.get<Usuario[]>('/api/v1/usuarios/asignables').then((response) => {
       assignableUsers.value = response.data
     }).catch(() => {

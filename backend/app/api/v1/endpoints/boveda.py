@@ -17,19 +17,61 @@ from app.core.database import get_db
 from app.core.security import decrypt_vault, encrypt_vault
 from app.infrastructure.models.auditoria import LogAuditoria
 from app.infrastructure.models.boveda import Credencial
+from app.infrastructure.models.cliente import Empresa
 from app.infrastructure.models.usuario import RolEnum, Usuario
 from app.schemas.boveda import CredencialCreate, CredencialOut, CredencialUpdate, CredencialWithPassword
 
 router = APIRouter(prefix="/boveda", tags=["Bóveda de Credenciales"])
 
 
+def _has_boveda_access(user: Usuario) -> bool:
+    effective_permissions = getattr(user, "effective_permissions", [])
+    effective_views = getattr(user, "effective_views", [])
+    has_boveda_permission = "*" in effective_permissions or "boveda.manage" in effective_permissions
+    has_boveda_view = "*" in effective_views or "boveda" in effective_views
+    return user.rol == RolEnum.SUPERADMIN or (has_boveda_permission and has_boveda_view)
+
+
+async def _get_credencial_or_404(db: AsyncSession, id_credencial: int) -> Credencial:
+    result = await db.execute(select(Credencial).where(Credencial.id_credencial == id_credencial))
+    credencial = result.scalar_one_or_none()
+    if not credencial:
+        raise HTTPException(status_code=404, detail="Credencial not found")
+    return credencial
+
+
+async def _assert_empresa_exists(db: AsyncSession, id_empresa: int) -> None:
+    result = await db.execute(select(Empresa.id_cliente).where(Empresa.id_cliente == id_empresa))
+    if result.scalar_one_or_none() is None:
+        raise HTTPException(status_code=404, detail="Empresa not found")
+
+
+def _audit_vault_event(
+    *,
+    db: AsyncSession,
+    current_user: Usuario,
+    ip: str,
+    accion: str,
+    credencial: Credencial,
+) -> None:
+    db.add(
+        LogAuditoria(
+            id_usuario=current_user.id_usuario,
+            accion=accion,
+            modulo="boveda",
+            ip_origen=ip,
+            detalle={"id_credencial": credencial.id_credencial, "empresa": credencial.id_empresa},
+        )
+    )
+
+
 @router.get("/", response_model=List[CredencialOut])
 async def list_credenciales(
     db: Annotated[AsyncSession, Depends(get_db)],
-    current_user: Annotated[Usuario, Depends(require_views("boveda"))],
-    authorized: Annotated[Usuario, Depends(require_permissions("boveda.manage"))],
+    _current_user: Annotated[Usuario, Depends(require_views("boveda"))],
+    _authorized: Annotated[Usuario, Depends(require_permissions("boveda.manage"))],
 ) -> list[Credencial]:
-    result = await db.execute(select(Credencial))
+    result = await db.execute(select(Credencial).order_by(Credencial.fecha_actualizacion.desc()))
     return list(result.scalars().all())
 
 
@@ -38,8 +80,11 @@ async def create_credencial(
     body: CredencialCreate,
     db: Annotated[AsyncSession, Depends(get_db)],
     current_user: Annotated[Usuario, Depends(require_views("boveda"))],
-    authorized: Annotated[Usuario, Depends(require_permissions("boveda.manage"))],
+    _authorized: Annotated[Usuario, Depends(require_permissions("boveda.manage"))],
+    ip: Annotated[str, Depends(get_client_ip)],
 ) -> Credencial:
+    await _assert_empresa_exists(db, body.id_empresa)
+
     credencial = Credencial(
         id_empresa=body.id_empresa,
         nombre=body.nombre,
@@ -50,6 +95,16 @@ async def create_credencial(
     )
     db.add(credencial)
     await db.flush()
+
+    _audit_vault_event(
+        db=db,
+        current_user=current_user,
+        ip=ip,
+        accion="VAULT_CREATE",
+        credencial=credencial,
+    )
+    await db.flush()
+
     return credencial
 
 
@@ -61,30 +116,19 @@ async def reveal_credencial(
     ip: Annotated[str, Depends(get_client_ip)],
 ) -> CredencialWithPassword:
     """Requires MFA-verified session. Access is logged in audit log."""
-    effective_permissions = getattr(current_user, "effective_permissions", [])
-    effective_views = getattr(current_user, "effective_views", [])
-    has_boveda_permission = "*" in effective_permissions or "boveda.manage" in effective_permissions
-    has_boveda_view = "*" in effective_views or "boveda" in effective_views
-    if current_user.rol != RolEnum.SUPERADMIN and (not has_boveda_permission or not has_boveda_view):
+    if not _has_boveda_access(current_user):
         raise HTTPException(status_code=403, detail="Insufficient permissions")
 
-    result = await db.execute(
-        select(Credencial).where(Credencial.id_credencial == id_credencial)
-    )
-    cred = result.scalar_one_or_none()
-    if not cred:
-        raise HTTPException(status_code=404, detail="Credencial not found")
+    cred = await _get_credencial_or_404(db, id_credencial)
 
     plain = decrypt_vault(cred.password_cifrado)
 
-    db.add(
-        LogAuditoria(
-            id_usuario=current_user.id_usuario,
-            accion="VAULT_ACCESS",
-            modulo="boveda",
-            ip_origen=ip,
-            detalle={"id_credencial": id_credencial, "empresa": cred.id_empresa},
-        )
+    _audit_vault_event(
+        db=db,
+        current_user=current_user,
+        ip=ip,
+        accion="VAULT_ACCESS",
+        credencial=cred,
     )
     await db.flush()
 
@@ -105,14 +149,10 @@ async def update_credencial(
     body: CredencialUpdate,
     db: Annotated[AsyncSession, Depends(get_db)],
     current_user: Annotated[Usuario, Depends(require_views("boveda"))],
-    authorized: Annotated[Usuario, Depends(require_permissions("boveda.manage"))],
+    _authorized: Annotated[Usuario, Depends(require_permissions("boveda.manage"))],
+    ip: Annotated[str, Depends(get_client_ip)],
 ) -> Credencial:
-    result = await db.execute(
-        select(Credencial).where(Credencial.id_credencial == id_credencial)
-    )
-    cred = result.scalar_one_or_none()
-    if not cred:
-        raise HTTPException(status_code=404, detail="Credencial not found")
+    cred = await _get_credencial_or_404(db, id_credencial)
     if body.nombre is not None:
         cred.nombre = body.nombre
     if body.usuario_acceso is not None:
@@ -123,6 +163,14 @@ async def update_credencial(
         cred.url = body.url
     if body.notas is not None:
         cred.notas = body.notas
+
+    _audit_vault_event(
+        db=db,
+        current_user=current_user,
+        ip=ip,
+        accion="VAULT_UPDATE",
+        credencial=cred,
+    )
     await db.flush()
     return cred
 
@@ -132,12 +180,16 @@ async def delete_credencial(
     id_credencial: int,
     db: Annotated[AsyncSession, Depends(get_db)],
     current_user: Annotated[Usuario, Depends(require_roles(RolEnum.SUPERADMIN))],
+    ip: Annotated[str, Depends(get_client_ip)],
 ) -> None:
-    result = await db.execute(
-        select(Credencial).where(Credencial.id_credencial == id_credencial)
+    cred = await _get_credencial_or_404(db, id_credencial)
+
+    _audit_vault_event(
+        db=db,
+        current_user=current_user,
+        ip=ip,
+        accion="VAULT_DELETE",
+        credencial=cred,
     )
-    cred = result.scalar_one_or_none()
-    if not cred:
-        raise HTTPException(status_code=404, detail="Credencial not found")
     await db.delete(cred)
     await db.flush()

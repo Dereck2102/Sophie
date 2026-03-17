@@ -233,22 +233,74 @@ async def login(
     result = await db.execute(select(Usuario).where(Usuario.username == body.username))
     user = result.scalar_one_or_none()
     if user and user.locked_until and user.locked_until > now:
+        db.add(
+            LogAuditoria(
+                id_usuario=user.id_usuario,
+                accion="LOGIN_BLOCKED",
+                modulo="auth",
+                ip_origen=ip,
+                detalle={"username": body.username},
+            )
+        )
+        await db.flush()
         raise HTTPException(
             status_code=status.HTTP_423_LOCKED,
             detail="Cuenta bloqueada temporalmente por intentos fallidos. Intenta más tarde.",
         )
 
     if not user or not verify_password(body.password, user.password_hash):
+        next_attempts = 1
+        locked = False
         if user:
-            user.failed_login_attempts = int(user.failed_login_attempts or 0) + 1
-            if user.failed_login_attempts >= max_login_attempts:
+            next_attempts = int(user.failed_login_attempts or 0) + 1
+            user.failed_login_attempts = next_attempts
+            if next_attempts >= max_login_attempts:
                 user.locked_until = now + timedelta(minutes=15)
                 user.failed_login_attempts = 0
+                locked = True
+            db.add(
+                LogAuditoria(
+                    id_usuario=user.id_usuario,
+                    accion="LOGIN_FAILED",
+                    modulo="auth",
+                    ip_origen=ip,
+                    detalle={
+                        "username": body.username,
+                        "attempts": next_attempts,
+                        "locked": locked,
+                    },
+                )
+            )
+        else:
+            db.add(
+                LogAuditoria(
+                    id_usuario=None,
+                    accion="LOGIN_FAILED",
+                    modulo="auth",
+                    ip_origen=ip,
+                    detalle={
+                        "username": body.username,
+                        "attempts": next_attempts,
+                        "locked": False,
+                        "reason": "unknown_user",
+                    },
+                )
+            )
             await db.flush()
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials"
         )
     if not user.activo:
+        db.add(
+            LogAuditoria(
+                id_usuario=user.id_usuario,
+                accion="LOGIN_DISABLED",
+                modulo="auth",
+                ip_origen=ip,
+                detalle={"username": body.username},
+            )
+        )
+        await db.flush()
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Account disabled")
 
     user.failed_login_attempts = 0

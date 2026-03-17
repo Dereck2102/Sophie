@@ -1,18 +1,20 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
+import { storeToRefs } from 'pinia'
 import { useRouter } from 'vue-router'
 import { Plus, FolderOpen, ChevronRight, CheckSquare, Clock, Circle, ArrowLeft, User, Calendar, Flag, Tag, Trash2, Receipt } from 'lucide-vue-next'
 import Card from '../components/ui/Card.vue'
 import Badge from '../components/ui/Badge.vue'
 import Button from '../components/ui/Button.vue'
 import Modal from '../components/ui/Modal.vue'
-import api from '../services/api'
 import { useAuthStore } from '../stores/auth'
 import { useClienteStore } from '../stores/clientes'
 import { useUsuarioStore } from '../stores/usuarios'
+import { useProyectoStore } from '../stores/proyectos'
 import type { CotizacionProyectoResumen, Proyecto, ProyectoRentabilidad, Tarea, EstadoProyecto, EstadoTarea } from '../types'
 
-const proyectos = ref<Proyecto[]>([])
+const proyectoStore = useProyectoStore()
+const { proyectos } = storeToRefs(proyectoStore)
 const tareas = ref<Tarea[]>([])
 const loading = ref(true)
 const selectedProject = ref<Proyecto | null>(null)
@@ -143,12 +145,11 @@ function parseEtiquetas(raw?: string): string[] {
 
 onMounted(async () => {
   try {
-    const [proyRes] = await Promise.all([
-      api.get<Proyecto[]>('/api/v1/proyectos/'),
+    await Promise.all([
+      proyectoStore.fetchProyectos(false),
       clienteStore.fetchClientes(),
       usuariosStore.fetchUsuarios(),
     ])
-    proyectos.value = proyRes.data
   } finally {
     loading.value = false
   }
@@ -165,13 +166,13 @@ async function openProject(row: Record<string, unknown>): Promise<void> {
   cotizacionesProyecto.value = []
   try {
     const [tareasRes, metricsRes, cotizacionesRes] = await Promise.all([
-      api.get<Tarea[]>(`/api/v1/proyectos/${p.id_proyecto}/tareas`),
-      api.get<ProyectoRentabilidad>(`/api/v1/proyectos/${p.id_proyecto}/rentabilidad`),
-      api.get<CotizacionProyectoResumen[]>(`/api/v1/proyectos/${p.id_proyecto}/cotizaciones`),
+      proyectoStore.fetchTareas(p.id_proyecto, false),
+      proyectoStore.fetchRentabilidadProyecto(p.id_proyecto, false),
+      proyectoStore.fetchCotizacionesProyecto(p.id_proyecto, false),
     ])
-    tareas.value = tareasRes.data
-    projectMetrics.value = metricsRes.data
-    cotizacionesProyecto.value = cotizacionesRes.data
+    tareas.value = tareasRes
+    projectMetrics.value = metricsRes
+    cotizacionesProyecto.value = cotizacionesRes
   } finally {
     tareasLoading.value = false
     cotizacionesLoading.value = false
@@ -180,7 +181,7 @@ async function openProject(row: Record<string, unknown>): Promise<void> {
 
 async function updateTareaEstado(id: number, estado: EstadoTarea): Promise<void> {
   try {
-    const { data } = await api.patch<Tarea>(`/api/v1/proyectos/tareas/${id}`, { estado })
+    const data = await proyectoStore.updateTarea(id, { estado })
     const idx = tareas.value.findIndex((t) => t.id_tarea === id)
     if (idx >= 0) tareas.value[idx] = data
   } catch {
@@ -193,7 +194,7 @@ async function deleteTarea(id: number): Promise<void> {
     return
   }
   try {
-    await api.delete(`/api/v1/proyectos/tareas/${id}`)
+    await proyectoStore.deleteTarea(id)
     tareas.value = tareas.value.filter((t) => t.id_tarea !== id)
     showTareaDetailModal.value = false
   } catch (e: unknown) {
@@ -215,8 +216,7 @@ async function handleCreate(): Promise<void> {
       fecha_inicio: form.value.fecha_inicio || undefined,
       fecha_fin: form.value.fecha_fin || undefined,
     }
-    const { data } = await api.post<Proyecto>('/api/v1/proyectos/', payload)
-    proyectos.value.unshift(data)
+    await proyectoStore.createProyecto(payload)
     showCreateModal.value = false
     resetForm()
   } catch (e: unknown) {
@@ -246,7 +246,7 @@ async function handleCreateTarea(): Promise<void> {
       etiquetas: etiquetasArray ? JSON.stringify(etiquetasArray) : undefined,
       horas_estimadas: tareaForm.value.horas_estimadas ? Number(tareaForm.value.horas_estimadas) : undefined,
     }
-    const { data } = await api.post<Tarea>(`/api/v1/proyectos/${selectedProject.value.id_proyecto}/tareas`, payload)
+    const data = await proyectoStore.createTarea(selectedProject.value.id_proyecto, payload)
     tareas.value.push(data)
     showTareaModal.value = false
     resetTareaForm()
@@ -302,8 +302,7 @@ async function openVentasFromProyecto(): Promise<void> {
 async function handleDeleteProyecto(idProyecto: number): Promise<void> {
   if (!window.confirm('¿Eliminar este proyecto?')) return
   try {
-    await api.delete(`/api/v1/proyectos/${idProyecto}`)
-    proyectos.value = proyectos.value.filter((proyecto) => proyecto.id_proyecto !== idProyecto)
+    await proyectoStore.deleteProyecto(idProyecto)
     if (selectedProject.value?.id_proyecto === idProyecto) {
       selectedProject.value = null
       tareas.value = []

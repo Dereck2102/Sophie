@@ -10,6 +10,7 @@ from sqlalchemy.orm import selectinload
 
 from app.api.deps import get_current_user, require_roles
 from app.core.database import get_db
+from app.core.money import money, percentage, to_decimal
 from app.infrastructure.models.auditoria import EventoCliente
 from app.infrastructure.models.inventario import Inventario, InventarioSerie, EstadoSerieEnum
 from app.infrastructure.models.proyectos import Proyecto
@@ -38,7 +39,7 @@ async def _get_iva_rate(db: AsyncSession) -> float:
         select(ConfiguracionSistema.iva_default_percent).where(ConfiguracionSistema.id_configuracion == 1)
     )
     iva_percent = result.scalar_one_or_none()
-    return max(0.0, float(iva_percent or 15)) / 100
+    return float(to_decimal(max(0.0, float(iva_percent or 15))) / to_decimal(100))
 
 
 async def _get_cost_map(db: AsyncSession, product_ids: set[int]) -> dict[int, float]:
@@ -55,23 +56,23 @@ async def _get_cost_map(db: AsyncSession, product_ids: set[int]) -> dict[int, fl
 
 def _serialize_cotizacion(cotizacion: Cotizacion, cost_map: dict[int, float]) -> CotizacionOut:
     detalles: list = []
-    costo_materiales_total = 0.0
-    margen_bruto_total = 0.0
+    costo_materiales_total = to_decimal(0)
+    margen_bruto_total = to_decimal(0)
 
     for detalle in cotizacion.detalles:
-        costo_material_unitario = float(cost_map.get(detalle.id_producto, 0.0))
+        costo_material_unitario = money(cost_map.get(detalle.id_producto, 0.0))
         cantidad = int(detalle.cantidad)
-        costo_material_total = round(costo_material_unitario * cantidad, 2)
-        subtotal = float(detalle.subtotal)
-        precio_unitario = float(detalle.precio_unitario)
-        descuento = float(detalle.descuento)
-        precio_unitario_neto = round(precio_unitario * (1 - descuento / 100), 2)
-        margen_unitario = round(precio_unitario_neto - costo_material_unitario, 2)
-        margen_total = round(subtotal - costo_material_total, 2)
-        rentabilidad_pct = round((margen_total / subtotal) * 100, 2) if subtotal > 0 else 0.0
+        costo_material_total = money(to_decimal(costo_material_unitario) * to_decimal(cantidad))
+        subtotal = money(detalle.subtotal)
+        precio_unitario = money(detalle.precio_unitario)
+        descuento = money(detalle.descuento)
+        precio_unitario_neto = money(to_decimal(precio_unitario) * (to_decimal(1) - (to_decimal(descuento) / to_decimal(100))))
+        margen_unitario = money(to_decimal(precio_unitario_neto) - to_decimal(costo_material_unitario))
+        margen_total = money(to_decimal(subtotal) - to_decimal(costo_material_total))
+        rentabilidad_pct = percentage(margen_total, subtotal)
 
-        costo_materiales_total += costo_material_total
-        margen_bruto_total += margen_total
+        costo_materiales_total += to_decimal(costo_material_total)
+        margen_bruto_total += to_decimal(margen_total)
 
         detalles.append(
             {
@@ -89,10 +90,10 @@ def _serialize_cotizacion(cotizacion: Cotizacion, cost_map: dict[int, float]) ->
             }
         )
 
-    costo_servicios_total = round(_service_cost_total(cotizacion), 2)
-    utilidad_neta_operativa = round(margen_bruto_total - costo_servicios_total, 2)
-    subtotal = float(cotizacion.subtotal)
-    rentabilidad_total = round((utilidad_neta_operativa / subtotal) * 100, 2) if subtotal > 0 else 0.0
+    costo_servicios_total = money(_service_cost_total(cotizacion))
+    utilidad_neta_operativa = money(margen_bruto_total - to_decimal(costo_servicios_total))
+    subtotal = money(cotizacion.subtotal)
+    rentabilidad_total = percentage(utilidad_neta_operativa, subtotal)
 
     return CotizacionOut(
         id_cotizacion=cotizacion.id_cotizacion,
@@ -101,20 +102,20 @@ def _serialize_cotizacion(cotizacion: Cotizacion, cost_map: dict[int, float]) ->
         id_vendedor=cotizacion.id_vendedor,
         id_proyecto=cotizacion.id_proyecto,
         estado=cotizacion.estado,
-        subtotal=float(cotizacion.subtotal),
-        impuesto=float(cotizacion.impuesto),
-        total=float(cotizacion.total),
-        costo_mano_obra=float(cotizacion.costo_mano_obra or 0),
-        costo_movilizacion=float(cotizacion.costo_movilizacion or 0),
-        costo_software=float(cotizacion.costo_software or 0),
-        horas_soporte=float(cotizacion.horas_soporte or 0),
-        tarifa_hora_soporte=float(cotizacion.tarifa_hora_soporte or 0),
+        subtotal=money(cotizacion.subtotal),
+        impuesto=money(cotizacion.impuesto),
+        total=money(cotizacion.total),
+        costo_mano_obra=money(cotizacion.costo_mano_obra or 0),
+        costo_movilizacion=money(cotizacion.costo_movilizacion or 0),
+        costo_software=money(cotizacion.costo_software or 0),
+        horas_soporte=money(cotizacion.horas_soporte or 0),
+        tarifa_hora_soporte=money(cotizacion.tarifa_hora_soporte or 0),
         costo_servicios_total=costo_servicios_total,
         notas=cotizacion.notas,
         fecha_creacion=cotizacion.fecha_creacion,
         fecha_vencimiento=cotizacion.fecha_vencimiento,
-        costo_materiales_total=round(costo_materiales_total, 2),
-        margen_bruto_total=round(margen_bruto_total, 2),
+        costo_materiales_total=money(costo_materiales_total),
+        margen_bruto_total=money(margen_bruto_total),
         utilidad_neta_operativa=utilidad_neta_operativa,
         rentabilidad_pct=rentabilidad_total,
         detalles=detalles,
@@ -122,12 +123,12 @@ def _serialize_cotizacion(cotizacion: Cotizacion, cost_map: dict[int, float]) ->
 
 
 def _service_cost_total(cotizacion: Cotizacion) -> float:
-    mano_obra = float(cotizacion.costo_mano_obra or 0)
-    movilizacion = float(cotizacion.costo_movilizacion or 0)
-    software = float(cotizacion.costo_software or 0)
-    horas = float(cotizacion.horas_soporte or 0)
-    tarifa_hora = float(cotizacion.tarifa_hora_soporte or 0)
-    return mano_obra + movilizacion + software + (horas * tarifa_hora)
+    mano_obra = to_decimal(cotizacion.costo_mano_obra or 0)
+    movilizacion = to_decimal(cotizacion.costo_movilizacion or 0)
+    software = to_decimal(cotizacion.costo_software or 0)
+    horas = to_decimal(cotizacion.horas_soporte or 0)
+    tarifa_hora = to_decimal(cotizacion.tarifa_hora_soporte or 0)
+    return money(mano_obra + movilizacion + software + (horas * tarifa_hora))
 
 
 def _next_numero_cotizacion(count: int) -> str:
@@ -183,7 +184,6 @@ async def create_cotizacion(
                 detail="El proyecto seleccionado no pertenece al cliente de la cotización",
             )
 
-    subtotal = 0.0
     cotizacion = Cotizacion(
         numero=numero,
         id_cliente=body.id_cliente,
@@ -200,11 +200,15 @@ async def create_cotizacion(
     db.add(cotizacion)
     await db.flush()
 
-    subtotal = _service_cost_total(cotizacion)
+    subtotal_dec = to_decimal(_service_cost_total(cotizacion))
 
     for d in body.detalles:
-        sub = round(d.cantidad * d.precio_unitario * (1 - d.descuento / 100), 2)
-        subtotal += sub
+        sub = money(
+            to_decimal(d.cantidad)
+            * to_decimal(d.precio_unitario)
+            * (to_decimal(1) - (to_decimal(d.descuento) / to_decimal(100)))
+        )
+        subtotal_dec += to_decimal(sub)
         db.add(
             DetalleCotizacion(
                 id_cotizacion=cotizacion.id_cotizacion,
@@ -217,10 +221,10 @@ async def create_cotizacion(
         )
 
     iva_rate = await _get_iva_rate(db)
-    impuesto = round(subtotal * iva_rate, 2)
-    cotizacion.subtotal = subtotal
+    impuesto = money(subtotal_dec * to_decimal(iva_rate))
+    cotizacion.subtotal = money(subtotal_dec)
     cotizacion.impuesto = impuesto
-    cotizacion.total = round(subtotal + impuesto, 2)
+    cotizacion.total = money(subtotal_dec + to_decimal(impuesto))
 
     db.add(
         EventoCliente(
@@ -311,11 +315,11 @@ async def update_cotizacion(
             body.tarifa_hora_soporte,
         )
     ):
-        detalle_subtotal = sum(float(d.subtotal or 0) for d in c.detalles)
-        c.subtotal = round(detalle_subtotal + _service_cost_total(c), 2)
+        detalle_subtotal = sum((to_decimal(d.subtotal or 0) for d in c.detalles), start=to_decimal(0))
+        c.subtotal = money(detalle_subtotal + to_decimal(_service_cost_total(c)))
         iva_rate = await _get_iva_rate(db)
-        c.impuesto = round(float(c.subtotal) * iva_rate, 2)
-        c.total = round(float(c.subtotal) + float(c.impuesto), 2)
+        c.impuesto = money(to_decimal(c.subtotal) * to_decimal(iva_rate))
+        c.total = money(to_decimal(c.subtotal) + to_decimal(c.impuesto))
 
     await db.flush()
     await db.refresh(c, ["detalles"])

@@ -10,6 +10,7 @@ from sqlalchemy.orm import selectinload
 
 from app.api.deps import get_current_user
 from app.core.database import get_db
+from app.core.money import money, percentage, to_decimal
 from app.infrastructure.models.cliente import Cliente, EstadoClienteEnum
 from app.infrastructure.models.caja_chica import MovimientoCajaChica, TipoMovimientoCajaEnum
 from app.infrastructure.models.compras import EstadoOrdenEnum, OrdenCompra
@@ -61,6 +62,22 @@ def _client_display_name(client: Cliente | None) -> str:
     return f"Cliente #{client.id_cliente}"
 
 
+def _month_bucket_expr(dialect_name: str, column):
+    if dialect_name == "sqlite":
+        return func.strftime("%Y-%m", column)
+    return func.to_char(func.date_trunc("month", column), "YYYY-MM")
+
+
+def _month_key_from_bucket(bucket: str | None) -> tuple[int, int] | None:
+    if not bucket:
+        return None
+    try:
+        year_str, month_str = bucket.split("-", 1)
+        return int(year_str), int(month_str)
+    except (TypeError, ValueError):
+        return None
+
+
 @router.get("/stats", response_model=DashboardStats)
 async def get_stats(
     db: Annotated[AsyncSession, Depends(get_db)],
@@ -108,7 +125,7 @@ async def get_stats(
             Cotizacion.fecha_creacion >= inicio_mes,
         )
     )
-    revenue_mes = int(float(revenue_result.scalar_one() or 0))
+    revenue_mes = int(money(revenue_result.scalar_one() or 0))
 
     # Active projects
     proyectos_result = await db.execute(
@@ -132,7 +149,7 @@ async def get_stats(
             Cotizacion.fecha_creacion >= inicio_mes,
         )
     )
-    margen_bruto_mes = float(margen_result.scalar_one() or 0)
+    margen_bruto_mes = money(margen_result.scalar_one() or 0)
 
     caja_balance_result = await db.execute(
         select(
@@ -148,7 +165,7 @@ async def get_stats(
             )
         )
     )
-    caja_chica_balance = float(caja_balance_result.scalar_one() or 0)
+    caja_chica_balance = money(caja_balance_result.scalar_one() or 0)
 
     caja_egresos_result = await db.execute(
         select(func.coalesce(func.sum(MovimientoCajaChica.monto), 0)).where(
@@ -156,7 +173,7 @@ async def get_stats(
             MovimientoCajaChica.fecha >= inicio_mes,
         )
     )
-    caja_chica_egresos_mes = float(caja_egresos_result.scalar_one() or 0)
+    caja_chica_egresos_mes = money(caja_egresos_result.scalar_one() or 0)
 
     return DashboardStats(
         total_clientes=total_clientes,
@@ -165,9 +182,9 @@ async def get_stats(
         productos_bajo_stock=productos_bajo_stock,
         revenue_mes=revenue_mes,
         proyectos_activos=proyectos_activos,
-        margen_bruto_mes=round(margen_bruto_mes, 2),
-        caja_chica_balance=round(caja_chica_balance, 2),
-        caja_chica_egresos_mes=round(caja_chica_egresos_mes, 2),
+        margen_bruto_mes=money(margen_bruto_mes),
+        caja_chica_balance=money(caja_chica_balance),
+        caja_chica_egresos_mes=money(caja_chica_egresos_mes),
     )
 
 
@@ -202,7 +219,7 @@ async def get_analytics(
         .where(MovimientoCajaChica.fecha >= inicio_mes)
         .group_by(MovimientoCajaChica.tipo)
     )
-    caja_map = {tipo: float(total or 0) for tipo, total in caja_totales.all()}
+    caja_map = {tipo: money(total or 0) for tipo, total in caja_totales.all()}
     caja_ingresos_mes = caja_map.get(TipoMovimientoCajaEnum.INGRESO, 0.0)
     caja_egresos_mes = caja_map.get(TipoMovimientoCajaEnum.EGRESO, 0.0)
 
@@ -258,7 +275,12 @@ async def get_analytics(
         )
     )
 
-    flujo_neto_mes = float(ingresos_facturados_mes or 0) + float(caja_ingresos_mes or 0) - float(compras_registradas_mes or 0) - float(caja_egresos_mes or 0)
+    flujo_neto_mes = money(
+        to_decimal(ingresos_facturados_mes or 0)
+        + to_decimal(caja_ingresos_mes or 0)
+        - to_decimal(compras_registradas_mes or 0)
+        - to_decimal(caja_egresos_mes or 0)
+    )
 
     top_client_rows = await db.execute(
         select(
@@ -284,13 +306,13 @@ async def get_analytics(
         )
         client_map = {client.id_cliente: client for client in clients.all()}
 
-    total_top = sum(float(total or 0) for _, total in top_client_data)
+    total_top = sum((to_decimal(total or 0) for _, total in top_client_data), start=to_decimal(0))
     top_clientes = [
         DashboardTopClient(
             id_cliente=int(client_id),
             nombre=_client_display_name(client_map.get(int(client_id))),
-            total_facturado=round(float(total or 0), 2),
-            participacion_pct=round((float(total or 0) / total_top * 100) if total_top else 0, 2),
+            total_facturado=money(total or 0),
+            participacion_pct=percentage(total or 0, total_top),
         )
         for client_id, total in top_client_data
         if client_id is not None
@@ -310,7 +332,7 @@ async def get_analytics(
         .limit(8)
     )
     egresos_por_categoria = [
-        DashboardExpenseCategory(categoria=str(categoria), total=round(float(total or 0), 2))
+        DashboardExpenseCategory(categoria=str(categoria), total=money(total or 0))
         for categoria, total in categorias_rows.all()
     ]
 
@@ -323,16 +345,16 @@ async def get_analytics(
     receivables = receivable_rows.all()
 
     aging_totals = {
-        "Vigente": {"total": 0.0, "cantidad": 0},
-        "Vencido 1-30": {"total": 0.0, "cantidad": 0},
-        "Vencido 31-60": {"total": 0.0, "cantidad": 0},
-        "Vencido 61+": {"total": 0.0, "cantidad": 0},
-        "Sin vencimiento": {"total": 0.0, "cantidad": 0},
+        "Vigente": {"total": to_decimal(0), "cantidad": 0},
+        "Vencido 1-30": {"total": to_decimal(0), "cantidad": 0},
+        "Vencido 31-60": {"total": to_decimal(0), "cantidad": 0},
+        "Vencido 61+": {"total": to_decimal(0), "cantidad": 0},
+        "Sin vencimiento": {"total": to_decimal(0), "cantidad": 0},
     }
 
     proximos_vencimientos: list[DashboardReceivableDueItem] = []
     for cotizacion in receivables:
-        total = float(cotizacion.total or 0)
+        total = money(cotizacion.total or 0)
         fecha_vencimiento = cotizacion.fecha_vencimiento
         cliente_nombre = _client_display_name(cotizacion.cliente)
 
@@ -361,68 +383,132 @@ async def get_analytics(
                         id_cliente=cotizacion.id_cliente,
                         cliente_nombre=cliente_nombre,
                         estado=cotizacion.estado.value,
-                        total=round(total, 2),
+                        total=money(total),
                         fecha_vencimiento=fecha_vencimiento.date().isoformat(),
                         dias_para_vencer=dias_para_vencer,
                         dias_vencido=dias_vencido,
                     )
                 )
 
-        aging_totals[bucket]["total"] += total
+        aging_totals[bucket]["total"] += to_decimal(total)
         aging_totals[bucket]["cantidad"] += 1
 
     cartera_aging = [
         DashboardReceivableBucket(
             bucket=bucket,
-            total=round(values["total"], 2),
+            total=money(values["total"]),
             cantidad=int(values["cantidad"]),
         )
         for bucket, values in aging_totals.items()
     ]
 
+    trend_start, _, _ = _month_window(inicio_mes, -5)
+    trend_end, _, _ = _month_window(inicio_mes, 1)
+    dialect_name = db.bind.dialect.name if db.bind is not None else "sqlite"
+
+    cot_month_bucket = _month_bucket_expr(dialect_name, Cotizacion.fecha_creacion)
+    compras_month_bucket = _month_bucket_expr(dialect_name, OrdenCompra.fecha_creacion)
+    caja_month_bucket = _month_bucket_expr(dialect_name, MovimientoCajaChica.fecha)
+
+    ingresos_rows = await db.execute(
+        select(
+            cot_month_bucket.label("bucket"),
+            func.coalesce(func.sum(Cotizacion.total), 0).label("total"),
+        )
+        .where(
+            Cotizacion.estado == EstadoCotizacionEnum.FACTURADA,
+            Cotizacion.fecha_creacion >= trend_start,
+            Cotizacion.fecha_creacion < trend_end,
+        )
+        .group_by(cot_month_bucket)
+    )
+    compras_rows = await db.execute(
+        select(
+            compras_month_bucket.label("bucket"),
+            func.coalesce(func.sum(OrdenCompra.total), 0).label("total"),
+        )
+        .where(
+            OrdenCompra.fecha_creacion >= trend_start,
+            OrdenCompra.fecha_creacion < trend_end,
+            OrdenCompra.estado != EstadoOrdenEnum.CANCELADA,
+        )
+        .group_by(compras_month_bucket)
+    )
+    caja_rows = await db.execute(
+        select(
+            caja_month_bucket.label("bucket"),
+            MovimientoCajaChica.tipo,
+            func.coalesce(func.sum(MovimientoCajaChica.monto), 0).label("total"),
+        )
+        .where(
+            MovimientoCajaChica.fecha >= trend_start,
+            MovimientoCajaChica.fecha < trend_end,
+        )
+        .group_by(caja_month_bucket, MovimientoCajaChica.tipo)
+    )
+
+    ingresos_by_month: dict[tuple[int, int], object] = {}
+    compras_by_month: dict[tuple[int, int], object] = {}
+    caja_ingresos_by_month: dict[tuple[int, int], object] = {}
+    caja_egresos_by_month: dict[tuple[int, int], object] = {}
+
+    for bucket, total in ingresos_rows.all():
+        key = _month_key_from_bucket(bucket)
+        if key is None:
+            continue
+        ingresos_by_month[key] = ingresos_by_month.get(key, to_decimal(0)) + to_decimal(total or 0)
+
+    for bucket, total in compras_rows.all():
+        key = _month_key_from_bucket(bucket)
+        if key is None:
+            continue
+        compras_by_month[key] = compras_by_month.get(key, to_decimal(0)) + to_decimal(total or 0)
+
+    for bucket, tipo, monto in caja_rows.all():
+        key = _month_key_from_bucket(bucket)
+        if key is None:
+            continue
+        if tipo == TipoMovimientoCajaEnum.INGRESO:
+            caja_ingresos_by_month[key] = caja_ingresos_by_month.get(key, to_decimal(0)) + to_decimal(monto or 0)
+        elif tipo == TipoMovimientoCajaEnum.EGRESO:
+            caja_egresos_by_month[key] = caja_egresos_by_month.get(key, to_decimal(0)) + to_decimal(monto or 0)
+
     tendencia_mensual: list[DashboardTrendPoint] = []
     for offset in range(-5, 1):
-        start, end, label = _month_window(inicio_mes, offset)
+        start, _, label = _month_window(inicio_mes, offset)
+        key = (start.year, start.month)
 
-        ingresos_periodo = await db.scalar(
-            select(func.coalesce(func.sum(Cotizacion.total), 0)).where(
-                Cotizacion.estado == EstadoCotizacionEnum.FACTURADA,
-                Cotizacion.fecha_creacion >= start,
-                Cotizacion.fecha_creacion < end,
-            )
+        ingresos_money = money(ingresos_by_month.get(key, to_decimal(0)))
+        compras_money = money(compras_by_month.get(key, to_decimal(0)))
+        caja_ingresos_money = money(caja_ingresos_by_month.get(key, to_decimal(0)))
+        caja_egresos_money = money(caja_egresos_by_month.get(key, to_decimal(0)))
+        flujo_neto = money(
+            to_decimal(ingresos_money)
+            + to_decimal(caja_ingresos_money)
+            - to_decimal(compras_money)
+            - to_decimal(caja_egresos_money)
         )
-        compras_periodo = await db.scalar(
-            select(func.coalesce(func.sum(OrdenCompra.total), 0)).where(
-                OrdenCompra.fecha_creacion >= start,
-                OrdenCompra.fecha_creacion < end,
-                OrdenCompra.estado != EstadoOrdenEnum.CANCELADA,
-            )
-        )
-        caja_periodo_rows = await db.execute(
-            select(
-                MovimientoCajaChica.tipo,
-                func.coalesce(func.sum(MovimientoCajaChica.monto), 0),
-            )
-            .where(MovimientoCajaChica.fecha >= start, MovimientoCajaChica.fecha < end)
-            .group_by(MovimientoCajaChica.tipo)
-        )
-        caja_periodo_map = {tipo: float(total or 0) for tipo, total in caja_periodo_rows.all()}
-        caja_ingresos = caja_periodo_map.get(TipoMovimientoCajaEnum.INGRESO, 0.0)
-        caja_egresos = caja_periodo_map.get(TipoMovimientoCajaEnum.EGRESO, 0.0)
 
         tendencia_mensual.append(
             DashboardTrendPoint(
                 label=label,
-                ingresos=round(float(ingresos_periodo or 0), 2),
-                compras=round(float(compras_periodo or 0), 2),
-                caja_ingresos=round(float(caja_ingresos or 0), 2),
-                caja_egresos=round(float(caja_egresos or 0), 2),
-                flujo_neto=round(float(ingresos_periodo or 0) + float(caja_ingresos or 0) - float(compras_periodo or 0) - float(caja_egresos or 0), 2),
+                ingresos=ingresos_money,
+                compras=compras_money,
+                caja_ingresos=caja_ingresos_money,
+                caja_egresos=caja_egresos_money,
+                flujo_neto=flujo_neto,
             )
         )
 
     alertas: list[DashboardAlert] = []
-    if float(caja_balance or 0) <= 0:
+    caja_balance_money = money(caja_balance or 0)
+    ingresos_facturados_money = money(ingresos_facturados_mes or 0)
+    cuentas_por_cobrar_money = money(cuentas_por_cobrar or 0)
+    ordenes_pendientes_money = money(ordenes_pendientes_monto or 0)
+    caja_ingresos_money = money(caja_ingresos_mes or 0)
+    caja_egresos_money = money(caja_egresos_mes or 0)
+
+    if caja_balance_money <= 0:
         alertas.append(
             DashboardAlert(
                 severity="critical",
@@ -431,7 +517,7 @@ async def get_analytics(
                 link="/caja-chica",
             )
         )
-    if float(cuentas_por_cobrar or 0) > max(float(ingresos_facturados_mes or 0) * 0.75, 500):
+    if cuentas_por_cobrar_money > max(ingresos_facturados_money * 0.75, 500):
         alertas.append(
             DashboardAlert(
                 severity="warning",
@@ -440,7 +526,7 @@ async def get_analytics(
                 link="/ventas",
             )
         )
-    if float(ordenes_pendientes_monto or 0) > float(ingresos_facturados_mes or 0):
+    if ordenes_pendientes_money > ingresos_facturados_money:
         alertas.append(
             DashboardAlert(
                 severity="warning",
@@ -449,7 +535,7 @@ async def get_analytics(
                 link="/compras",
             )
         )
-    if float(caja_egresos_mes or 0) > max(float(caja_ingresos_mes or 0) * 1.25, 300):
+    if caja_egresos_money > max(caja_ingresos_money * 1.25, 300):
         alertas.append(
             DashboardAlert(
                 severity="info",
@@ -483,23 +569,19 @@ async def get_analytics(
         )
     )
 
-    ingresos_val = float(ingresos_facturados_mes or 0)
-    compras_val = float(compras_registradas_mes or 0)
-    cartera_val = float(cuentas_por_cobrar or 0)
-    caja_ingresos_val = float(caja_ingresos_mes or 0)
-    caja_egresos_val = float(caja_egresos_mes or 0)
+    ingresos_val = money(ingresos_facturados_mes or 0)
+    compras_val = money(compras_registradas_mes or 0)
+    cartera_val = money(cuentas_por_cobrar or 0)
+    caja_ingresos_val = money(caja_ingresos_mes or 0)
+    caja_egresos_val = money(caja_egresos_mes or 0)
     cotizaciones_mes_val = int(cotizaciones_total_mes or 0)
     cotizaciones_facturadas_val = int(cotizaciones_facturadas_mes or 0)
     tickets_abiertos_val = int(tickets_abiertos or 0)
 
-    ratio_compras_ingresos = (compras_val / ingresos_val * 100) if ingresos_val > 0 else 0.0
-    ratio_cartera_ingresos = (cartera_val / ingresos_val * 100) if ingresos_val > 0 else 0.0
-    ratio_egresos_caja_ingresos = (caja_egresos_val / caja_ingresos_val * 100) if caja_ingresos_val > 0 else 0.0
-    conversion_cotizaciones = (
-        (cotizaciones_facturadas_val / cotizaciones_mes_val * 100)
-        if cotizaciones_mes_val > 0
-        else 0.0
-    )
+    ratio_compras_ingresos = percentage(compras_val, ingresos_val)
+    ratio_cartera_ingresos = percentage(cartera_val, ingresos_val)
+    ratio_egresos_caja_ingresos = percentage(caja_egresos_val, caja_ingresos_val)
+    conversion_cotizaciones = percentage(cotizaciones_facturadas_val, cotizaciones_mes_val)
     carga_tickets_por_factura = (
         (tickets_abiertos_val / cotizaciones_facturadas_val)
         if cotizaciones_facturadas_val > 0
@@ -510,7 +592,7 @@ async def get_analytics(
         DashboardCorrelationMetric(
             key="compras_vs_ingresos",
             label="Compras vs ingresos",
-            value=round(ratio_compras_ingresos, 2),
+            value=money(ratio_compras_ingresos),
             unit="%",
             status="ok" if ratio_compras_ingresos <= 70 else "warning" if ratio_compras_ingresos <= 90 else "critical",
             detail="Mide que parte de lo facturado se esta yendo a compras del mes.",
@@ -518,7 +600,7 @@ async def get_analytics(
         DashboardCorrelationMetric(
             key="cartera_vs_ingresos",
             label="Cartera vs facturacion",
-            value=round(ratio_cartera_ingresos, 2),
+            value=money(ratio_cartera_ingresos),
             unit="%",
             status="ok" if ratio_cartera_ingresos <= 60 else "warning" if ratio_cartera_ingresos <= 90 else "critical",
             detail="Mide el peso de cuentas por cobrar frente a los ingresos ya facturados.",
@@ -526,7 +608,7 @@ async def get_analytics(
         DashboardCorrelationMetric(
             key="egresos_caja_vs_ingresos_caja",
             label="Egresos caja vs ingresos caja",
-            value=round(ratio_egresos_caja_ingresos, 2),
+            value=money(ratio_egresos_caja_ingresos),
             unit="%",
             status="ok" if ratio_egresos_caja_ingresos <= 100 else "warning" if ratio_egresos_caja_ingresos <= 125 else "critical",
             detail="Detecta si caja chica esta drenando mas de lo que repone durante el mes.",
@@ -534,7 +616,7 @@ async def get_analytics(
         DashboardCorrelationMetric(
             key="conversion_cotizaciones",
             label="Conversion de cotizaciones",
-            value=round(conversion_cotizaciones, 2),
+            value=money(conversion_cotizaciones),
             unit="%",
             status="ok" if conversion_cotizaciones >= 45 else "warning" if conversion_cotizaciones >= 25 else "critical",
             detail="Porcentaje de cotizaciones del mes que ya se facturaron.",
@@ -542,7 +624,7 @@ async def get_analytics(
         DashboardCorrelationMetric(
             key="carga_tickets_por_factura",
             label="Carga tickets por factura",
-            value=round(carga_tickets_por_factura, 2),
+            value=money(carga_tickets_por_factura),
             unit="x",
             status="ok" if carga_tickets_por_factura <= 2 else "warning" if carga_tickets_por_factura <= 4 else "critical",
             detail="Relacion entre tickets abiertos y cotizaciones ya facturadas en el mes.",
@@ -550,15 +632,15 @@ async def get_analytics(
     ]
 
     return DashboardFinanceAnalytics(
-        ingresos_facturados_mes=round(float(ingresos_facturados_mes or 0), 2),
-        compras_registradas_mes=round(float(compras_registradas_mes or 0), 2),
-        caja_ingresos_mes=round(float(caja_ingresos_mes or 0), 2),
-        caja_egresos_mes=round(float(caja_egresos_mes or 0), 2),
-        flujo_neto_mes=round(float(flujo_neto_mes or 0), 2),
-        cuentas_por_cobrar=round(float(cuentas_por_cobrar or 0), 2),
-        ordenes_pendientes_monto=round(float(ordenes_pendientes_monto or 0), 2),
-        margen_bruto_mes=round(float(margen_bruto_mes or 0), 2),
-        caja_chica_balance=round(float(caja_balance or 0), 2),
+        ingresos_facturados_mes=money(ingresos_facturados_mes or 0),
+        compras_registradas_mes=money(compras_registradas_mes or 0),
+        caja_ingresos_mes=money(caja_ingresos_mes or 0),
+        caja_egresos_mes=money(caja_egresos_mes or 0),
+        flujo_neto_mes=money(flujo_neto_mes or 0),
+        cuentas_por_cobrar=money(cuentas_por_cobrar or 0),
+        ordenes_pendientes_monto=money(ordenes_pendientes_monto or 0),
+        margen_bruto_mes=money(margen_bruto_mes or 0),
+        caja_chica_balance=money(caja_balance or 0),
         top_clientes=top_clientes,
         egresos_por_categoria=egresos_por_categoria,
         cartera_aging=cartera_aging,

@@ -2,16 +2,8 @@ import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
 import api from '../services/api'
 import { useAuthStore } from './auth'
+import { useDashboardStore } from './dashboard'
 import type { Usuario } from '../types'
-
-interface DashboardStats {
-  total_clientes: number
-  cotizaciones_mes: number
-  tickets_abiertos: number
-  productos_bajo_stock: number
-  revenue_mes: number
-  proyectos_activos: number
-}
 
 export interface AppNotification {
   id: string
@@ -35,18 +27,20 @@ export const useNotificationStore = defineStore('notifications', () => {
     loading.value = true
     try {
       const auth = useAuthStore()
-      const requests: Promise<unknown>[] = [
-        api.get<DashboardStats>('/api/v1/dashboard/stats'),
-      ]
+      const dashboard = useDashboardStore()
+
+      await dashboard.fetchStats(force)
+
+      const requests: Promise<unknown>[] = []
 
       const isAdmin = auth.user?.rol === 'superadmin'
       if (isAdmin) {
         requests.push(api.get<Usuario[]>('/api/v1/usuarios/', { params: { limit: 200 } }))
       }
 
-      const [statsResponse, adminUsersResponse] = await Promise.all(requests)
+      const [adminUsersResponse] = await Promise.all(requests)
       const notifications: AppNotification[] = []
-      const stats = (statsResponse as { data: DashboardStats }).data
+      const stats = dashboard.stats
 
       if (!auth.user?.mfa_habilitado) {
         notifications.push({

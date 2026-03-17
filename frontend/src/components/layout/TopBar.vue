@@ -22,7 +22,7 @@ const isDark = computed(() => themeStore.mode === 'dark' || (themeStore.mode ===
 const hasNotifications = computed(() => notificationStore.unreadCount > 0)
 
 onMounted(() => {
-  notificationStore.fetchNotifications(true)
+  notificationStore.fetchNotifications(false)
 })
 
 function toggleTheme(): void {

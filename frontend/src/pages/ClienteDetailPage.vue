@@ -8,6 +8,7 @@ import Button from '../components/ui/Button.vue'
 import Modal from '../components/ui/Modal.vue'
 import { useClienteStore } from '../stores/clientes'
 import { useAuthStore } from '../stores/auth'
+import { useVentasStore } from '../stores/ventas'
 import api from '../services/api'
 import type { Cliente, EventoCliente, Ticket, Cotizacion } from '../types'
 
@@ -15,6 +16,7 @@ const route = useRoute()
 const router = useRouter()
 const clienteStore = useClienteStore()
 const auth = useAuthStore()
+const ventasStore = useVentasStore()
 
 const cliente = ref<Cliente | null>(null)
 const timeline = ref<EventoCliente[]>([])
@@ -101,16 +103,16 @@ function syncEditForm(): void {
 }
 
 onMounted(async () => {
-  const [clienteData, timelineData, ticketsData, cotizacionesData] = await Promise.all([
+  const [clienteData, timelineData, ticketsData] = await Promise.all([
     clienteStore.fetchCliente(id),
     clienteStore.fetchTimeline(id),
     api.get<Ticket[]>(`/api/v1/clientes/${id}/tickets`).then((r) => r.data).catch(() => []),
-    api.get<Cotizacion[]>(`/api/v1/clientes/${id}/cotizaciones`).then((r) => r.data).catch(() => []),
+    ventasStore.fetchCotizaciones(false, 200).catch(() => undefined),
   ])
   cliente.value = clienteData
   timeline.value = timelineData
   tickets.value = ticketsData
-  cotizaciones.value = cotizacionesData
+  cotizaciones.value = ventasStore.cotizaciones.filter((cotizacion) => cotizacion.id_cliente === id)
   syncEditForm()
   loading.value = false
 })
@@ -230,7 +232,7 @@ async function handleDeleteCotizacion(idCotizacion: number): Promise<void> {
   if (!window.confirm('¿Eliminar esta cotización?')) return
   clienteError.value = null
   try {
-    await api.delete(`/api/v1/ventas/cotizaciones/${idCotizacion}`)
+    await ventasStore.deleteCotizacion(idCotizacion)
     cotizaciones.value = cotizaciones.value.filter((cot) => cot.id_cotizacion !== idCotizacion)
   } catch (e: unknown) {
     const err = e as { response?: { data?: { detail?: string } } }
@@ -243,7 +245,7 @@ async function handleAnularCotizacion(idCotizacion: number): Promise<void> {
   if (!window.confirm('¿Marcar esta cotización como anulada?')) return
   clienteError.value = null
   try {
-    const { data } = await api.patch<Cotizacion>(`/api/v1/ventas/cotizaciones/${idCotizacion}`, { estado: 'rechazada' })
+    const data = await ventasStore.updateEstado(idCotizacion, 'rechazada')
     const idx = cotizaciones.value.findIndex((cot) => cot.id_cotizacion === idCotizacion)
     if (idx >= 0) cotizaciones.value[idx] = data
   } catch (e: unknown) {

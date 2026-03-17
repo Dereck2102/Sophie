@@ -1,27 +1,18 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { computed, ref, onMounted } from 'vue'
+import { storeToRefs } from 'pinia'
 import { Eye, Lock, Plus } from 'lucide-vue-next'
 import Card from '../components/ui/Card.vue'
 import Table from '../components/ui/Table.vue'
 import Button from '../components/ui/Button.vue'
 import Modal from '../components/ui/Modal.vue'
 import api from '../services/api'
+import { useBovedaStore } from '../stores/boveda'
 import type { Cliente } from '../types'
+import type { CredencialReveal } from '../types/boveda'
 
-interface Credencial {
-  id_credencial: number
-  id_empresa: number
-  nombre: string
-  usuario_acceso?: string
-  url?: string
-  notas?: string
-}
-
-interface CredencialReveal extends Credencial {
-  password_plain: string
-}
-
-const credenciales = ref<Credencial[]>([])
+const bovedaStore = useBovedaStore()
+const { credenciales, loading: bovedaLoading, error: bovedaError } = storeToRefs(bovedaStore)
 const empresas = ref<Array<{ id_cliente: number; nombre: string }>>([])
 const loading = ref(true)
 const mfaRequired = ref(false)
@@ -49,9 +40,15 @@ const columns = [
   { key: 'acciones', label: 'Acciones', class: 'w-36' },
 ]
 
+const empresasMap = computed<Record<number, string>>(() =>
+  empresas.value.reduce<Record<number, string>>((acc, empresa) => {
+    acc[empresa.id_cliente] = empresa.nombre
+    return acc
+  }, {})
+)
+
 function getEmpresaNombre(idEmpresa: number): string {
-  const empresa = empresas.value.find((e) => e.id_cliente === idEmpresa)
-  return empresa?.nombre ?? `Empresa #${idEmpresa}`
+  return empresasMap.value[idEmpresa] ?? `Empresa #${idEmpresa}`
 }
 
 function resetForm(): void {
@@ -67,18 +64,33 @@ function resetForm(): void {
 }
 
 async function loadData(): Promise<void> {
+  loading.value = true
+  formError.value = null
+  mfaRequired.value = false
   try {
-    const [credRes, clientesRes] = await Promise.all([
-      api.get<Credencial[]>('/api/v1/boveda/'),
+    const [bovedaResult, clientesResult] = await Promise.allSettled([
+      bovedaStore.fetchCredenciales(),
       api.get<Cliente[]>('/api/v1/clientes/', { params: { limit: 200 } }),
     ])
-    credenciales.value = credRes.data
-    empresas.value = clientesRes.data
-      .filter((cliente) => !!cliente.empresa?.razon_social)
-      .map((cliente) => ({
-        id_cliente: cliente.id_cliente,
-        nombre: cliente.empresa?.razon_social ?? `Empresa #${cliente.id_cliente}`,
-      }))
+    if (clientesResult.status === 'fulfilled') {
+      empresas.value = clientesResult.value.data
+        .filter((cliente) => !!cliente.empresa?.razon_social)
+        .map((cliente) => ({
+          id_cliente: cliente.id_cliente,
+          nombre: cliente.empresa?.razon_social ?? `Empresa #${cliente.id_cliente}`,
+        }))
+    }
+
+    if (bovedaResult.status === 'rejected') {
+      const err = bovedaResult.reason as { response?: { status?: number; data?: { detail?: string } } }
+      if (err.response?.status === 403) mfaRequired.value = true
+      formError.value = err.response?.data?.detail ?? bovedaError.value ?? 'No se pudo cargar la bóveda'
+    }
+
+    if (clientesResult.status === 'rejected') {
+      const err = clientesResult.reason as { response?: { status?: number; data?: { detail?: string } } }
+      formError.value = formError.value ?? err.response?.data?.detail ?? 'No se pudo cargar el catálogo de empresas'
+    }
   } catch (e: unknown) {
     const err = e as { response?: { status?: number; data?: { detail?: string } } }
     if (err.response?.status === 403) mfaRequired.value = true
@@ -96,7 +108,7 @@ async function handleCreate(): Promise<void> {
   saving.value = true
   formError.value = null
   try {
-    await api.post('/api/v1/boveda/', {
+    await bovedaStore.createCredencial({
       id_empresa: form.value.id_empresa,
       nombre: form.value.nombre,
       usuario_acceso: form.value.usuario_acceso || undefined,
@@ -106,11 +118,10 @@ async function handleCreate(): Promise<void> {
     })
     showCreateModal.value = false
     resetForm()
-    await loadData()
   } catch (e: unknown) {
     const err = e as { response?: { status?: number; data?: { detail?: string } } }
     if (err.response?.status === 403) mfaRequired.value = true
-    formError.value = err.response?.data?.detail ?? 'No se pudo crear la credencial'
+    formError.value = err.response?.data?.detail ?? bovedaError.value ?? 'No se pudo crear la credencial'
   } finally {
     saving.value = false
   }
@@ -120,8 +131,7 @@ async function handleReveal(id: number): Promise<void> {
   revealing.value = true
   formError.value = null
   try {
-    const { data } = await api.get<CredencialReveal>(`/api/v1/boveda/${id}/reveal`)
-    revealData.value = data
+    revealData.value = await bovedaStore.revealCredencial(id)
     showRevealModal.value = true
   } catch (e: unknown) {
     const err = e as { response?: { status?: number; data?: { detail?: string } } }
@@ -130,10 +140,15 @@ async function handleReveal(id: number): Promise<void> {
       formError.value = 'Necesitas una sesión MFA verificada para revelar contraseñas'
       return
     }
-    formError.value = err.response?.data?.detail ?? 'No se pudo revelar la credencial'
+    formError.value = err.response?.data?.detail ?? bovedaError.value ?? 'No se pudo revelar la credencial'
   } finally {
     revealing.value = false
   }
+}
+
+function closeRevealModal(): void {
+  showRevealModal.value = false
+  revealData.value = null
 }
 
 onMounted(loadData)
@@ -171,10 +186,10 @@ onMounted(loadData)
     <p v-if="formError" class="text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg">{{ formError }}</p>
 
     <Card :padding="false">
-      <div v-if="!loading && credenciales.length === 0" class="text-center py-10 text-sm text-gray-500">
+      <div v-if="!loading && !bovedaLoading && credenciales.length === 0" class="text-center py-10 text-sm text-gray-500">
         No hay credenciales registradas todavía. Crea la primera desde “Nueva credencial”.
       </div>
-      <Table v-else :columns="columns" :rows="credenciales.map((c) => ({ ...c, id: c.id_credencial }))" :loading="loading">
+      <Table v-else :columns="columns" :rows="credenciales.map((c) => ({ ...c, id: c.id_credencial }))" :loading="loading || bovedaLoading">
         <template #id_empresa="{ value }">
           <span>{{ getEmpresaNombre(Number(value)) }}</span>
         </template>
@@ -234,7 +249,7 @@ onMounted(loadData)
       </form>
     </Modal>
 
-    <Modal :open="showRevealModal" title="Contraseña revelada" size="sm" @close="showRevealModal = false">
+    <Modal :open="showRevealModal" title="Contraseña revelada" size="sm" @close="closeRevealModal">
       <div class="space-y-3" v-if="revealData">
         <p class="text-xs text-gray-500">{{ revealData.nombre }} · {{ getEmpresaNombre(revealData.id_empresa) }}</p>
         <div class="bg-gray-100 border border-gray-200 rounded-lg px-3 py-2 font-mono text-sm break-all">

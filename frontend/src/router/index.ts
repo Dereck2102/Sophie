@@ -1,6 +1,38 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import type { RouteRecordRaw } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
+import type { Usuario } from '../types'
+
+// Maps each effective view key to its named route
+const VIEW_ROUTE_MAP: Record<string, string> = {
+  dashboard: 'Dashboard',
+  taller: 'Taller',
+  proyectos: 'Proyectos',
+  crm: 'CRM',
+  ventas: 'Ventas',
+  compras: 'Compras',
+  caja_chica: 'CajaChica',
+  boveda: 'Boveda',
+  usuarios: 'Usuarios',
+  configuracion: 'Configuracion',
+  auditoria: 'Auditoria',
+}
+
+// Priority order for determining the home route when dashboard is unavailable
+const VIEW_PRIORITY = [
+  'dashboard', 'taller', 'proyectos', 'crm', 'ventas',
+  'compras', 'caja_chica', 'boveda', 'auditoria',
+]
+
+function getHomeRoute(user: Usuario | null): { name: string } {
+  if (!user) return { name: 'Login' }
+  const views = user.vistas ?? []
+  if (views.includes('*')) return { name: 'Dashboard' }
+  for (const v of VIEW_PRIORITY) {
+    if (views.includes(v) && VIEW_ROUTE_MAP[v]) return { name: VIEW_ROUTE_MAP[v] }
+  }
+  return { name: 'Perfil' }
+}
 
 const routes: RouteRecordRaw[] = [
   {
@@ -20,19 +52,19 @@ const routes: RouteRecordRaw[] = [
     component: () => import('../layouts/MainLayout.vue'),
     meta: { requiresAuth: true },
     children: [
-      { path: '', name: 'Dashboard', component: () => import('../pages/DashboardPage.vue') },
+      { path: '', name: 'Dashboard', component: () => import('../pages/DashboardPage.vue'), meta: { requiredView: 'dashboard' } },
       { path: 'flujo-operativo', name: 'FlujoOperativo', component: () => import('../pages/FlujoOperativoPage.vue'), meta: { requiredView: 'dashboard' } },
       { path: 'crm', name: 'CRM', component: () => import('../pages/CrmPage.vue'), meta: { requiredView: 'crm' } },
-      { path: 'crm/:id', name: 'ClienteDetail', component: () => import('../pages/ClienteDetailPage.vue') },
+      { path: 'crm/:id', name: 'ClienteDetail', component: () => import('../pages/ClienteDetailPage.vue'), meta: { requiredView: 'crm' } },
       { path: 'ventas', name: 'Ventas', component: () => import('../pages/VentasPage.vue'), meta: { requiredView: 'ventas' } },
       { path: 'compras', name: 'Compras', component: () => import('../pages/ComprasPage.vue'), meta: { requiredView: 'compras' } },
-      { path: 'caja-chica', name: 'CajaChica', component: () => import('../pages/CajaChicaPage.vue') },
+      { path: 'caja-chica', name: 'CajaChica', component: () => import('../pages/CajaChicaPage.vue'), meta: { requiredView: 'caja_chica' } },
       { path: 'taller', name: 'Taller', component: () => import('../pages/TallerPage.vue'), meta: { requiredView: 'taller' } },
       { path: 'proyectos', name: 'Proyectos', component: () => import('../pages/ProyectosPage.vue'), meta: { requiredView: 'proyectos' } },
       { path: 'boveda', name: 'Boveda', component: () => import('../pages/BovedaPage.vue'), meta: { requiredView: 'boveda' } },
-      { path: 'usuarios', name: 'Usuarios', component: () => import('../pages/UsuariosPage.vue'), meta: { superadminOnly: true } },
-      { path: 'configuracion', name: 'Configuracion', component: () => import('../pages/ConfigPage.vue'), meta: { superadminOnly: true } },
-      { path: 'auditoria', name: 'Auditoria', component: () => import('../pages/AuditoriaPage.vue'), meta: { superadminOnly: true } },
+      { path: 'usuarios', name: 'Usuarios', component: () => import('../pages/UsuariosPage.vue'), meta: { requiredView: 'usuarios' } },
+      { path: 'configuracion', name: 'Configuracion', component: () => import('../pages/ConfigPage.vue'), meta: { requiredView: 'configuracion' } },
+      { path: 'auditoria', name: 'Auditoria', component: () => import('../pages/AuditoriaPage.vue'), meta: { requiredView: 'auditoria' } },
       { path: 'perfil', name: 'Perfil', component: () => import('../pages/PerfilPage.vue') },
     ],
   },
@@ -47,16 +79,14 @@ router.beforeEach((to, _from, next) => {
   const auth = useAuthStore()
   const requiredView = (to.meta?.requiredView as string | undefined) ?? null
   const userViews = auth.user?.vistas ?? []
-  const isSuperadmin = auth.user?.rol === 'superadmin'
-  const canAccessView = !requiredView || isSuperadmin || userViews.includes('*') || userViews.includes(requiredView)
+  const canAccess = !requiredView || userViews.includes('*') || userViews.includes(requiredView)
+
   if (to.meta.requiresAuth && !auth.accessToken) {
     next({ name: 'Login', query: { redirect: to.fullPath } })
-  } else if (to.name === 'Login' && auth.accessToken) {
-    next({ name: 'Dashboard' })
-  } else if (to.meta.superadminOnly && auth.user && auth.user.rol !== 'superadmin') {
-    next({ name: 'Dashboard' })
-  } else if (requiredView && auth.user && !canAccessView) {
-    next({ name: 'Dashboard' })
+  } else if (to.name === 'Login' && auth.accessToken && auth.user) {
+    next(getHomeRoute(auth.user))
+  } else if (requiredView && auth.user && !canAccess) {
+    next(getHomeRoute(auth.user))
   } else {
     next()
   }

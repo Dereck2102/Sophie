@@ -22,16 +22,34 @@ const formError = ref<string | null>(null)
 
 const roles: RolEnum[] = [
   'superadmin',
+  'admin',
+  'jefe_tecnologias',
+  'jefe_taller',
+  'jefe_administrativo',
+  'jefe_contable',
   'ejecutivo',
   'administrativo_contable',
   'tecnico',
+  'tecnico_taller',
+  'agente_soporte_l1',
+  'agente_soporte_l2',
+  'desarrollador',
 ]
 
 const roleLabels: Record<RolEnum, string> = {
-  superadmin: 'Superadministrador',
+  superadmin: 'Superadmin',
+  admin: 'Administrador',
+  jefe_tecnologias: 'Jefe de Tecnologías',
+  jefe_taller: 'Jefe de Taller',
+  jefe_administrativo: 'Jefe Administrativo',
+  jefe_contable: 'Jefe Contable',
   ejecutivo: 'Ejecutivo',
   administrativo_contable: 'Administrativo Contable',
   tecnico: 'Técnico',
+  tecnico_taller: 'Técnico de Taller',
+  agente_soporte_l1: 'Agente Soporte L1',
+  agente_soporte_l2: 'Agente Soporte L2',
+  desarrollador: 'Desarrollador',
 }
 
 interface AccessOption {
@@ -49,13 +67,15 @@ interface AccessProfile {
 
 const permissionOptions: AccessOption[] = [
   { value: 'dashboard.view', label: 'Ver dashboard' },
+  { value: 'clientes.read', label: 'Consultar clientes' },
   { value: 'clientes.manage', label: 'Gestionar clientes' },
   { value: 'ventas.manage', label: 'Gestionar ventas' },
   { value: 'compras.manage', label: 'Gestionar compras' },
+  { value: 'proyectos.read', label: 'Consultar proyectos' },
   { value: 'proyectos.manage', label: 'Gestionar proyectos' },
   { value: 'tickets.manage', label: 'Gestionar tickets' },
   { value: 'inventario.read', label: 'Consultar inventario' },
-  { value: 'boveda.manage', label: 'Gestionar bóveda de credenciales' },
+  { value: 'boveda.manage', label: 'Gestionar bóveda' },
   { value: 'reportes.view', label: 'Ver reportes' },
 ]
 
@@ -64,11 +84,12 @@ const viewOptions: AccessOption[] = [
   { value: 'crm', label: 'CRM' },
   { value: 'ventas', label: 'Ventas' },
   { value: 'compras', label: 'Compras' },
+  { value: 'caja_chica', label: 'Caja Chica' },
   { value: 'proyectos', label: 'Proyectos' },
   { value: 'taller', label: 'Taller' },
   { value: 'inventario', label: 'Inventario' },
-  { value: 'perfil', label: 'Perfil' },
   { value: 'boveda', label: 'Bóveda' },
+  { value: 'perfil', label: 'Perfil' },
   { value: 'usuarios', label: 'Usuarios' },
   { value: 'configuracion', label: 'Configuración' },
   { value: 'auditoria', label: 'Auditoría' },
@@ -82,49 +103,81 @@ const toolOptions: AccessOption[] = [
   { value: 'simulador_iva', label: 'Simulador de IVA' },
   { value: 'simulador_descuentos', label: 'Simulador de descuentos' },
   { value: 'costeo_cotizaciones', label: 'Costeo de cotizaciones' },
-  { value: 'control_caja_chica', label: 'Control de caja chica' },
-  { value: 'calculo_horas_tecnicas', label: 'Cálculo de horas técnicas' },
-  { value: 'scanner_qr', label: 'Escáner QR de seguimiento' },
+  { value: 'control_caja_chica', label: 'Control caja chica' },
+  { value: 'calculo_horas_tecnicas', label: 'Cálculo horas técnicas' },
+  { value: 'scanner_qr', label: 'Escáner QR' },
+  { value: 'gestion_proyectos', label: 'Gestión de proyectos' },
 ]
 
 const roleProfiles: Record<RolEnum, AccessProfile> = {
+  // ── Nivel 0-1: Administración ──────────────────────────────────────
   superadmin: {
     permisos: ['*'],
     vistas: ['*'],
     herramientas: ['*'],
   },
+  admin: {
+    permisos: ['*'],
+    vistas: ['auditoria', 'boveda', 'caja_chica', 'compras', 'configuracion', 'crm', 'dashboard', 'inventario', 'perfil', 'proyectos', 'taller', 'usuarios', 'ventas'],
+    herramientas: ['*'],
+  },
+  // ── Nivel 2: Jefaturas ────────────────────────────────────────────
+  jefe_tecnologias: {
+    permisos: ['boveda.manage', 'clientes.read', 'dashboard.view', 'inventario.read', 'proyectos.manage', 'reportes.view', 'tickets.manage'],
+    vistas: ['boveda', 'crm', 'dashboard', 'perfil', 'proyectos', 'taller'],
+    herramientas: ['calculo_horas_tecnicas', 'exportaciones', 'reportes', 'scanner_qr'],
+  },
+  jefe_taller: {
+    permisos: ['clientes.read', 'dashboard.view', 'inventario.read', 'proyectos.read', 'reportes.view', 'tickets.manage'],
+    vistas: ['crm', 'dashboard', 'inventario', 'perfil', 'proyectos', 'taller'],
+    herramientas: ['calculo_horas_tecnicas', 'exportaciones', 'reportes', 'scanner_qr'],
+  },
+  jefe_administrativo: {
+    permisos: ['clientes.manage', 'compras.manage', 'dashboard.view', 'inventario.read', 'reportes.view', 'ventas.manage'],
+    vistas: ['caja_chica', 'compras', 'crm', 'dashboard', 'perfil', 'proyectos', 'ventas'],
+    herramientas: ['calculadora_margen', 'control_caja_chica', 'costeo_cotizaciones', 'exportaciones', 'proyecciones_financieras', 'reportes'],
+  },
+  jefe_contable: {
+    permisos: ['compras.manage', 'dashboard.view', 'reportes.view', 'ventas.manage'],
+    vistas: ['auditoria', 'caja_chica', 'compras', 'dashboard', 'perfil', 'ventas'],
+    herramientas: ['calculadora_margen', 'control_caja_chica', 'costeo_cotizaciones', 'exportaciones', 'proyecciones_financieras', 'reportes', 'simulador_descuentos', 'simulador_iva'],
+  },
+  // ── Nivel 3: Roles transversales ─────────────────────────────────
   ejecutivo: {
-    permisos: [
-      'dashboard.view',
-      'clientes.manage',
-      'ventas.manage',
-      'proyectos.manage',
-      'tickets.manage',
-      'inventario.read',
-      'boveda.manage',
-      'reportes.view',
-    ],
-    vistas: ['dashboard', 'crm', 'ventas', 'proyectos', 'taller', 'inventario', 'boveda', 'perfil'],
-    herramientas: ['reportes', 'exportaciones'],
+    permisos: ['boveda.manage', 'clientes.manage', 'dashboard.view', 'inventario.read', 'proyectos.manage', 'reportes.view', 'tickets.manage', 'ventas.manage'],
+    vistas: ['boveda', 'crm', 'dashboard', 'inventario', 'perfil', 'proyectos', 'taller', 'ventas'],
+    herramientas: ['exportaciones', 'reportes'],
   },
   administrativo_contable: {
-    permisos: ['dashboard.view', 'compras.manage', 'ventas.manage', 'clientes.manage', 'inventario.read', 'reportes.view'],
-    vistas: ['dashboard', 'crm', 'ventas', 'compras', 'inventario', 'perfil'],
-    herramientas: [
-      'reportes',
-      'exportaciones',
-      'calculadora_margen',
-      'proyecciones_financieras',
-      'simulador_iva',
-      'simulador_descuentos',
-      'costeo_cotizaciones',
-      'control_caja_chica',
-    ],
+    permisos: ['clientes.manage', 'compras.manage', 'dashboard.view', 'inventario.read', 'reportes.view', 'ventas.manage'],
+    vistas: ['caja_chica', 'compras', 'crm', 'dashboard', 'inventario', 'perfil', 'ventas'],
+    herramientas: ['calculadora_margen', 'control_caja_chica', 'costeo_cotizaciones', 'exportaciones', 'proyecciones_financieras', 'reportes', 'simulador_descuentos', 'simulador_iva'],
   },
+  // ── Nivel 4: Personal técnico y soporte ──────────────────────────
   tecnico: {
-    permisos: ['dashboard.view', 'tickets.manage', 'inventario.read', 'reportes.view'],
-    vistas: ['dashboard', 'taller', 'proyectos', 'crm', 'inventario', 'perfil'],
-    herramientas: ['reportes', 'scanner_qr', 'calculo_horas_tecnicas'],
+    permisos: ['inventario.read', 'tickets.manage'],
+    vistas: ['perfil', 'taller'],
+    herramientas: ['calculo_horas_tecnicas', 'scanner_qr'],
+  },
+  tecnico_taller: {
+    permisos: ['inventario.read', 'tickets.manage'],
+    vistas: ['perfil', 'taller'],
+    herramientas: ['calculo_horas_tecnicas', 'scanner_qr'],
+  },
+  agente_soporte_l1: {
+    permisos: ['clientes.read', 'tickets.manage'],
+    vistas: ['crm', 'perfil', 'taller'],
+    herramientas: ['scanner_qr'],
+  },
+  agente_soporte_l2: {
+    permisos: ['clientes.read', 'inventario.read', 'proyectos.read', 'tickets.manage'],
+    vistas: ['crm', 'perfil', 'proyectos', 'taller'],
+    herramientas: ['calculo_horas_tecnicas', 'reportes', 'scanner_qr'],
+  },
+  desarrollador: {
+    permisos: ['inventario.read', 'proyectos.manage', 'tickets.manage'],
+    vistas: ['boveda', 'dashboard', 'perfil', 'proyectos', 'taller'],
+    herramientas: ['calculo_horas_tecnicas', 'reportes', 'scanner_qr'],
   },
 }
 
@@ -152,13 +205,13 @@ const createFormDefaults = () => ({
   username: '',
   email: '',
   password: '',
-  rol: 'ejecutivo' as RolEnum,
+  rol: 'tecnico_taller' as RolEnum,
   nombre_completo: '',
   mfa_habilitado: false,
   force_mfa: false,
-  permisos: getRolePreset('ejecutivo').permisos,
-  vistas: getRolePreset('ejecutivo').vistas,
-  herramientas: getRolePreset('ejecutivo').herramientas,
+  permisos: getRolePreset('tecnico_taller').permisos,
+  vistas: getRolePreset('tecnico_taller').vistas,
+  herramientas: getRolePreset('tecnico_taller').herramientas,
 })
 
 const createForm = ref(createFormDefaults())
@@ -166,7 +219,7 @@ const createForm = ref(createFormDefaults())
 const editForm = ref({
   email: '',
   nombre_completo: '',
-  rol: 'ejecutivo' as RolEnum,
+  rol: 'tecnico_taller' as RolEnum,
   activo: true,
   mfa_habilitado: false,
   force_mfa: false,
@@ -356,8 +409,15 @@ async function handleDelete(): Promise<void> {
         @row-click="openEdit"
       >
         <template #rol="{ value }">
-          <Badge :variant="value === 'superadmin' ? 'danger' : value === 'ejecutivo' ? 'warning' : 'info'">
-            <ShieldCheck v-if="value === 'superadmin'" :size="11" class="mr-1" />
+          <Badge :variant="
+            value === 'superadmin' ? 'danger' :
+            value === 'admin' ? 'danger' :
+            ['jefe_tecnologias', 'jefe_taller', 'jefe_administrativo', 'jefe_contable'].includes(value as string) ? 'warning' :
+            ['ejecutivo', 'administrativo_contable'].includes(value as string) ? 'warning' :
+            ['desarrollador'].includes(value as string) ? 'info' :
+            'default'
+          ">
+            <ShieldCheck v-if="value === 'superadmin' || value === 'admin'" :size="11" class="mr-1" />
             {{ roleLabels[value as RolEnum] ?? value }}
           </Badge>
         </template>

@@ -21,11 +21,22 @@ router = APIRouter(prefix="/usuarios", tags=["Usuarios"])
 settings = get_settings()
 
 _ASSIGNABLE_ROLES = (
+    RolEnum.SUPERADMIN,
+    RolEnum.ADMIN,
+    RolEnum.JEFE_TECNOLOGIAS,
+    RolEnum.JEFE_TALLER,
+    RolEnum.JEFE_ADMINISTRATIVO,
+    RolEnum.JEFE_CONTABLE,
     RolEnum.EJECUTIVO,
     RolEnum.ADMINISTRATIVO_CONTABLE,
     RolEnum.TECNICO,
-    RolEnum.SUPERADMIN,
+    RolEnum.TECNICO_TALLER,
+    RolEnum.AGENTE_SOPORTE_L1,
+    RolEnum.AGENTE_SOPORTE_L2,
+    RolEnum.DESARROLLADOR,
 )
+
+_PRIVILEGED_ROLES = (RolEnum.SUPERADMIN, RolEnum.ADMIN)
 
 
 def _serialize_user(user: Usuario) -> UsuarioOut:
@@ -51,12 +62,15 @@ def _serialize_user(user: Usuario) -> UsuarioOut:
 
 
 def _assert_superadmin_only(current_user: Usuario, target_user: Usuario | None = None, target_role: RolEnum | None = None) -> None:
+    """Ensures privileged-role accounts can only be managed by superadmin;
+    admin users cannot manage other admin/superadmin accounts."""
     if current_user.rol == RolEnum.SUPERADMIN:
-        return
-    if target_user is not None and target_user.rol == RolEnum.SUPERADMIN:
-        raise HTTPException(status_code=403, detail="Solo el superadmin puede gestionar esta cuenta")
-    if target_role == RolEnum.SUPERADMIN:
-        raise HTTPException(status_code=403, detail="Solo el superadmin puede asignar el rol superadmin")
+        return  # Superadmin can manage anyone (further checked by owner policy)
+    _protected = (RolEnum.SUPERADMIN, RolEnum.ADMIN)
+    if target_user is not None and target_user.rol in _protected:
+        raise HTTPException(status_code=403, detail="Solo el superadmin puede gestionar cuentas de administrador")
+    if target_role in _protected:
+        raise HTTPException(status_code=403, detail="Solo el superadmin puede asignar roles de administrador")
 
 
 def _owner_superadmin_username() -> str:
@@ -145,7 +159,7 @@ def _validate_and_optimize_photo(photo_data_url: str | None) -> str | None:
 @router.get("/", response_model=List[UsuarioOut])
 async def list_usuarios(
     db: Annotated[AsyncSession, Depends(get_db)],
-    current_user: Annotated[Usuario, Depends(require_roles(RolEnum.SUPERADMIN))],
+    current_user: Annotated[Usuario, Depends(require_roles(RolEnum.SUPERADMIN, RolEnum.ADMIN))],
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=200),
 ) -> list[Usuario]:
@@ -157,7 +171,7 @@ async def list_usuarios(
 async def create_usuario(
     body: UsuarioCreate,
     db: Annotated[AsyncSession, Depends(get_db)],
-    current_user: Annotated[Usuario, Depends(require_roles(RolEnum.SUPERADMIN))],
+    current_user: Annotated[Usuario, Depends(require_roles(RolEnum.SUPERADMIN, RolEnum.ADMIN))],
 ) -> UsuarioOut:
     await _validate_unique_identity(
         db,
@@ -260,7 +274,7 @@ async def update_my_profile(
 async def get_usuario(
     id_usuario: int,
     db: Annotated[AsyncSession, Depends(get_db)],
-    current_user: Annotated[Usuario, Depends(require_roles(RolEnum.SUPERADMIN))],
+    current_user: Annotated[Usuario, Depends(require_roles(RolEnum.SUPERADMIN, RolEnum.ADMIN))],
 ) -> UsuarioOut:
     result = await db.execute(select(Usuario).where(Usuario.id_usuario == id_usuario))
     user = result.scalar_one_or_none()
@@ -274,7 +288,7 @@ async def update_usuario(
     id_usuario: int,
     body: UsuarioUpdate,
     db: Annotated[AsyncSession, Depends(get_db)],
-    current_user: Annotated[Usuario, Depends(require_roles(RolEnum.SUPERADMIN))],
+    current_user: Annotated[Usuario, Depends(require_roles(RolEnum.SUPERADMIN, RolEnum.ADMIN))],
 ) -> UsuarioOut:
     result = await db.execute(select(Usuario).where(Usuario.id_usuario == id_usuario))
     user = result.scalar_one_or_none()
@@ -297,10 +311,11 @@ async def update_usuario(
             telefono_recuperacion=payload["telefono_recuperacion"],
             exclude_user_id=id_usuario,
         )
-    if "mfa_habilitado" in payload and current_user.rol != RolEnum.SUPERADMIN:
-        raise HTTPException(status_code=403, detail="Solo el superadmin puede cambiar MFA directamente")
-    if "force_mfa" in payload and current_user.rol != RolEnum.SUPERADMIN:
-        raise HTTPException(status_code=403, detail="Solo el superadmin puede forzar MFA")
+    _is_privileged = current_user.rol in _PRIVILEGED_ROLES
+    if "mfa_habilitado" in payload and not _is_privileged:
+        raise HTTPException(status_code=403, detail="Solo administradores pueden cambiar MFA directamente")
+    if "force_mfa" in payload and not _is_privileged:
+        raise HTTPException(status_code=403, detail="Solo administradores pueden forzar MFA")
 
     permissions = payload.pop("permisos", None)
     views = payload.pop("vistas", None)
@@ -308,16 +323,16 @@ async def update_usuario(
     for k, v in payload.items():
         setattr(user, k, v)
     if permissions is not None:
-        if current_user.rol != RolEnum.SUPERADMIN:
-            raise HTTPException(status_code=403, detail="Solo el superadmin puede cambiar permisos granulares")
+        if not _is_privileged:
+            raise HTTPException(status_code=403, detail="Solo administradores pueden cambiar permisos granulares")
         user.permisos_json = dumps_json_list(permissions)
     if views is not None:
-        if current_user.rol != RolEnum.SUPERADMIN:
-            raise HTTPException(status_code=403, detail="Solo el superadmin puede cambiar vistas")
+        if not _is_privileged:
+            raise HTTPException(status_code=403, detail="Solo administradores pueden cambiar vistas")
         user.vistas_json = dumps_json_list(views)
     if tools is not None:
-        if current_user.rol != RolEnum.SUPERADMIN:
-            raise HTTPException(status_code=403, detail="Solo el superadmin puede cambiar herramientas")
+        if not _is_privileged:
+            raise HTTPException(status_code=403, detail="Solo administradores pueden cambiar herramientas")
         user.herramientas_json = dumps_json_list(tools)
     await db.flush()
     return _serialize_user(user)
@@ -327,7 +342,7 @@ async def update_usuario(
 async def delete_usuario(
     id_usuario: int,
     db: Annotated[AsyncSession, Depends(get_db)],
-    current_user: Annotated[Usuario, Depends(require_roles(RolEnum.SUPERADMIN))],
+    current_user: Annotated[Usuario, Depends(require_roles(RolEnum.SUPERADMIN, RolEnum.ADMIN))],
 ) -> None:
     if current_user.id_usuario == id_usuario:
         raise HTTPException(

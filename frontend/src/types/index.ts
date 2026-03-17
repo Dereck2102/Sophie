@@ -1,6 +1,19 @@
 // API Types for SOPHIE ERP/CRM
 
-export type RolEnum = 'superadmin' | 'ejecutivo' | 'administrativo_contable' | 'tecnico'
+export type RolEnum =
+  | 'superadmin'
+  | 'admin'
+  | 'jefe_tecnologias'
+  | 'jefe_taller'
+  | 'jefe_administrativo'
+  | 'jefe_contable'
+  | 'ejecutivo'
+  | 'administrativo_contable'
+  | 'tecnico'
+  | 'tecnico_taller'
+  | 'agente_soporte_l1'
+  | 'agente_soporte_l2'
+  | 'desarrollador'
 
 export type TipoCliente = 'B2B' | 'B2C'
 export type EstadoCliente = 'activo' | 'inactivo' | 'prospecto'

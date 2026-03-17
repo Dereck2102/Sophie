@@ -51,7 +51,8 @@ function setupDevCacheMetricsConsole(): void {
 }
 
 function refreshDashboardIfStale(): void {
-  if (authStore.user?.rol === 'tecnico') return
+  const hasDashboard = authStore.user?.vistas.includes('*') || authStore.user?.vistas.includes('dashboard')
+  if (!hasDashboard) return
   const statsStale = !dashboardStore.lastStatsLoadedAt
   const analyticsStale = !dashboardStore.lastAnalyticsLoadedAt
 
@@ -97,8 +98,9 @@ const pageTitle = () => {
 onMounted(async () => {
   setupDevCacheMetricsConsole()
   try {
+    const hasDashboard = authStore.user?.vistas.includes('*') || authStore.user?.vistas.includes('dashboard')
     const preloads: Promise<unknown>[] = [notificationStore.fetchNotifications(false)]
-    if (authStore.user?.rol !== 'tecnico') preloads.push(dashboardStore.fetchAll(false))
+    if (hasDashboard) preloads.push(dashboardStore.fetchAll(false))
     await Promise.all(preloads)
   } catch {
     // non-blocking preload

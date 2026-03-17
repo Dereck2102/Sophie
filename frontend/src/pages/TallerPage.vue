@@ -22,9 +22,11 @@ const auth = useAuthStore()
 const route = useRoute()
 const { proyectos } = storeToRefs(proyectoStore)
 
-const isTecnico = computed(() => auth.user?.rol === 'ejecutivo' || auth.user?.rol === 'tecnico')
-const isTecnicoRole = computed(() => auth.user?.rol === 'tecnico')
-const canCreate = computed(() => auth.user?.rol === 'superadmin' || auth.user?.rol === 'ejecutivo' || auth.user?.rol === 'tecnico')
+// Roles that see only their own assigned tickets (not all tickets)
+const OWN_TICKETS_ONLY_ROLES = ['tecnico', 'tecnico_taller', 'agente_soporte_l1', 'agente_soporte_l2']
+const isTecnico = computed(() => auth.user?.rol === 'ejecutivo' || OWN_TICKETS_ONLY_ROLES.includes(auth.user?.rol ?? ''))
+const restrictToOwnTickets = computed(() => OWN_TICKETS_ONLY_ROLES.includes(auth.user?.rol ?? ''))
+const canCreate = computed(() => !!auth.user)
 
 const selectedTicket = ref<Ticket | null>(null)
 const reparacion = ref<Reparacion | null>(null)
@@ -145,7 +147,7 @@ function ticketElapsed(ticket: Ticket): string {
 const rows = computed(() =>
   ticketStore.tickets
     .filter((t) => t.tipo === 'reparacion')
-    .filter((t) => !isTecnicoRole.value || t.id_tecnico === auth.user?.id_usuario)
+    .filter((t) => !restrictToOwnTickets.value || t.id_tecnico === auth.user?.id_usuario)
     .map((t) => ({
       ...t,
       id: t.id_ticket,

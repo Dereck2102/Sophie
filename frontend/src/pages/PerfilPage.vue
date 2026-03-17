@@ -65,8 +65,12 @@ const adminShortcuts = [
   { label: 'Auditoría', route: '/auditoria', icon: ShieldCheck, description: 'Revisar trazabilidad y actividad global' },
 ]
 
-const isAdminArea = computed(() => ['superadmin'].includes(auth.user?.rol ?? ''))
-const visibleAdminShortcuts = computed(() => adminShortcuts.filter((shortcut) => auth.user?.rol === 'superadmin' || shortcut.route !== '/auditoria'))
+const isAdminArea = computed(() => ['superadmin', 'admin'].includes(auth.user?.rol ?? ''))
+const visibleAdminShortcuts = computed(() => adminShortcuts.filter((shortcut) => {
+  if (auth.user?.rol === 'superadmin') return true
+  if (auth.user?.rol === 'admin') return shortcut.route !== '/auditoria' ? true : (auth.user?.vistas ?? []).includes('auditoria')
+  return false
+}))
 
 async function saveProfile(): Promise<void> {
   profileSaving.value = true

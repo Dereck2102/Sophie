@@ -20,10 +20,19 @@ from app.core.database import Base
 
 class RolEnum(str, enum.Enum):
     """Roles válidos en SOPHIE con permisos granulares adicionales."""
-    SUPERADMIN = "superadmin"  # Acceso total + administración del sistema
-    EJECUTIVO = "ejecutivo"  # Jefe de área/proyecto + supervisión
+    SUPERADMIN = "superadmin"           # Acceso total + administración del sistema
+    ADMIN = "admin"                     # Administrador general (sin modificar superadmin)
+    JEFE_TECNOLOGIAS = "jefe_tecnologias"   # Jefe de departamento de tecnología
+    JEFE_TALLER = "jefe_taller"         # Jefe de departamento de taller
+    JEFE_ADMINISTRATIVO = "jefe_administrativo"  # Jefe de área administrativa
+    JEFE_CONTABLE = "jefe_contable"     # Jefe de contabilidad
+    EJECUTIVO = "ejecutivo"             # Jefe de área / supervisión general
     ADMINISTRATIVO_CONTABLE = "administrativo_contable"  # Gestión financiera + compras
-    TECNICO = "tecnico"  # Soporte técnico, tickets y operación de taller
+    TECNICO = "tecnico"                 # Técnico (propio de taller, tickets propios)
+    TECNICO_TALLER = "tecnico_taller"   # Técnico especialista de taller
+    AGENTE_SOPORTE_L1 = "agente_soporte_l1"  # Agente de soporte nivel 1
+    AGENTE_SOPORTE_L2 = "agente_soporte_l2"  # Agente de soporte nivel 2
+    DESARROLLADOR = "desarrollador"     # Desarrollador de software
 
 
 class Usuario(Base):

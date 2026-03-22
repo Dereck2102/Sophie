@@ -3,6 +3,28 @@ import type { AxiosInstance } from 'axios'
 
 let refreshingPromise: Promise<string | null> | null = null
 
+function resolveApiBaseUrl(): string {
+  const configured = (import.meta.env.VITE_API_URL as string | undefined)?.trim()
+  const fallback = import.meta.env.DEV
+    ? 'http://localhost:8000'
+    : (typeof window !== 'undefined' ? window.location.origin : 'https://localhost')
+  const selected = configured || fallback
+
+  if (!import.meta.env.DEV) {
+    try {
+      const parsed = new URL(selected)
+      const isLocalHost = ['localhost', '127.0.0.1', '10.0.2.2'].includes(parsed.hostname)
+      if (parsed.protocol === 'http:' && !isLocalHost) {
+        throw new Error('VITE_API_URL must use HTTPS in production builds')
+      }
+    } catch {
+      throw new Error('Invalid API URL configuration for production build')
+    }
+  }
+
+  return selected
+}
+
 async function refreshAccessToken(): Promise<string | null> {
   if (!refreshingPromise) {
     refreshingPromise = (async () => {
@@ -25,7 +47,7 @@ async function refreshAccessToken(): Promise<string | null> {
 }
 
 const api: AxiosInstance = axios.create({
-  baseURL: (import.meta.env.VITE_API_URL as string | undefined) ?? 'http://localhost:8000',
+  baseURL: resolveApiBaseUrl(),
   headers: { 'Content-Type': 'application/json' },
   withCredentials: true,
 })

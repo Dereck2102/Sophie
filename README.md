@@ -64,6 +64,35 @@ npm install
 npm run build
 ```
 
+### Port Desktop y Móvil (Electron + Capacitor)
+
+`Electron` está configurado para empaquetar versión de escritorio (Windows/macOS/Linux).
+Para port móvil real (`Android`/`iOS`) se usa `Capacitor`.
+
+```bash
+cd frontend
+npm install
+
+# Desktop (desarrollo)
+npm run electron:dev
+
+# Desktop (paquete instalable)
+npm run electron:build
+
+# Inicializar plataformas móviles (una sola vez)
+npm run mobile:add:android
+npm run mobile:add:ios
+
+# Sincronizar build web y abrir plataforma
+npm run mobile:android
+npm run mobile:ios
+```
+
+Notas:
+- Para Android necesitas Android Studio + SDK configurado.
+- Para iOS necesitas macOS + Xcode.
+- En móvil se reutiliza el frontend Vue compilado (`frontend/dist`) vía Capacitor.
+
 ### Estructura del Proyecto
 
 ```

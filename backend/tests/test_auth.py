@@ -109,6 +109,32 @@ async def test_login_wrong_password(client: AsyncClient) -> None:
 
 
 @pytest.mark.asyncio
+async def test_login_lockout_after_failed_attempts(client: AsyncClient) -> None:
+    await client.post(
+        "/api/v1/auth/register",
+        json={
+            "username": "lock_user",
+            "email": "lock_user@bigsolutions.pe",
+            "password": "LockPass123!",
+            "rol": "superadmin",
+        },
+    )
+
+    for _ in range(5):
+        wrong = await client.post(
+            "/api/v1/auth/login",
+            json={"username": "lock_user", "password": "WrongPass!"},
+        )
+        assert wrong.status_code == 401
+
+    locked = await client.post(
+        "/api/v1/auth/login",
+        json={"username": "lock_user", "password": "LockPass123!"},
+    )
+    assert locked.status_code == 423
+
+
+@pytest.mark.asyncio
 async def test_login_failed_writes_audit_log(client: AsyncClient, db_session: AsyncSession) -> None:
     await client.post(
         "/api/v1/auth/register",
@@ -182,6 +208,39 @@ async def test_refresh_uses_cookie_when_body_missing(client: AsyncClient) -> Non
     refresh = await client.post("/api/v1/auth/refresh")
     assert refresh.status_code == 200
     assert refresh.json().get("access_token")
+
+
+@pytest.mark.asyncio
+async def test_refresh_token_replay_is_rejected(client: AsyncClient) -> None:
+    await client.post(
+        "/api/v1/auth/register",
+        json={
+            "username": "refresh_replay",
+            "email": "refresh_replay@bigsolutions.pe",
+            "password": "ReplayPass123!",
+            "rol": "superadmin",
+        },
+    )
+    login = await client.post(
+        "/api/v1/auth/login",
+        json={"username": "refresh_replay", "password": "ReplayPass123!"},
+    )
+    assert login.status_code == 200
+
+    refresh_token = client.cookies.get("refresh_token")
+    assert refresh_token
+
+    first_refresh = await client.post(
+        "/api/v1/auth/refresh",
+        json={"refresh_token": refresh_token},
+    )
+    assert first_refresh.status_code == 200
+
+    replay_refresh = await client.post(
+        "/api/v1/auth/refresh",
+        json={"refresh_token": refresh_token},
+    )
+    assert replay_refresh.status_code == 401
 
 
 @pytest.mark.asyncio

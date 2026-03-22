@@ -33,12 +33,12 @@ class Settings(BaseSettings):
     COOKIE_SAMESITE: str = "lax"
     MFA_EMAIL_CODE_EXPIRE_MINUTES: int = 10
     SECURITY_HEADERS_ENABLED: bool = os.getenv("SECURITY_HEADERS_ENABLED", "true").lower() in {"1", "true", "yes"}
-    TRUSTED_HOSTS: List[str] = ["localhost", "127.0.0.1"]
+    TRUSTED_HOSTS: List[str] = ["localhost", "127.0.0.1", "testserver", "test"]
     REQUEST_BODY_MAX_BYTES: int = int(os.getenv("REQUEST_BODY_MAX_BYTES", "1048576"))
     RATE_LIMIT_ENABLED: bool = os.getenv("RATE_LIMIT_ENABLED", "true").lower() in {"1", "true", "yes"}
     RATE_LIMIT_WINDOW_SECONDS: int = int(os.getenv("RATE_LIMIT_WINDOW_SECONDS", "60"))
     RATE_LIMIT_MAX_REQUESTS: int = int(os.getenv("RATE_LIMIT_MAX_REQUESTS", "240"))
-    RATE_LIMIT_AUTH_MAX_REQUESTS: int = int(os.getenv("RATE_LIMIT_AUTH_MAX_REQUESTS", "30"))
+    RATE_LIMIT_AUTH_MAX_REQUESTS: int = int(os.getenv("RATE_LIMIT_AUTH_MAX_REQUESTS", "120"))
     GZIP_ENABLED: bool = os.getenv("GZIP_ENABLED", "true").lower() in {"1", "true", "yes"}
     GZIP_MINIMUM_SIZE: int = int(os.getenv("GZIP_MINIMUM_SIZE", "1024"))
 

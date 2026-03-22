@@ -8,7 +8,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Annotated
 
 import qrcode
-from fastapi import APIRouter, Cookie, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Cookie, Depends, HTTPException, Request, Response, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -82,6 +82,19 @@ def _mask_phone(phone: str) -> str:
     if len(clean) <= 6:
         return clean
     return clean[:3] + "*" * (len(clean) - 6) + clean[-3:]
+
+
+def _normalize_user_agent(raw: str | None) -> str:
+    return (raw or "unknown")[:300]
+
+
+def _is_suspicious_login(user: Usuario, *, ip: str, user_agent: str) -> bool:
+    if not user.last_login_ip and not user.last_login_user_agent:
+        return False
+
+    ip_changed = bool(user.last_login_ip and user.last_login_ip != ip)
+    ua_changed = bool(user.last_login_user_agent and user.last_login_user_agent != user_agent)
+    return ip_changed or ua_changed
 
 
 async def _issue_mfa_code(
@@ -218,11 +231,13 @@ async def _verify_mfa_email_code(user: Usuario, code: str, db: AsyncSession) -> 
 @router.post("/login", response_model=TokenResponse)
 async def login(
     body: LoginRequest,
+    request: Request,
     response: Response,
     db: Annotated[AsyncSession, Depends(get_db)],
     ip: Annotated[str, Depends(get_client_ip)],
 ) -> TokenResponse:
     now = datetime.now(timezone.utc)
+    now_utc_naive = now.replace(tzinfo=None)
 
     settings_result = await db.execute(
         select(ConfiguracionSistema).where(ConfiguracionSistema.id_configuracion == 1)
@@ -232,7 +247,7 @@ async def login(
 
     result = await db.execute(select(Usuario).where(Usuario.username == body.username))
     user = result.scalar_one_or_none()
-    if user and user.locked_until and user.locked_until > now:
+    if user and user.locked_until and _to_utc_naive(user.locked_until) > now_utc_naive:
         db.add(
             LogAuditoria(
                 id_usuario=user.id_usuario,
@@ -287,6 +302,7 @@ async def login(
                 )
             )
             await db.flush()
+        await db.flush()
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials"
         )
@@ -305,15 +321,35 @@ async def login(
 
     user.failed_login_attempts = 0
     user.locked_until = None
+    current_user_agent = _normalize_user_agent(request.headers.get("user-agent"))
 
     require_mfa_global = bool(system_settings.require_mfa_global) if system_settings else False
     auth_twofa_enabled = bool(system_settings.auth_twofa_enabled) if system_settings else True
     allow_email = bool(system_settings.auth_channel_email_enabled) if system_settings else True
     allow_sms = bool(system_settings.auth_channel_sms_enabled) if system_settings else True
     allow_app = bool(system_settings.auth_channel_app_enabled) if system_settings else True
+    suspicious_login = _is_suspicious_login(user, ip=ip, user_agent=current_user_agent)
+    if suspicious_login:
+        user.refresh_token_version = int(user.refresh_token_version or 1) + 1
+        db.add(
+            LogAuditoria(
+                id_usuario=user.id_usuario,
+                accion="LOGIN_RISK_DETECTED",
+                modulo="auth",
+                ip_origen=ip,
+                detalle={
+                    "username": user.username,
+                    "last_login_ip": user.last_login_ip,
+                    "current_ip": ip,
+                    "last_user_agent": user.last_login_user_agent,
+                    "current_user_agent": current_user_agent,
+                },
+            )
+        )
 
     twofa_verified = False
-    if auth_twofa_enabled and (require_mfa_global or user.mfa_habilitado):
+    requires_step_up = suspicious_login and auth_twofa_enabled
+    if auth_twofa_enabled and (require_mfa_global or user.mfa_habilitado or requires_step_up):
         if body.mfa_code:
             code_valid = False
             if allow_app and user.mfa_secret:
@@ -321,6 +357,7 @@ async def login(
             if not code_valid and (allow_email or allow_sms):
                 code_valid = await _verify_mfa_email_code(user, body.mfa_code, db)
             if not code_valid:
+                await db.flush()
                 raise HTTPException(
                     status_code=status.HTTP_401_UNAUTHORIZED, detail="Código 2FA incorrecto o expirado"
                 )
@@ -336,6 +373,7 @@ async def login(
                     stored_codes = []
             consumed, updated = consume_recovery_code(body.recovery_code, stored_codes)
             if not consumed:
+                await db.flush()
                 raise HTTPException(
                     status_code=status.HTTP_401_UNAUTHORIZED,
                     detail="Invalid recovery code",
@@ -369,6 +407,10 @@ async def login(
                 return TokenResponse(mfa_required=True, access_token="", mfa_channel="app")
 
             raise HTTPException(status_code=503, detail="No hay canales 2FA habilitados para esta cuenta")
+
+    user.last_login_at = datetime.now(timezone.utc)
+    user.last_login_ip = ip
+    user.last_login_user_agent = current_user_agent
 
     access = get_effective_access(user)
     token_data = {
@@ -441,6 +483,8 @@ async def refresh_token(
     token_version = int(payload.get("rv") or 1)
     if token_version != int(user.refresh_token_version or 1):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Refresh token revoked")
+
+    user.refresh_token_version = int(user.refresh_token_version or 1) + 1
 
     access = get_effective_access(user)
     token_data = {

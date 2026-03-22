@@ -1,15 +1,17 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { UserCircle, Lock, Bell, CheckCircle, AlertCircle, Users, Package, Settings, ShieldCheck } from 'lucide-vue-next'
 import Card from '../components/ui/Card.vue'
 import Button from '../components/ui/Button.vue'
 import ImageUpload from '../components/ui/ImageUpload.vue'
 import { useAuthStore } from '../stores/auth'
+import { useSubscriptionStore } from '../stores/subscription'
 import api from '../services/api'
 import { useI18n } from 'vue-i18n'
 import type { EmailVerificationTokenResponse, RecoveryCodesResponse, Usuario } from '../types'
 
 const auth = useAuthStore()
+const subscriptionStore = useSubscriptionStore()
 const { t, locale } = useI18n()
 
 // Profile form
@@ -66,6 +68,20 @@ const adminShortcuts = [
 ]
 
 const isAdminArea = computed(() => ['superadmin', 'admin'].includes(auth.user?.rol ?? ''))
+const isEnterpriseUser = computed(() => Boolean(auth.user && auth.user.rol !== 'superadmin'))
+
+const planLabel = computed(() => {
+  const plan = subscriptionStore.current?.plan_tier
+  if (!plan) return '—'
+  return t(`perfil.planTiers.${plan}`)
+})
+
+const moduleLabels = computed(() =>
+  subscriptionStore.activeModules.map((moduleCode) => ({
+    code: moduleCode,
+    label: t(`perfil.moduleNames.${moduleCode}`),
+  }))
+)
 const visibleAdminShortcuts = computed(() => adminShortcuts.filter((shortcut) => {
   if (auth.user?.rol === 'superadmin') return true
   if (auth.user?.rol === 'admin') return shortcut.route !== '/auditoria' ? true : (auth.user?.vistas ?? []).includes('auditoria')
@@ -177,6 +193,12 @@ async function rotateRecoveryCodes(): Promise<void> {
     recoveryCodesLoading.value = false
   }
 }
+
+onMounted(async () => {
+  if (auth.user?.rol && auth.user.rol !== 'superadmin' && !subscriptionStore.initialized) {
+    await subscriptionStore.bootstrapForCurrentUser(auth.user)
+  }
+})
 </script>
 
 <template>
@@ -433,6 +455,29 @@ async function rotateRecoveryCodes(): Promise<void> {
           <p class="text-xs text-slate-500 mb-2">{{ t('perfil.generated') }}: {{ recoveryCodesGeneratedAt ? new Date(recoveryCodesGeneratedAt).toLocaleString(locale === 'es' ? 'es-EC' : 'en-US') : t('common.now') }}</p>
           <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
             <code v-for="code in recoveryCodes" :key="code" class="px-2 py-1 rounded bg-slate-100 text-slate-800 text-xs text-center">{{ code }}</code>
+          </div>
+        </div>
+      </div>
+    </Card>
+
+    <Card v-if="isEnterpriseUser" :title="t('perfil.companyPlanTitle')">
+      <div class="space-y-3 text-sm">
+        <p class="text-gray-600">{{ t('perfil.companyPlanHint') }}</p>
+        <div class="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between py-2 border-b border-gray-50">
+          <span class="text-gray-500">{{ t('perfil.currentPlan') }}</span>
+          <span class="font-semibold text-blue-700">{{ planLabel }}</span>
+        </div>
+        <div>
+          <p class="text-gray-500 mb-2">{{ t('perfil.enabledModules') }}</p>
+          <div class="flex flex-wrap gap-2">
+            <span
+              v-for="item in moduleLabels"
+              :key="item.code"
+              class="inline-flex items-center rounded-full bg-blue-50 text-blue-700 px-2.5 py-1 text-xs font-medium"
+            >
+              {{ item.code }} · {{ item.label }}
+            </span>
+            <span v-if="moduleLabels.length === 0" class="text-gray-400 text-xs">{{ t('perfil.noPlanContext') }}</span>
           </div>
         </div>
       </div>

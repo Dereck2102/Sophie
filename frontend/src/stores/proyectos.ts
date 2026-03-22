@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import api from '../services/api'
-import type { CotizacionProyectoResumen, Proyecto, ProyectoRentabilidad, Tarea } from '../types'
+import type { CotizacionProyectoResumen, Proyecto, ProyectoEstadisticas, ProyectoRentabilidad, Tarea } from '../types'
 
 export const useProyectoStore = defineStore('proyectos', () => {
   const proyectos = ref<Proyecto[]>([])
@@ -14,6 +14,8 @@ export const useProyectoStore = defineStore('proyectos', () => {
   const cotizacionesCacheLoadedAt = ref<Record<number, number>>({})
   const rentabilidadCacheByProyecto = ref<Record<number, ProyectoRentabilidad>>({})
   const rentabilidadCacheLoadedAt = ref<Record<number, number>>({})
+  const estadisticasCacheByProyecto = ref<Record<number, ProyectoEstadisticas>>({})
+  const estadisticasCacheLoadedAt = ref<Record<number, number>>({})
   const cacheMetrics = ref({
     proyectosHits: 0,
     proyectosMisses: 0,
@@ -31,11 +33,16 @@ export const useProyectoStore = defineStore('proyectos', () => {
     rentabilidadMisses: 0,
     rentabilidadInFlightReuses: 0,
     rentabilidadNetworkLoads: 0,
+    estadisticasHits: 0,
+    estadisticasMisses: 0,
+    estadisticasInFlightReuses: 0,
+    estadisticasNetworkLoads: 0,
   })
   let fetchRequest: Promise<void> | null = null
   const tareasRequestByProyecto = new Map<number, Promise<Tarea[]>>()
   const cotizacionesRequestByProyecto = new Map<number, Promise<CotizacionProyectoResumen[]>>()
   const rentabilidadRequestByProyecto = new Map<number, Promise<ProyectoRentabilidad>>()
+  const estadisticasRequestByProyecto = new Map<number, Promise<ProyectoEstadisticas>>()
 
   function clearProyectoDetailCache(idProyecto: number): void {
     delete tareasCacheByProyecto.value[idProyecto]
@@ -44,6 +51,8 @@ export const useProyectoStore = defineStore('proyectos', () => {
     delete cotizacionesCacheLoadedAt.value[idProyecto]
     delete rentabilidadCacheByProyecto.value[idProyecto]
     delete rentabilidadCacheLoadedAt.value[idProyecto]
+    delete estadisticasCacheByProyecto.value[idProyecto]
+    delete estadisticasCacheLoadedAt.value[idProyecto]
   }
 
   function resetCacheMetrics(): void {
@@ -64,6 +73,10 @@ export const useProyectoStore = defineStore('proyectos', () => {
       rentabilidadMisses: 0,
       rentabilidadInFlightReuses: 0,
       rentabilidadNetworkLoads: 0,
+      estadisticasHits: 0,
+      estadisticasMisses: 0,
+      estadisticasInFlightReuses: 0,
+      estadisticasNetworkLoads: 0,
     }
   }
 
@@ -210,6 +223,39 @@ export const useProyectoStore = defineStore('proyectos', () => {
     }
   }
 
+  async function fetchEstadisticasProyecto(idProyecto: number, force = false): Promise<ProyectoEstadisticas> {
+    const lastLoaded = estadisticasCacheLoadedAt.value[idProyecto]
+    if (!force && lastLoaded && Date.now() - lastLoaded < 60_000) {
+      const cached = estadisticasCacheByProyecto.value[idProyecto]
+      if (cached) {
+        cacheMetrics.value.estadisticasHits += 1
+        return { ...cached }
+      }
+    }
+    cacheMetrics.value.estadisticasMisses += 1
+
+    const inFlight = estadisticasRequestByProyecto.get(idProyecto)
+    if (inFlight) {
+      cacheMetrics.value.estadisticasInFlightReuses += 1
+      return inFlight
+    }
+
+    const request = (async () => {
+      cacheMetrics.value.estadisticasNetworkLoads += 1
+      const { data } = await api.get<ProyectoEstadisticas>(`/api/v1/proyectos/${idProyecto}/estadisticas`)
+      estadisticasCacheByProyecto.value[idProyecto] = data
+      estadisticasCacheLoadedAt.value[idProyecto] = Date.now()
+      return { ...data }
+    })()
+
+    estadisticasRequestByProyecto.set(idProyecto, request)
+    try {
+      return await request
+    } finally {
+      estadisticasRequestByProyecto.delete(idProyecto)
+    }
+  }
+
   async function createTarea(idProyecto: number, payload: unknown): Promise<Tarea> {
     const { data } = await api.post<Tarea>(`/api/v1/proyectos/${idProyecto}/tareas`, payload)
     const current = tareasCacheByProyecto.value[idProyecto] ?? []
@@ -263,6 +309,7 @@ export const useProyectoStore = defineStore('proyectos', () => {
     tareasCacheByProyecto,
     cotizacionesCacheByProyecto,
     rentabilidadCacheByProyecto,
+    estadisticasCacheByProyecto,
     resetCacheMetrics,
     clearProyectoDetailCache,
     fetchProyectos,
@@ -272,6 +319,7 @@ export const useProyectoStore = defineStore('proyectos', () => {
     fetchTareas,
     fetchCotizacionesProyecto,
     fetchRentabilidadProyecto,
+    fetchEstadisticasProyecto,
     createTarea,
     updateTarea,
     deleteTarea,

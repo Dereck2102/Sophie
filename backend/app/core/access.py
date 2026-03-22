@@ -16,20 +16,20 @@ ROLE_ACCESS: dict[RolEnum, dict[str, list[str]]] = {
         # Acceso completo excepto auditoría avanzada; puede gestionar usuarios no-superadmin
         "permissions": ["*"],
         "views": [
-            "auditoria", "boveda", "caja_chica", "compras", "configuracion",
-            "crm", "dashboard", "inventario", "perfil", "proyectos",
+            "auditoria", "empresas", "caja_chica", "compras", "configuracion",
+            "dashboard", "inventario", "perfil", "proyectos",
             "taller", "usuarios", "ventas",
         ],
         "tools": ["*"],
     },
     # ─── Nivel 2: Jefaturas de departamento ──────────────────────────────────
     RolEnum.JEFE_TECNOLOGIAS: {
-        # Supervisa proyectos, taller, bóveda y equipo técnico
+        # Supervisa proyectos, taller, empresas y equipo técnico
         "permissions": [
             "dashboard.view", "proyectos.manage", "tickets.manage",
-            "clientes.read", "inventario.read", "boveda.manage", "reportes.view",
+            "clientes.read", "inventario.read", "empresas.manage", "reportes.view",
         ],
-        "views": ["boveda", "crm", "dashboard", "perfil", "proyectos", "taller"],
+        "views": ["empresas", "dashboard", "perfil", "proyectos", "taller"],
         "tools": ["calculo_horas_tecnicas", "exportaciones", "reportes", "scanner_qr"],
     },
     RolEnum.JEFE_TALLER: {
@@ -38,7 +38,7 @@ ROLE_ACCESS: dict[RolEnum, dict[str, list[str]]] = {
             "dashboard.view", "tickets.manage", "proyectos.read",
             "clientes.read", "inventario.read", "reportes.view",
         ],
-        "views": ["crm", "dashboard", "inventario", "perfil", "proyectos", "taller"],
+        "views": ["dashboard", "inventario", "perfil", "proyectos", "taller"],
         "tools": ["calculo_horas_tecnicas", "exportaciones", "reportes", "scanner_qr"],
     },
     RolEnum.JEFE_ADMINISTRATIVO: {
@@ -47,7 +47,7 @@ ROLE_ACCESS: dict[RolEnum, dict[str, list[str]]] = {
             "dashboard.view", "clientes.manage", "ventas.manage", "compras.manage",
             "inventario.read", "reportes.view",
         ],
-        "views": ["caja_chica", "compras", "crm", "dashboard", "perfil", "proyectos", "ventas"],
+        "views": ["caja_chica", "compras", "dashboard", "perfil", "proyectos", "ventas"],
         "tools": [
             "calculadora_margen", "control_caja_chica", "costeo_cotizaciones",
             "exportaciones", "proyecciones_financieras", "reportes",
@@ -71,9 +71,9 @@ ROLE_ACCESS: dict[RolEnum, dict[str, list[str]]] = {
         "permissions": [
             "dashboard.view", "clientes.manage", "ventas.manage",
             "proyectos.manage", "tickets.manage", "inventario.read",
-            "boveda.manage", "reportes.view",
+            "empresas.manage", "reportes.view",
         ],
-        "views": ["boveda", "crm", "dashboard", "inventario", "perfil", "proyectos", "taller", "ventas"],
+        "views": ["empresas", "dashboard", "inventario", "perfil", "proyectos", "taller", "ventas"],
         "tools": ["exportaciones", "reportes"],
     },
     RolEnum.ADMINISTRATIVO_CONTABLE: {
@@ -82,7 +82,7 @@ ROLE_ACCESS: dict[RolEnum, dict[str, list[str]]] = {
             "dashboard.view", "compras.manage", "ventas.manage",
             "clientes.manage", "inventario.read", "reportes.view",
         ],
-        "views": ["caja_chica", "compras", "crm", "dashboard", "inventario", "perfil", "ventas"],
+        "views": ["caja_chica", "compras", "dashboard", "inventario", "perfil", "ventas"],
         "tools": [
             "calculadora_margen", "control_caja_chica", "costeo_cotizaciones",
             "exportaciones", "proyecciones_financieras", "reportes",
@@ -105,21 +105,26 @@ ROLE_ACCESS: dict[RolEnum, dict[str, list[str]]] = {
     RolEnum.AGENTE_SOPORTE_L1: {
         # Soporte nivel 1: atiende tickets básicos y consulta CRM
         "permissions": ["clientes.read", "tickets.manage"],
-        "views": ["crm", "perfil", "taller"],
+        "views": ["perfil", "taller"],
         "tools": ["scanner_qr"],
     },
     RolEnum.AGENTE_SOPORTE_L2: {
         # Soporte nivel 2: atiende tickets complejos, puede ver proyectos
         "permissions": ["clientes.read", "inventario.read", "proyectos.read", "tickets.manage"],
-        "views": ["crm", "perfil", "proyectos", "taller"],
+        "views": ["perfil", "proyectos", "taller"],
         "tools": ["calculo_horas_tecnicas", "reportes", "scanner_qr"],
     },
     RolEnum.DESARROLLADOR: {
-        # Desarrollador: proyectos, taller, bóveda de credenciales
+        # Desarrollador: proyectos, taller y operaciones de empresas
         "permissions": ["inventario.read", "proyectos.manage", "tickets.manage"],
-        "views": ["boveda", "dashboard", "perfil", "proyectos", "taller"],
+        "views": ["empresas", "dashboard", "perfil", "proyectos", "taller"],
         "tools": ["calculo_horas_tecnicas", "reportes", "scanner_qr"],
     },
+}
+
+_ACCESS_VALUE_ALIASES: dict[str, str] = {
+    "boveda": "empresas",
+    "boveda.manage": "empresas.manage",
 }
 
 
@@ -133,10 +138,15 @@ def _load_json_list(value: str | None) -> list[str]:
     return [item for item in data if isinstance(item, str)] if isinstance(data, list) else []
 
 
+def _normalize_access_items(items: list[str]) -> list[str]:
+    normalized = [_ACCESS_VALUE_ALIASES.get(item, item) for item in items]
+    return sorted(set(normalized))
+
+
 def dumps_json_list(items: list[str] | None) -> str | None:
     if items is None:
         return None
-    cleaned = sorted({item.strip() for item in items if item and item.strip()})
+    cleaned = _normalize_access_items([item.strip() for item in items if item and item.strip()])
     return json.dumps(cleaned)
 
 
@@ -145,15 +155,15 @@ def get_effective_access(user: Usuario) -> dict[str, list[str]]:
 
     if user.rol == RolEnum.SUPERADMIN:
         return {
-            "permissions": sorted(defaults["permissions"]),
-            "views": sorted(defaults["views"]),
+            "permissions": _normalize_access_items(defaults["permissions"]),
+            "views": _normalize_access_items(defaults["views"]),
             "tools": sorted(defaults["tools"]),
         }
 
     # If granular lists are explicitly configured (JSON field set, even to []),
     # they become authoritative. If not set (None), role defaults apply.
-    permissions = sorted(_load_json_list(user.permisos_json)) if user.permisos_json is not None else sorted(defaults["permissions"])
-    views = sorted(_load_json_list(user.vistas_json)) if user.vistas_json is not None else sorted(defaults["views"])
+    permissions = _normalize_access_items(_load_json_list(user.permisos_json)) if user.permisos_json is not None else _normalize_access_items(defaults["permissions"])
+    views = _normalize_access_items(_load_json_list(user.vistas_json)) if user.vistas_json is not None else _normalize_access_items(defaults["views"])
     tools = sorted(_load_json_list(user.herramientas_json)) if user.herramientas_json is not None else sorted(defaults["tools"])
     return {"permissions": permissions, "views": views, "tools": tools}
 

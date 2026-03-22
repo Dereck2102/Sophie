@@ -3,11 +3,13 @@ from __future__ import annotations
 from typing import Annotated, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.api.deps import get_current_user, require_roles
+from app.core.access import has_access_item
 from app.core.database import get_db
 from app.infrastructure.models.auditoria import EventoCliente
 from app.infrastructure.models.cliente import (
@@ -37,6 +39,43 @@ _LOAD_OPTIONS = [
 ]
 
 
+def _assert_can_manage_cliente_payload(current_user: Usuario, body: ClienteCreate) -> None:
+    if current_user.rol == RolEnum.SUPERADMIN:
+        return
+    effective_permissions = getattr(current_user, "effective_permissions", [])
+    if body.tipo_cliente == TipoClienteEnum.B2B:
+        if has_access_item(effective_permissions, "empresas.manage") or has_access_item(effective_permissions, "clientes.manage"):
+            return
+        raise HTTPException(status_code=403, detail="Missing permissions: empresas.manage")
+    if has_access_item(effective_permissions, "clientes.manage"):
+        return
+    raise HTTPException(status_code=403, detail="Missing permissions: clientes.manage")
+
+
+def _assert_can_manage_existing_cliente(current_user: Usuario, cliente: Cliente) -> None:
+    if current_user.rol == RolEnum.SUPERADMIN:
+        return
+    effective_permissions = getattr(current_user, "effective_permissions", [])
+    if cliente.tipo_cliente == TipoClienteEnum.B2B:
+        if has_access_item(effective_permissions, "empresas.manage") or has_access_item(effective_permissions, "clientes.manage"):
+            return
+        raise HTTPException(status_code=403, detail="Missing permissions: empresas.manage")
+    if has_access_item(effective_permissions, "clientes.manage"):
+        return
+    raise HTTPException(status_code=403, detail="Missing permissions: clientes.manage")
+
+
+def _raise_friendly_integrity_error(exc: IntegrityError, *, tipo_cliente: TipoClienteEnum) -> None:
+    message = str(getattr(exc, "orig", exc)).lower()
+    if "empresa" in message and "ruc" in message and "unique" in message:
+        raise HTTPException(status_code=409, detail="Ya existe una empresa registrada con ese RUC") from exc
+    if "cliente_b2c" in message and "documento_identidad" in message and "unique" in message:
+        raise HTTPException(status_code=409, detail="Ya existe un cliente con ese documento de identidad") from exc
+    if tipo_cliente == TipoClienteEnum.B2B:
+        raise HTTPException(status_code=409, detail="No se pudo registrar la empresa por conflicto de datos") from exc
+    raise HTTPException(status_code=409, detail="No se pudo registrar el cliente por conflicto de datos") from exc
+
+
 @router.get("/", response_model=List[ClienteOut])
 async def list_clientes(
     db: Annotated[AsyncSession, Depends(get_db)],
@@ -56,33 +95,37 @@ async def list_clientes(
 async def create_cliente(
     body: ClienteCreate,
     db: Annotated[AsyncSession, Depends(get_db)],
-    current_user: Annotated[
-        Usuario, Depends(require_roles(RolEnum.EJECUTIVO, RolEnum.SUPERADMIN))
-    ],
+    current_user: Annotated[Usuario, Depends(get_current_user)],
 ) -> Cliente:
+    _assert_can_manage_cliente_payload(current_user, body)
+
     cliente = Cliente(tipo_cliente=body.tipo_cliente, estado=body.estado)
     db.add(cliente)
-    await db.flush()
+    try:
+        await db.flush()
 
-    if body.tipo_cliente == TipoClienteEnum.B2B:
-        if not body.empresa:
-            raise HTTPException(status_code=400, detail="empresa data required for B2B client")
-        db.add(Empresa(id_cliente=cliente.id_cliente, **body.empresa.model_dump()))
-    else:
-        if not body.cliente_b2c:
-            raise HTTPException(
-                status_code=400, detail="cliente_b2c data required for B2C client"
+        if body.tipo_cliente == TipoClienteEnum.B2B:
+            if not body.empresa:
+                raise HTTPException(status_code=400, detail="empresa data required for B2B client")
+            db.add(Empresa(id_cliente=cliente.id_cliente, **body.empresa.model_dump()))
+        else:
+            if not body.cliente_b2c:
+                raise HTTPException(
+                    status_code=400, detail="cliente_b2c data required for B2C client"
+                )
+            db.add(ClienteB2C(id_cliente=cliente.id_cliente, **body.cliente_b2c.model_dump()))
+
+        db.add(
+            EventoCliente(
+                id_cliente=cliente.id_cliente,
+                tipo_evento="ALTA",
+                descripcion=f"Cliente {body.tipo_cliente.value} registrado.",
             )
-        db.add(ClienteB2C(id_cliente=cliente.id_cliente, **body.cliente_b2c.model_dump()))
-
-    db.add(
-        EventoCliente(
-            id_cliente=cliente.id_cliente,
-            tipo_evento="ALTA",
-            descripcion=f"Cliente {body.tipo_cliente.value} registrado.",
         )
-    )
-    await db.flush()
+        await db.flush()
+    except IntegrityError as exc:
+        _raise_friendly_integrity_error(exc, tipo_cliente=body.tipo_cliente)
+
     await db.refresh(cliente, ["empresa", "cliente_b2c"])
     return cliente
 
@@ -107,9 +150,7 @@ async def update_cliente(
     id_cliente: int,
     body: ClienteUpdate,
     db: Annotated[AsyncSession, Depends(get_db)],
-    current_user: Annotated[
-        Usuario, Depends(require_roles(RolEnum.EJECUTIVO, RolEnum.SUPERADMIN))
-    ],
+    current_user: Annotated[Usuario, Depends(get_current_user)],
 ) -> Cliente:
     result = await db.execute(
         select(Cliente).options(*_LOAD_OPTIONS).where(Cliente.id_cliente == id_cliente)
@@ -117,6 +158,8 @@ async def update_cliente(
     cliente = result.scalar_one_or_none()
     if not cliente:
         raise HTTPException(status_code=404, detail="Cliente not found")
+
+    _assert_can_manage_existing_cliente(current_user, cliente)
 
     if body.estado:
         cliente.estado = body.estado
@@ -129,7 +172,10 @@ async def update_cliente(
         for k, v in body.cliente_b2c.model_dump(exclude_none=True).items():
             setattr(cliente.cliente_b2c, k, v)
 
-    await db.flush()
+    try:
+        await db.flush()
+    except IntegrityError as exc:
+        _raise_friendly_integrity_error(exc, tipo_cliente=cliente.tipo_cliente)
     await db.refresh(cliente, ["empresa", "cliente_b2c"])
     return cliente
 

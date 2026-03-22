@@ -1,11 +1,11 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from typing import Annotated, List
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
 from app.api.deps import get_current_user, require_roles
 from app.core.database import get_db
@@ -24,6 +24,7 @@ from app.schemas.proyectos import (
     MiembroCreate,
     MiembroOut,
     ProyectoCreate,
+    ProyectoEstadisticasOut,
     ProyectoRentabilidadOut,
     ProyectoOut,
     ProyectoUpdate,
@@ -173,6 +174,16 @@ async def create_tarea(
     if not result.scalar_one_or_none():
         raise HTTPException(status_code=404, detail="Proyecto not found")
 
+    if body.id_asignado is not None:
+        miembro_result = await db.execute(
+            select(MiembroProyecto).where(
+                MiembroProyecto.id_proyecto == id_proyecto,
+                MiembroProyecto.id_usuario == body.id_asignado,
+            )
+        )
+        if not miembro_result.scalar_one_or_none():
+            raise HTTPException(status_code=400, detail="Assigned user is not a project member")
+
     tarea = Tarea(id_proyecto=id_proyecto, **body.model_dump(exclude={"id_proyecto"}))
     db.add(tarea)
     await db.flush()
@@ -190,6 +201,17 @@ async def update_tarea(
     tarea = result.scalar_one_or_none()
     if not tarea:
         raise HTTPException(status_code=404, detail="Tarea not found")
+
+    if body.id_asignado is not None:
+        miembro_result = await db.execute(
+            select(MiembroProyecto).where(
+                MiembroProyecto.id_proyecto == tarea.id_proyecto,
+                MiembroProyecto.id_usuario == body.id_asignado,
+            )
+        )
+        if not miembro_result.scalar_one_or_none():
+            raise HTTPException(status_code=400, detail="Assigned user is not a project member")
+
     for k, v in body.model_dump(exclude_none=True).items():
         setattr(tarea, k, v)
     await db.flush()
@@ -388,4 +410,92 @@ async def get_proyecto_rentabilidad(
         consumo_presupuesto_pct=consumo_presupuesto_pct,
         tickets_total=tickets_total,
         tickets_cerrados=tickets_cerrados,
+    )
+
+
+@router.get("/{id_proyecto}/estadisticas", response_model=ProyectoEstadisticasOut)
+async def get_proyecto_estadisticas(
+    id_proyecto: int,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[Usuario, Depends(get_current_user)],
+) -> ProyectoEstadisticasOut:
+    proyecto_result = await db.execute(select(Proyecto).where(Proyecto.id_proyecto == id_proyecto))
+    proyecto = proyecto_result.scalar_one_or_none()
+    if not proyecto:
+        raise HTTPException(status_code=404, detail="Proyecto not found")
+
+    total_tareas_result = await db.execute(select(func.count(Tarea.id_tarea)).where(Tarea.id_proyecto == id_proyecto))
+    tareas_completadas_result = await db.execute(
+        select(func.count(Tarea.id_tarea)).where(Tarea.id_proyecto == id_proyecto, Tarea.estado == "completado")
+    )
+    tareas_pendientes_result = await db.execute(
+        select(func.count(Tarea.id_tarea)).where(Tarea.id_proyecto == id_proyecto, Tarea.estado == "pendiente")
+    )
+    tareas_en_progreso_result = await db.execute(
+        select(func.count(Tarea.id_tarea)).where(Tarea.id_proyecto == id_proyecto, Tarea.estado == "en_progreso")
+    )
+
+    horas_estimadas_result = await db.execute(
+        select(func.coalesce(func.sum(Tarea.horas_estimadas), 0)).where(Tarea.id_proyecto == id_proyecto)
+    )
+    horas_realizadas_result = await db.execute(
+        select(func.coalesce(func.sum(Tarea.horas_reales), 0)).where(Tarea.id_proyecto == id_proyecto)
+    )
+    miembros_result = await db.execute(
+        select(func.count(MiembroProyecto.id_miembro)).where(MiembroProyecto.id_proyecto == id_proyecto)
+    )
+    tickets_result = await db.execute(select(func.count(Ticket.id_ticket)).where(Ticket.id_proyecto == id_proyecto))
+    ingresos_result = await db.execute(
+        select(func.coalesce(func.sum(Cotizacion.total), 0)).where(
+            Cotizacion.id_proyecto == id_proyecto,
+            Cotizacion.estado == EstadoCotizacionEnum.FACTURADA,
+        )
+    )
+
+    total_tareas = int(total_tareas_result.scalar_one() or 0)
+    tareas_completadas = int(tareas_completadas_result.scalar_one() or 0)
+    tareas_pendientes = int(tareas_pendientes_result.scalar_one() or 0)
+    tareas_en_progreso = int(tareas_en_progreso_result.scalar_one() or 0)
+    horas_estimadas = float(horas_estimadas_result.scalar_one() or 0)
+    horas_realizadas = float(horas_realizadas_result.scalar_one() or 0)
+    miembros_asignados = int(miembros_result.scalar_one() or 0)
+    tickets_asociados = int(tickets_result.scalar_one() or 0)
+    ingresos_facturados = float(ingresos_result.scalar_one() or 0)
+    presupuesto = float(proyecto.presupuesto) if proyecto.presupuesto is not None else None
+
+    porcentaje_completacion = round((tareas_completadas / total_tareas) * 100, 2) if total_tareas > 0 else 0
+    variancia_horas_pct = round(((horas_realizadas - horas_estimadas) / horas_estimadas) * 100, 2) if horas_estimadas > 0 else 0
+    margen_neto_pct = (
+        round(((ingresos_facturados - presupuesto) / ingresos_facturados) * 100, 2)
+        if ingresos_facturados > 0 and presupuesto is not None
+        else 0
+    )
+
+    dias_restantes = None
+    if proyecto.fecha_fin is not None:
+        fecha_fin = proyecto.fecha_fin
+        if fecha_fin.tzinfo is None:
+            fecha_fin = fecha_fin.replace(tzinfo=UTC)
+        dias_restantes = max((fecha_fin - datetime.now(UTC)).days, 0)
+
+    return ProyectoEstadisticasOut(
+        id_proyecto=proyecto.id_proyecto,
+        nombre=proyecto.nombre,
+        estado=proyecto.estado.value,
+        total_tareas=total_tareas,
+        tareas_completadas=tareas_completadas,
+        tareas_pendientes=tareas_pendientes,
+        tareas_en_progreso=tareas_en_progreso,
+        porcentaje_completacion=porcentaje_completacion,
+        tickets_asociados=tickets_asociados,
+        horas_estimadas=round(horas_estimadas, 2),
+        horas_realizadas=round(horas_realizadas, 2),
+        variancia_horas_pct=variancia_horas_pct,
+        miembros_asignados=miembros_asignados,
+        presupuesto=round(presupuesto, 2) if presupuesto is not None else None,
+        ingresos_facturados=round(ingresos_facturados, 2),
+        margen_neto_pct=margen_neto_pct,
+        fecha_inicio=proyecto.fecha_inicio,
+        fecha_fin=proyecto.fecha_fin,
+        dias_restantes=dias_restantes,
     )

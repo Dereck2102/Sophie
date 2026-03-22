@@ -21,7 +21,28 @@ docker-compose up --build
 # Backend API:  http://localhost:8000
 # Swagger Docs: http://localhost:8000/docs
 # Nginx Proxy:  http://localhost
+# Prometheus:   http://localhost:9090
+# Loki API:     http://localhost:3100
+# Elasticsearch:http://localhost:9200
+# Kibana:       http://localhost:5601
 ```
+
+### Observabilidad (Prometheus + Loki + ELK)
+
+- `Prometheus` scrapea métricas HTTP del backend desde `GET /metrics`.
+- `Loki` recibe logs de contenedores vía `Promtail`.
+- `ELK` recibe logs de contenedores vía `Filebeat -> Logstash -> Elasticsearch`.
+
+Rutas útiles:
+
+- Métricas backend: `http://localhost:8000/metrics`
+- Targets Prometheus: `http://localhost:9090/targets`
+- Kibana (Discover): `http://localhost:5601`
+
+Notas:
+
+- En Kibana crea un Data View con patrón `sophie-logs-*`.
+- Prometheus es para métricas/series temporales; la visualización de logs se hace en Loki o ELK.
 
 ### Bootstrap Inicial
 

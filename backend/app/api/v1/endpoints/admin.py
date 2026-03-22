@@ -5,7 +5,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, EmailStr
-from sqlalchemy import delete, select
+from sqlalchemy import and_, cast, delete, or_, select, String
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, require_superadmin
@@ -13,6 +13,7 @@ from app.core.access import dumps_json_list, get_effective_access
 from app.core.config import get_settings
 from app.core.database import get_db
 from app.infrastructure.models.auditoria import LogAuditoria
+from app.infrastructure.models.cliente import Empresa
 from app.infrastructure.models.sistema import ConfiguracionSistema
 from app.infrastructure.models.usuario import Usuario
 from app.services.email_service import EmailDeliveryError, send_email_message
@@ -194,14 +195,90 @@ async def list_auditoria(
     limit: int = Query(100, ge=1, le=500),
     modulo: str | None = Query(None),
     id_usuario: int | None = Query(None),
-) -> list[LogAuditoria]:
-    query = select(LogAuditoria).order_by(LogAuditoria.fecha.desc()).offset(skip).limit(limit)
+    id_cliente: int | None = Query(None),
+    accion_tipo: str | None = Query(None),
+    accion_nombre: str | None = Query(None),
+    ip_origen: str | None = Query(None),
+    fecha_desde: datetime | None = Query(None),
+    fecha_hasta: datetime | None = Query(None),
+    q: str | None = Query(None),
+) -> list[AuditoriaLogOut]:
+    _ = current_user
+
+    query = (
+        select(LogAuditoria, Usuario.username, Usuario.nombre_completo, Empresa.razon_social)
+        .outerjoin(Usuario, Usuario.id_usuario == LogAuditoria.id_usuario)
+        .outerjoin(Empresa, Empresa.id_cliente == LogAuditoria.id_cliente)
+        .order_by(LogAuditoria.fecha.desc())
+        .offset(skip)
+        .limit(limit)
+    )
+
+    filters = []
     if modulo:
-        query = query.where(LogAuditoria.modulo == modulo)
+        filters.append(LogAuditoria.modulo == modulo)
     if id_usuario is not None:
-        query = query.where(LogAuditoria.id_usuario == id_usuario)
+        filters.append(LogAuditoria.id_usuario == id_usuario)
+    if id_cliente is not None:
+        filters.append(LogAuditoria.id_cliente == id_cliente)
+    if accion_tipo:
+        filters.append(LogAuditoria.accion_tipo == accion_tipo)
+    if accion_nombre:
+        filters.append(LogAuditoria.accion_nombre.ilike(f"%{accion_nombre}%"))
+    if ip_origen:
+        filters.append(LogAuditoria.ip_origen.ilike(f"%{ip_origen}%"))
+    if fecha_desde:
+        filters.append(LogAuditoria.fecha >= fecha_desde)
+    if fecha_hasta:
+        filters.append(LogAuditoria.fecha <= fecha_hasta)
+    if q:
+        query_text = f"%{q.strip()}%"
+        filters.append(
+            or_(
+                LogAuditoria.accion.ilike(query_text),
+                LogAuditoria.accion_nombre.ilike(query_text),
+                LogAuditoria.accion_tipo.ilike(query_text),
+                LogAuditoria.modulo.ilike(query_text),
+                LogAuditoria.ip_origen.ilike(query_text),
+                LogAuditoria.ruta.ilike(query_text),
+                cast(LogAuditoria.id_usuario, String).ilike(query_text),
+                cast(LogAuditoria.id_cliente, String).ilike(query_text),
+                Usuario.username.ilike(query_text),
+                Usuario.nombre_completo.ilike(query_text),
+                Empresa.razon_social.ilike(query_text),
+            )
+        )
+
+    if filters:
+        query = query.where(and_(*filters))
+
     result = await db.execute(query)
-    return list(result.scalars().all())
+    rows = result.all()
+
+    return [
+        AuditoriaLogOut(
+            id_log=log.id_log,
+            id_cliente=log.id_cliente,
+            empresa_nombre=empresa_nombre,
+            id_usuario=log.id_usuario,
+            usuario_username=username,
+            usuario_nombre=nombre_completo,
+            accion=log.accion,
+            accion_tipo=log.accion_tipo,
+            accion_nombre=log.accion_nombre,
+            modulo=log.modulo,
+            metodo_http=log.metodo_http,
+            ruta=log.ruta,
+            ip_origen=log.ip_origen,
+            user_agent=log.user_agent,
+            pais_origen=log.pais_origen,
+            ciudad_origen=log.ciudad_origen,
+            ubicacion_aprox=log.ubicacion_aprox,
+            detalle=log.detalle,
+            fecha=log.fecha,
+        )
+        for log, username, nombre_completo, empresa_nombre in rows
+    ]
 
 
 @router.get("/backup/usuarios", response_model=BackupUsuariosOut)

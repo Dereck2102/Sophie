@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.core.access import get_effective_access, has_access_item
 from app.core.security import decode_token
+from app.infrastructure.models.subscriptions import EmpresaSubscription, SubscriptionStatusEnum
 from app.infrastructure.models.usuario import RolEnum, Usuario
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
@@ -42,6 +43,18 @@ async def get_current_user(
     setattr(user, "effective_permissions", access["permissions"])
     setattr(user, "effective_views", access["views"])
     setattr(user, "effective_tools", access["tools"])
+
+    if user.rol != RolEnum.SUPERADMIN and user.id_cliente is not None:
+        sub_result = await db.execute(
+            select(EmpresaSubscription).where(EmpresaSubscription.id_empresa == user.id_cliente)
+        )
+        sub = sub_result.scalar_one_or_none()
+        if sub and sub.status in {SubscriptionStatusEnum.CANCELED, SubscriptionStatusEnum.PAST_DUE}:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="La empresa está suspendida por estado de suscripción",
+            )
+
     return user
 
 

@@ -9,9 +9,17 @@ from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
     # Application
-    APP_NAME: str = "SOPHIE ERP/CRM"
+    APP_NAME: str = "SOPHIE ERP"
     APP_VERSION: str = "1.0.0"
     DEBUG: bool = False
+
+    # Observability
+    METRICS_ENABLED: bool = os.getenv("METRICS_ENABLED", "true").lower() in {"1", "true", "yes"}
+    METRICS_PATH: str = os.getenv("METRICS_PATH", "/metrics")
+
+    # Module rollout flags
+    ENABLE_CRM_MODULE: bool = os.getenv("ENABLE_CRM_MODULE", "true").lower() in {"1", "true", "yes"}
+    ENABLE_CAJA_CHICA_MODULE: bool = os.getenv("ENABLE_CAJA_CHICA_MODULE", "true").lower() in {"1", "true", "yes"}
 
     # Database
     DATABASE_URL: str = "postgresql+asyncpg://sophie_user:sophie_pass@localhost:5432/sophie_db"

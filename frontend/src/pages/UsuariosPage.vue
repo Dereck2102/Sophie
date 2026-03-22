@@ -7,10 +7,12 @@ import Badge from '../components/ui/Badge.vue'
 import Button from '../components/ui/Button.vue'
 import Modal from '../components/ui/Modal.vue'
 import { useUsuarioStore } from '../stores/usuarios'
+import { useAuthStore } from '../stores/auth'
 import { useI18n } from 'vue-i18n'
 import type { Usuario, RolEnum } from '../types'
 
 const usuarioStore = useUsuarioStore()
+const authStore = useAuthStore()
 const { t } = useI18n()
 
 const searchQuery = ref('')
@@ -37,6 +39,18 @@ const roles: RolEnum[] = [
   'agente_soporte_l2',
   'desarrollador',
 ]
+
+const enterpriseFixedRoles: RolEnum[] = ['admin', 'agente_soporte_l1', 'administrativo_contable']
+
+const availableRoles = computed<RolEnum[]>(() => {
+  if (authStore.user?.rol === 'superadmin') return roles
+  return enterpriseFixedRoles
+})
+
+function getDefaultRole(): RolEnum {
+  if (authStore.user?.rol === 'superadmin') return 'tecnico_taller'
+  return availableRoles.value[0] ?? 'admin'
+}
 
 function roleLabel(role: RolEnum): string {
   return t(`roles.${role}`)
@@ -65,20 +79,19 @@ const permissionOptions: AccessOption[] = [
   { value: 'proyectos.manage', label: 'Gestionar proyectos' },
   { value: 'tickets.manage', label: 'Gestionar tickets' },
   { value: 'inventario.read', label: 'Consultar inventario' },
-  { value: 'boveda.manage', label: 'Gestionar bóveda' },
+  { value: 'empresas.manage', label: 'Gestionar empresas' },
   { value: 'reportes.view', label: 'Ver reportes' },
 ]
 
 const viewOptions: AccessOption[] = [
   { value: 'dashboard', label: 'Dashboard' },
-  { value: 'crm', label: 'CRM' },
   { value: 'ventas', label: 'Ventas' },
   { value: 'compras', label: 'Compras' },
   { value: 'caja_chica', label: 'Caja Chica' },
   { value: 'proyectos', label: 'Proyectos' },
   { value: 'taller', label: 'Taller' },
   { value: 'inventario', label: 'Inventario' },
-  { value: 'boveda', label: 'Bóveda' },
+  { value: 'empresas', label: 'Empresas' },
   { value: 'perfil', label: 'Perfil' },
   { value: 'usuarios', label: 'Usuarios' },
   { value: 'configuracion', label: 'Configuración' },
@@ -108,23 +121,23 @@ const roleProfiles: Record<RolEnum, AccessProfile> = {
   },
   admin: {
     permisos: ['*'],
-    vistas: ['auditoria', 'boveda', 'caja_chica', 'compras', 'configuracion', 'crm', 'dashboard', 'inventario', 'perfil', 'proyectos', 'taller', 'usuarios', 'ventas'],
+    vistas: ['auditoria', 'empresas', 'caja_chica', 'compras', 'configuracion', 'dashboard', 'inventario', 'perfil', 'proyectos', 'taller', 'usuarios', 'ventas'],
     herramientas: ['*'],
   },
   // ── Nivel 2: Jefaturas ────────────────────────────────────────────
   jefe_tecnologias: {
-    permisos: ['boveda.manage', 'clientes.read', 'dashboard.view', 'inventario.read', 'proyectos.manage', 'reportes.view', 'tickets.manage'],
-    vistas: ['boveda', 'crm', 'dashboard', 'perfil', 'proyectos', 'taller'],
+    permisos: ['empresas.manage', 'clientes.read', 'dashboard.view', 'inventario.read', 'proyectos.manage', 'reportes.view', 'tickets.manage'],
+    vistas: ['empresas', 'dashboard', 'perfil', 'proyectos', 'taller'],
     herramientas: ['calculo_horas_tecnicas', 'exportaciones', 'reportes', 'scanner_qr'],
   },
   jefe_taller: {
     permisos: ['clientes.read', 'dashboard.view', 'inventario.read', 'proyectos.read', 'reportes.view', 'tickets.manage'],
-    vistas: ['crm', 'dashboard', 'inventario', 'perfil', 'proyectos', 'taller'],
+    vistas: ['dashboard', 'inventario', 'perfil', 'proyectos', 'taller'],
     herramientas: ['calculo_horas_tecnicas', 'exportaciones', 'reportes', 'scanner_qr'],
   },
   jefe_administrativo: {
     permisos: ['clientes.manage', 'compras.manage', 'dashboard.view', 'inventario.read', 'reportes.view', 'ventas.manage'],
-    vistas: ['caja_chica', 'compras', 'crm', 'dashboard', 'perfil', 'proyectos', 'ventas'],
+    vistas: ['caja_chica', 'compras', 'dashboard', 'perfil', 'proyectos', 'ventas'],
     herramientas: ['calculadora_margen', 'control_caja_chica', 'costeo_cotizaciones', 'exportaciones', 'proyecciones_financieras', 'reportes'],
   },
   jefe_contable: {
@@ -134,13 +147,13 @@ const roleProfiles: Record<RolEnum, AccessProfile> = {
   },
   // ── Nivel 3: Roles transversales ─────────────────────────────────
   ejecutivo: {
-    permisos: ['boveda.manage', 'clientes.manage', 'dashboard.view', 'inventario.read', 'proyectos.manage', 'reportes.view', 'tickets.manage', 'ventas.manage'],
-    vistas: ['boveda', 'crm', 'dashboard', 'inventario', 'perfil', 'proyectos', 'taller', 'ventas'],
+    permisos: ['empresas.manage', 'clientes.manage', 'dashboard.view', 'inventario.read', 'proyectos.manage', 'reportes.view', 'tickets.manage', 'ventas.manage'],
+    vistas: ['empresas', 'dashboard', 'inventario', 'perfil', 'proyectos', 'taller', 'ventas'],
     herramientas: ['exportaciones', 'reportes'],
   },
   administrativo_contable: {
     permisos: ['clientes.manage', 'compras.manage', 'dashboard.view', 'inventario.read', 'reportes.view', 'ventas.manage'],
-    vistas: ['caja_chica', 'compras', 'crm', 'dashboard', 'inventario', 'perfil', 'ventas'],
+    vistas: ['caja_chica', 'compras', 'dashboard', 'inventario', 'perfil', 'ventas'],
     herramientas: ['calculadora_margen', 'control_caja_chica', 'costeo_cotizaciones', 'exportaciones', 'proyecciones_financieras', 'reportes', 'simulador_descuentos', 'simulador_iva'],
   },
   // ── Nivel 4: Personal técnico y soporte ──────────────────────────
@@ -156,17 +169,17 @@ const roleProfiles: Record<RolEnum, AccessProfile> = {
   },
   agente_soporte_l1: {
     permisos: ['clientes.read', 'tickets.manage'],
-    vistas: ['crm', 'perfil', 'taller'],
+    vistas: ['perfil', 'taller'],
     herramientas: ['scanner_qr'],
   },
   agente_soporte_l2: {
     permisos: ['clientes.read', 'inventario.read', 'proyectos.read', 'tickets.manage'],
-    vistas: ['crm', 'perfil', 'proyectos', 'taller'],
+    vistas: ['perfil', 'proyectos', 'taller'],
     herramientas: ['calculo_horas_tecnicas', 'reportes', 'scanner_qr'],
   },
   desarrollador: {
     permisos: ['inventario.read', 'proyectos.manage', 'tickets.manage'],
-    vistas: ['boveda', 'dashboard', 'perfil', 'proyectos', 'taller'],
+    vistas: ['empresas', 'dashboard', 'perfil', 'proyectos', 'taller'],
     herramientas: ['calculo_horas_tecnicas', 'reportes', 'scanner_qr'],
   },
 }
@@ -195,13 +208,13 @@ const createFormDefaults = () => ({
   username: '',
   email: '',
   password: '',
-  rol: 'tecnico_taller' as RolEnum,
+  rol: getDefaultRole(),
   nombre_completo: '',
   mfa_habilitado: false,
   force_mfa: false,
-  permisos: getRolePreset('tecnico_taller').permisos,
-  vistas: getRolePreset('tecnico_taller').vistas,
-  herramientas: getRolePreset('tecnico_taller').herramientas,
+  permisos: getRolePreset(getDefaultRole()).permisos,
+  vistas: getRolePreset(getDefaultRole()).vistas,
+  herramientas: getRolePreset(getDefaultRole()).herramientas,
 })
 
 const createForm = ref(createFormDefaults())
@@ -209,7 +222,7 @@ const createForm = ref(createFormDefaults())
 const editForm = ref({
   email: '',
   nombre_completo: '',
-  rol: 'tecnico_taller' as RolEnum,
+  rol: getDefaultRole(),
   activo: true,
   mfa_habilitado: false,
   force_mfa: false,
@@ -442,7 +455,7 @@ async function handleDelete(): Promise<void> {
               <thead class="bg-white border-b">
                 <tr>
                   <th class="text-left px-3 py-2 font-medium text-gray-600 w-72">Elemento</th>
-                  <th v-for="rol in roles" :key="`${area}-${rol}`" class="text-center px-3 py-2 font-medium text-gray-600">
+                  <th v-for="rol in availableRoles" :key="`${area}-${rol}`" class="text-center px-3 py-2 font-medium text-gray-600">
                     {{ roleLabel(rol) }}
                   </th>
                 </tr>
@@ -450,7 +463,7 @@ async function handleDelete(): Promise<void> {
               <tbody>
                 <tr v-for="opt in matrixOptions[area]" :key="`${area}-${opt.value}`" class="border-b last:border-b-0">
                   <td class="px-3 py-2 text-gray-700">{{ opt.label }}</td>
-                  <td v-for="rol in roles" :key="`${area}-${opt.value}-${rol}`" class="px-3 py-2 text-center">
+                  <td v-for="rol in availableRoles" :key="`${area}-${opt.value}-${rol}`" class="px-3 py-2 text-center">
                     <span v-if="hasProfileAccess(rol, area, opt.value)" class="inline-flex items-center justify-center w-5 h-5 rounded-full bg-emerald-50 text-emerald-700">
                       <Check :size="13" />
                     </span>
@@ -520,7 +533,7 @@ async function handleDelete(): Promise<void> {
                 v-model="createForm.rol"
                 class="w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white"
               >
-                <option v-for="rol in roles" :key="rol" :value="rol">{{ roleLabel(rol) }}</option>
+                <option v-for="rol in availableRoles" :key="rol" :value="rol">{{ roleLabel(rol) }}</option>
               </select>
               <Button type="button" variant="secondary" @click="applyCreateRolePreset">Aplicar preset</Button>
             </div>
@@ -611,7 +624,7 @@ async function handleDelete(): Promise<void> {
                 v-model="editForm.rol"
                 class="w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white"
               >
-                <option v-for="rol in roles" :key="rol" :value="rol">{{ roleLabel(rol) }}</option>
+                <option v-for="rol in availableRoles" :key="rol" :value="rol">{{ roleLabel(rol) }}</option>
               </select>
               <Button type="button" variant="secondary" @click="applyEditRolePreset">Aplicar preset</Button>
             </div>

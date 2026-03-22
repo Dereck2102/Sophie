@@ -39,6 +39,7 @@ class Usuario(Base):
     __tablename__ = "usuario"
 
     id_usuario: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    id_cliente: Mapped[int | None] = mapped_column(Integer, ForeignKey("cliente.id_cliente", ondelete="SET NULL"))
     username: Mapped[str] = mapped_column(String(60), unique=True, nullable=False, index=True)
     email: Mapped[str] = mapped_column(String(120), unique=True, nullable=False)
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)

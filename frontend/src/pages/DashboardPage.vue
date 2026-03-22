@@ -23,9 +23,10 @@ import Card from '../components/ui/Card.vue'
 import Badge from '../components/ui/Badge.vue'
 import { useAuthStore } from '../stores/auth'
 import { useDashboardStore } from '../stores/dashboard'
+import { useProyectoStore } from '../stores/proyectos'
 import { useTicketStore } from '../stores/tickets'
 import { useVentasStore } from '../stores/ventas'
-import type { Ticket } from '../types'
+import type { ProyectoEstadisticas, Ticket } from '../types'
 import type { DashboardAlert, DashboardReceivableDueItem } from '../stores/dashboard'
 
 interface PipelineStage {
@@ -38,12 +39,14 @@ interface PipelineStage {
 const router = useRouter()
 const auth = useAuthStore()
 const dashboardStore = useDashboardStore()
+const proyectoStore = useProyectoStore()
 const ticketStore = useTicketStore()
 const ventasStore = useVentasStore()
 const { stats, analytics } = storeToRefs(dashboardStore)
 
 const recentTickets = ref<Ticket[]>([])
 const cotizacionStats = ref<Record<string, number>>({})
+const projectStats = ref<ProyectoEstadisticas[]>([])
 const loading = ref(true)
 
 const pipelineStages: PipelineStage[] = [
@@ -150,7 +153,7 @@ const operationalCards = computed(() => [
     icon: Users,
     tone: 'text-blue-700',
     bg: 'bg-blue-50',
-    link: '/crm',
+    link: '/ventas',
   },
   {
     label: 'Proyectos activos',
@@ -197,7 +200,6 @@ const quickActions = computed(() => {
   ]
 
   if (rol === 'superadmin' || rol === 'ejecutivo') {
-    actions.unshift({ label: 'CRM clientes', path: '/crm', color: 'bg-blue-700 hover:bg-blue-800', icon: Users })
     actions.push({ label: 'Proyectos', path: '/proyectos', color: 'bg-violet-700 hover:bg-violet-800', icon: FolderOpen })
   }
 
@@ -207,6 +209,12 @@ const quickActions = computed(() => {
 
   return actions
 })
+
+const projectStatsInFocus = computed(() =>
+  [...projectStats.value]
+    .sort((a, b) => b.porcentaje_completacion - a.porcentaje_completacion)
+    .slice(0, 3)
+)
 
 function alertClass(severity: DashboardAlert['severity']): string {
   if (severity === 'critical') return 'border-red-200 bg-red-50 text-red-800'
@@ -230,6 +238,7 @@ async function loadData(): Promise<void> {
   try {
     await Promise.all([
       dashboardStore.fetchAll(false),
+      proyectoStore.fetchProyectos(false),
       ticketStore.fetchTickets(false),
       ventasStore.fetchCotizaciones(false, 200),
     ])
@@ -242,6 +251,19 @@ async function loadData(): Promise<void> {
       counts[cotizacion.estado] = (counts[cotizacion.estado] ?? 0) + 1
     })
     cotizacionStats.value = counts
+
+    const focusProjects = [...proyectoStore.proyectos]
+      .filter((proyecto) => !['completado', 'cancelado'].includes(proyecto.estado))
+      .sort((a, b) => new Date(b.fecha_creacion).getTime() - new Date(a.fecha_creacion).getTime())
+      .slice(0, 3)
+
+    if (focusProjects.length > 0) {
+      projectStats.value = await Promise.all(
+        focusProjects.map((proyecto) => proyectoStore.fetchEstadisticasProyecto(proyecto.id_proyecto, false))
+      )
+    } else {
+      projectStats.value = []
+    }
   } catch {
     // silent dashboard fallback
   } finally {
@@ -440,6 +462,31 @@ onUnmounted(() => {
               </span>
               <ArrowRight class="h-4 w-4" />
             </button>
+          </div>
+        </Card>
+
+        <Card title="Proyectos en foco">
+          <div v-if="projectStatsInFocus.length === 0" class="rounded-2xl border border-dashed border-slate-200 p-4 text-sm text-slate-500">
+            Sin proyectos activos para mostrar progreso.
+          </div>
+          <div v-else class="space-y-3">
+            <div
+              v-for="project in projectStatsInFocus"
+              :key="project.id_proyecto"
+              class="rounded-2xl border border-slate-100 p-4"
+            >
+              <div class="mb-2 flex items-center justify-between gap-3">
+                <p class="truncate text-sm font-semibold text-slate-900">{{ project.nombre }}</p>
+                <span class="text-xs font-semibold text-slate-600">{{ project.porcentaje_completacion.toFixed(0) }}%</span>
+              </div>
+              <div class="h-2 rounded-full bg-slate-100">
+                <div class="h-2 rounded-full bg-violet-500" :style="{ width: `${Math.min(project.porcentaje_completacion, 100)}%` }" />
+              </div>
+              <div class="mt-2 flex items-center justify-between text-xs text-slate-500">
+                <span>{{ project.tareas_completadas }}/{{ project.total_tareas }} tareas</span>
+                <span>{{ project.miembros_asignados }} miembro(s)</span>
+              </div>
+            </div>
           </div>
         </Card>
 

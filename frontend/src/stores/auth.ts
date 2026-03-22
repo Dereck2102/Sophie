@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import api from '../services/api'
+import { useSubscriptionStore } from './subscription'
 import type { Usuario, LoginRequest, TokenResponse } from '../types'
 
 export const useAuthStore = defineStore('auth', () => {
@@ -62,6 +63,7 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   function logout(): void {
+    const subscriptionStore = useSubscriptionStore()
     // Capture the token BEFORE clearing it so the logout request can be authenticated
     const currentToken = localStorage.getItem('access_token')
     user.value = null
@@ -74,6 +76,7 @@ export const useAuthStore = defineStore('auth', () => {
     localStorage.removeItem('access_token')
     sessionId.value = null
     localStorage.removeItem('session_id')
+    subscriptionStore.reset()
     if (currentToken) {
       api
         .post('/api/v1/auth/logout', null, { headers: { Authorization: `Bearer ${currentToken}` } })

@@ -37,12 +37,49 @@ _ASSIGNABLE_ROLES = (
 )
 
 _PRIVILEGED_ROLES = (RolEnum.SUPERADMIN, RolEnum.ADMIN)
+_ENTERPRISE_FIXED_ROLES = (
+    RolEnum.ADMIN,
+    RolEnum.AGENTE_SOPORTE_L1,
+    RolEnum.ADMINISTRATIVO_CONTABLE,
+)
+
+
+def _assert_same_tenant_or_superadmin(current_user: Usuario, target_user: Usuario) -> None:
+    if current_user.rol == RolEnum.SUPERADMIN:
+        return
+    if current_user.id_cliente is None:
+        raise HTTPException(status_code=403, detail="Tu usuario no está asociado a un cliente")
+    if target_user.id_cliente != current_user.id_cliente:
+        raise HTTPException(status_code=403, detail="No puedes gestionar usuarios de otro cliente")
+
+
+def _resolve_target_tenant(current_user: Usuario, requested_id_cliente: int | None) -> int | None:
+    if current_user.rol == RolEnum.SUPERADMIN:
+        return requested_id_cliente
+    if current_user.id_cliente is None:
+        raise HTTPException(status_code=403, detail="Tu usuario no está asociado a un cliente")
+    if requested_id_cliente is not None and requested_id_cliente != current_user.id_cliente:
+        raise HTTPException(status_code=403, detail="No puedes asignar usuarios a otro cliente")
+    return current_user.id_cliente
+
+
+def _assert_enterprise_fixed_roles(current_user: Usuario, target_role: RolEnum | None) -> None:
+    if target_role is None:
+        return
+    if current_user.rol == RolEnum.SUPERADMIN:
+        return
+    if target_role not in _ENTERPRISE_FIXED_ROLES:
+        raise HTTPException(
+            status_code=403,
+            detail="En el ERP empresarial solo se permiten roles fijos: admin, soporte y ventas",
+        )
 
 
 def _serialize_user(user: Usuario) -> UsuarioOut:
     access = get_effective_access(user)
     return UsuarioOut(
         id_usuario=user.id_usuario,
+        id_cliente=user.id_cliente,
         username=user.username,
         email=user.email,
         rol=user.rol,
@@ -163,7 +200,10 @@ async def list_usuarios(
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=200),
 ) -> list[Usuario]:
-    result = await db.execute(select(Usuario).offset(skip).limit(limit))
+    query = select(Usuario)
+    if current_user.rol != RolEnum.SUPERADMIN and current_user.id_cliente is not None:
+        query = query.where(Usuario.id_cliente == current_user.id_cliente)
+    result = await db.execute(query.offset(skip).limit(limit))
     return [_serialize_user(user) for user in result.scalars().all()]
 
 
@@ -180,12 +220,14 @@ async def create_usuario(
         telefono_recuperacion=body.telefono_recuperacion,
     )
     _assert_superadmin_only(current_user, target_role=body.rol)
+    _assert_enterprise_fixed_roles(current_user, body.rol)
     _assert_owner_superadmin_policy(
         current_user,
         target_username=body.username,
         target_role=body.rol,
     )
     user = Usuario(
+        id_cliente=_resolve_target_tenant(current_user, getattr(body, "id_cliente", None)),
         username=body.username,
         email=body.email,
         password_hash=hash_password(body.password),
@@ -215,11 +257,15 @@ async def list_assignable_users(
     db: Annotated[AsyncSession, Depends(get_db)],
     current_user: Annotated[Usuario, Depends(get_current_user)],
 ) -> list[Usuario]:
-    result = await db.execute(
+    query = (
         select(Usuario)
         .where(Usuario.activo.is_(True), Usuario.rol.in_(_ASSIGNABLE_ROLES))
         .order_by(Usuario.nombre_completo, Usuario.username)
     )
+    if current_user.rol != RolEnum.SUPERADMIN and current_user.id_cliente is not None:
+        query = query.where(Usuario.id_cliente == current_user.id_cliente)
+        query = query.where(Usuario.rol.in_(_ENTERPRISE_FIXED_ROLES))
+    result = await db.execute(query)
     return [_serialize_user(user) for user in result.scalars().all()]
 
 
@@ -280,6 +326,7 @@ async def get_usuario(
     user = result.scalar_one_or_none()
     if not user:
         raise HTTPException(status_code=404, detail="Usuario not found")
+    _assert_same_tenant_or_superadmin(current_user, user)
     return _serialize_user(user)
 
 
@@ -294,7 +341,9 @@ async def update_usuario(
     user = result.scalar_one_or_none()
     if not user:
         raise HTTPException(status_code=404, detail="Usuario not found")
+    _assert_same_tenant_or_superadmin(current_user, user)
     _assert_superadmin_only(current_user, target_user=user, target_role=body.rol)
+    _assert_enterprise_fixed_roles(current_user, body.rol)
     effective_role = body.rol if body.rol is not None else user.rol
     _assert_owner_superadmin_policy(
         current_user,
@@ -320,6 +369,9 @@ async def update_usuario(
     permissions = payload.pop("permisos", None)
     views = payload.pop("vistas", None)
     tools = payload.pop("herramientas", None)
+    requested_tenant = payload.pop("id_cliente", None)
+    if requested_tenant is not None:
+        payload["id_cliente"] = _resolve_target_tenant(current_user, requested_tenant)
     for k, v in payload.items():
         setattr(user, k, v)
     if permissions is not None:

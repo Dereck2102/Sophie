@@ -9,6 +9,7 @@ from app.infrastructure.models.usuario import RolEnum
 
 
 class UsuarioBase(BaseModel):
+    id_cliente: Optional[int] = None
     username: str
     email: EmailStr
     rol: RolEnum
@@ -33,6 +34,7 @@ class UsuarioCreate(UsuarioBase):
 
 
 class UsuarioUpdate(BaseModel):
+    id_cliente: Optional[int] = None
     email: Optional[EmailStr] = None
     nombre_completo: Optional[str] = None
     telefono_recuperacion: Optional[str] = None
@@ -219,10 +221,22 @@ class ConfiguracionSistemaUpdate(BaseModel):
 
 class AuditoriaLogOut(BaseModel):
     id_log: int
+    id_cliente: Optional[int] = None
+    empresa_nombre: Optional[str] = None
     id_usuario: Optional[int] = None
+    usuario_username: Optional[str] = None
+    usuario_nombre: Optional[str] = None
     accion: str
+    accion_tipo: Optional[str] = None
+    accion_nombre: Optional[str] = None
     modulo: str
+    metodo_http: Optional[str] = None
+    ruta: Optional[str] = None
     ip_origen: Optional[str] = None
+    user_agent: Optional[str] = None
+    pais_origen: Optional[str] = None
+    ciudad_origen: Optional[str] = None
+    ubicacion_aprox: Optional[str] = None
     detalle: Optional[dict] = None
     fecha: datetime
 

@@ -25,6 +25,11 @@ export type PrioridadTicket = 'baja' | 'media' | 'alta' | 'critica'
 export type EstadoSerie = 'disponible' | 'vendido' | 'en_reparacion' | 'baja'
 export type EstadoProyecto = 'propuesta' | 'en_progreso' | 'pausado' | 'completado' | 'cancelado'
 export type EstadoTarea = 'pendiente' | 'en_progreso' | 'completado'
+export type SubscriptionPlanTier = 'starter' | 'pro' | 'enterprise' | 'custom'
+export type BillingCycle = 'monthly' | 'yearly'
+export type SubscriptionStatus = 'active' | 'trial' | 'past_due' | 'canceled' | 'pending'
+export type PaymentStatus = 'pending' | 'paid' | 'failed' | 'canceled'
+export type PaymentGatewayProvider = 'payphone' | 'stripe'
 
 export interface Usuario {
   id_usuario: number
@@ -76,10 +81,22 @@ export interface ConfiguracionSistema {
 
 export interface AuditoriaLog {
   id_log: number
+  id_cliente?: number
+  empresa_nombre?: string
   id_usuario?: number
+  usuario_username?: string
+  usuario_nombre?: string
   accion: string
+  accion_tipo?: string
+  accion_nombre?: string
   modulo: string
+  metodo_http?: string
+  ruta?: string
   ip_origen?: string
+  user_agent?: string
+  pais_origen?: string
+  ciudad_origen?: string
+  ubicacion_aprox?: string
   detalle?: Record<string, unknown>
   fecha: string
 }
@@ -117,6 +134,162 @@ export interface AuthChannelsStatus {
   email_effective: boolean
   sms_effective: boolean
   app_effective: boolean
+}
+
+export interface PlanPreset {
+  plan: SubscriptionPlanTier
+  name: string
+  description: string
+  monthly_price_usd?: number | null
+  yearly_price_usd?: number | null
+  features: string[]
+}
+
+export interface EmpresaSubscription {
+  id_empresa: number
+  empresa_nombre: string
+  plan_tier: SubscriptionPlanTier
+  billing_cycle: BillingCycle
+  status: SubscriptionStatus
+  price_usd: number
+  currency: string
+  features: string[]
+  custom_notes?: string | null
+  updated_by_user_id?: number | null
+  updated_at?: string | null
+}
+
+export interface CheckoutResponse {
+  id_pago: number
+  provider: string
+  status: PaymentStatus
+  amount: number
+  currency: string
+  checkout_url?: string | null
+  detail: string
+}
+
+export interface CustomOrderResponse {
+  id_pago: number
+  order_number: string
+  status: PaymentStatus
+  amount: number
+  currency: string
+  checkout_url?: string | null
+  detail: string
+}
+
+export interface PendingCustomOrder {
+  id_order: number
+  order_number: string
+  id_pago?: number | null
+  id_empresa: number
+  empresa_nombre: string
+  billing_cycle: BillingCycle
+  amount: number
+  currency: string
+  status: 'pending' | 'approved' | 'activated' | 'canceled'
+  created_at: string
+}
+
+export interface PaymentGatewayConfig {
+  provider: PaymentGatewayProvider
+  enabled: boolean
+  public_key?: string | null
+  has_secret: boolean
+  endpoint_url?: string | null
+  store_id?: string | null
+  return_url?: string | null
+  cancel_url?: string | null
+  has_webhook_token?: boolean
+  updated_by_user_id?: number | null
+  updated_at?: string | null
+}
+
+export interface PublicPlan {
+  key: string
+  name: string
+  tier: SubscriptionPlanTier
+  description: string
+  monthly_price_usd?: number | null
+  yearly_price_usd?: number | null
+  modules: string[]
+}
+
+export interface PlatformLayer {
+  key: 'public' | 'global' | 'enterprise'
+  name: string
+  description: string
+}
+
+export interface PublicLanding {
+  platform_name: string
+  platform_version: string
+  layers: PlatformLayer[]
+  plans: PublicPlan[]
+}
+
+export interface GlobalPlanCount {
+  tier: SubscriptionPlanTier
+  companies: number
+}
+
+export interface GlobalDashboardSummary {
+  total_companies: number
+  active_companies: number
+  suspended_or_inactive_companies: number
+  registered_users: number
+  active_subscriptions: number
+  pending_subscriptions: number
+  paid_transactions: number
+  mrr_usd: number
+  plan_breakdown: GlobalPlanCount[]
+  system_status: string
+}
+
+export interface GlobalCompany {
+  id_empresa: number
+  nombre: string
+  ruc: string
+  estado: EstadoCliente
+  plan_tier: SubscriptionPlanTier
+  billing_cycle: BillingCycle
+  subscription_status: SubscriptionStatus
+  modules_enabled: string[]
+  fecha_inicio: string
+  price_usd: number
+  currency: string
+}
+
+export interface GlobalCompanyUpdate {
+  nombre?: string
+  ruc?: string
+  contacto_principal?: string
+  telefono?: string
+  email?: string
+  direccion?: string
+  sector?: string
+}
+
+export interface GlobalCompanyUser {
+  id_usuario: number
+  username: string
+  email: string
+  rol: RolEnum
+  rol_fijo: 'global_admin' | 'admin' | 'soporte' | 'ventas'
+  activo: boolean
+  id_empresa?: number | null
+  empresa_nombre?: string | null
+}
+
+export interface GlobalUserActivationIn {
+  activo: boolean
+}
+
+export interface GlobalUserPasswordResetOut {
+  id_usuario: number
+  reset_token: string
+  expires_at: string
 }
 
 export interface EmailVerificationTokenResponse {
@@ -302,6 +475,28 @@ export interface ProyectoRentabilidad {
   consumo_presupuesto_pct: number
   tickets_total: number
   tickets_cerrados: number
+}
+
+export interface ProyectoEstadisticas {
+  id_proyecto: number
+  nombre: string
+  estado: EstadoProyecto
+  total_tareas: number
+  tareas_completadas: number
+  tareas_pendientes: number
+  tareas_en_progreso: number
+  porcentaje_completacion: number
+  tickets_asociados: number
+  horas_estimadas: number
+  horas_realizadas: number
+  variancia_horas_pct: number
+  miembros_asignados: number
+  presupuesto?: number
+  ingresos_facturados: number
+  margen_neto_pct: number
+  fecha_inicio?: string
+  fecha_fin?: string
+  dias_restantes?: number
 }
 
 export interface CotizacionProyectoResumen {

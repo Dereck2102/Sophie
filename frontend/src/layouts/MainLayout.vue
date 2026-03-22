@@ -10,7 +10,6 @@ import { useNotificationStore } from '../stores/notifications'
 import { useTicketStore } from '../stores/tickets'
 import { useVentasStore } from '../stores/ventas'
 import { useProyectoStore } from '../stores/proyectos'
-import { useBovedaStore } from '../stores/boveda'
 
 const route = useRoute()
 const { t } = useI18n()
@@ -20,7 +19,6 @@ const notificationStore = useNotificationStore()
 const ticketStore = useTicketStore()
 const ventasStore = useVentasStore()
 const proyectoStore = useProyectoStore()
-const bovedaStore = useBovedaStore()
 
 function getCacheMetricsSnapshot() {
   return {
@@ -28,7 +26,6 @@ function getCacheMetricsSnapshot() {
     tickets: { ...ticketStore.cacheMetrics },
     ventas: { ...ventasStore.cacheMetrics },
     proyectos: { ...proyectoStore.cacheMetrics },
-    boveda: { ...bovedaStore.cacheMetrics },
   }
 }
 
@@ -44,7 +41,6 @@ function setupDevCacheMetricsConsole(): void {
     ticketStore.resetCacheMetrics()
     ventasStore.resetCacheMetrics()
     proyectoStore.resetCacheMetrics()
-    bovedaStore.resetCacheMetrics()
     return getCacheMetricsSnapshot()
   }
   console.info('SOPHIE cache metrics helpers: __SOPHIE_CACHE_METRICS__(), __SOPHIE_PRINT_CACHE_METRICS__(), __SOPHIE_RESET_CACHE_METRICS__()')
@@ -80,18 +76,19 @@ const pageTitle = () => {
   const path = route.path
   const titles: Record<string, string> = {
     '/': t('nav.dashboard'),
-    '/crm': t('nav.crm'),
+    '/global/dashboard': t('nav.globalDashboard'),
+    '/global/companies': t('nav.globalCompanies'),
+    '/global/users': t('nav.globalUsers'),
     '/ventas': t('nav.ventas'),
     '/compras': t('nav.compras'),
     '/taller': t('nav.taller'),
     '/proyectos': t('nav.proyectos'),
-    '/boveda': t('nav.boveda'),
+    '/empresas': t('nav.empresas'),
     '/usuarios': t('nav.usuarios'),
     '/configuracion': t('nav.configuracion'),
     '/perfil': t('nav.perfil'),
   }
   if (titles[path]) return titles[path]
-  if (path.startsWith('/crm/')) return 'SOPHIE'
   return 'SOPHIE'
 }
 

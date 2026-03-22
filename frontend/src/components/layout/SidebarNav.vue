@@ -2,6 +2,8 @@
 import { ref, computed } from 'vue'
 import { useRoute } from 'vue-router'
 import {
+  Blocks,
+  Building2,
   LayoutDashboard,
   Landmark,
   Users,
@@ -10,7 +12,6 @@ import {
   Wallet,
   Wrench,
   Code2,
-  Lock,
   UserCog,
   ClipboardList,
   ChevronLeft,
@@ -18,51 +19,62 @@ import {
   Settings,
 } from 'lucide-vue-next'
 import { useAuthStore } from '../../stores/auth'
+import { useSubscriptionStore } from '../../stores/subscription'
 import { useI18n } from 'vue-i18n'
 
 const auth = useAuthStore()
+const subscription = useSubscriptionStore()
 const route = useRoute()
 const { t } = useI18n()
 const collapsed = ref(false)
+const ERP_ONLY_MODE = true
+const DISABLED_VIEWS_ERP_ONLY = new Set(['crm'])
 
 const navGroups = computed(() => {
   const userViews = auth.user?.vistas ?? []
+  const isSuperadmin = auth.user?.rol === 'superadmin'
   const hasStar = userViews.includes('*')
-  const canSee = (view: string) => hasStar || userViews.includes(view)
+  const canSee = (view: string) => {
+    if (ERP_ONLY_MODE && DISABLED_VIEWS_ERP_ONLY.has(view)) return false
+    return hasStar || userViews.includes(view)
+  }
+  const canSeeModule = (view: string) => isSuperadmin || subscription.hasModuleForView(view)
 
   const groups = [
+    {
+      key: 'global',
+      label: t('nav.groups.global'),
+      items: [
+        { path: '/global/dashboard', label: t('nav.globalDashboard'), icon: Blocks, requiredView: 'global_dashboard' },
+        { path: '/global/companies', label: t('nav.globalCompanies'), icon: Building2, requiredView: 'global_dashboard' },
+        { path: '/global/users', label: t('nav.globalUsers'), icon: Users, requiredView: 'global_dashboard' },
+      ].filter(() => isSuperadmin),
+    },
     {
       key: 'overview',
       label: t('nav.groups.overview'),
       items: [
         { path: '/', label: t('nav.dashboard'), icon: LayoutDashboard, requiredView: 'dashboard' },
         { path: '/flujo-operativo', label: t('nav.flujoOperativo'), icon: Landmark, requiredView: 'dashboard' },
-      ].filter(i => canSee(i.requiredView)),
-    },
-    {
-      key: 'crm',
-      label: t('nav.groups.crm'),
-      items: [
-        { path: '/crm', label: t('nav.crm'), icon: Users, requiredView: 'crm' },
-        { path: '/ventas', label: t('nav.ventas'), icon: ShoppingCart, requiredView: 'ventas' },
-      ].filter(i => canSee(i.requiredView)),
+      ].filter(i => canSee(i.requiredView) && canSeeModule(i.requiredView)),
     },
     {
       key: 'operations',
       label: t('nav.groups.operations'),
       items: [
+        { path: '/ventas', label: t('nav.ventas'), icon: ShoppingCart, requiredView: 'ventas' },
         { path: '/taller', label: t('nav.taller'), icon: Wrench, requiredView: 'taller' },
         { path: '/proyectos', label: t('nav.proyectos'), icon: Code2, requiredView: 'proyectos' },
         { path: '/compras', label: t('nav.compras'), icon: Package, requiredView: 'compras' },
-      ].filter(i => canSee(i.requiredView)),
+      ].filter(i => canSee(i.requiredView) && canSeeModule(i.requiredView)),
     },
     {
       key: 'finance',
       label: t('nav.groups.finance'),
       items: [
         { path: '/caja-chica', label: t('nav.cajaChica'), icon: Wallet, requiredView: 'caja_chica' },
-        { path: '/boveda', label: t('nav.boveda'), icon: Lock, requiredView: 'boveda' },
-      ].filter(i => canSee(i.requiredView)),
+        { path: '/empresas', label: t('nav.empresas'), icon: Building2, requiredView: 'empresas' },
+      ].filter(i => canSee(i.requiredView) && canSeeModule(i.requiredView)),
     },
     {
       key: 'system',
@@ -71,7 +83,7 @@ const navGroups = computed(() => {
         { path: '/usuarios', label: t('nav.usuarios'), icon: UserCog, requiredView: 'usuarios' },
         { path: '/configuracion', label: t('nav.configuracion'), icon: Settings, requiredView: 'configuracion' },
         { path: '/auditoria', label: 'Auditoría', icon: ClipboardList, requiredView: 'auditoria' },
-      ].filter(i => canSee(i.requiredView)),
+      ].filter(i => canSee(i.requiredView) && canSeeModule(i.requiredView)),
     },
   ]
 

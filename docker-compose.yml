@@ -35,6 +35,10 @@ services:
       MFA_EMAIL_CODE_EXPIRE_MINUTES: 10
       MFA_EMAIL_DEBUG_FALLBACK: "true"
       TWOFA_ENABLED: "true"  # canales y activación 2FA se controlan desde Configuración en Sophie
+      ENABLE_CRM_MODULE: "false"
+      ENABLE_CAJA_CHICA_MODULE: "true"
+      METRICS_ENABLED: "true"
+      METRICS_PATH: "/metrics"
       SMTP_HOST: smtp.gmail.com
       SMTP_PORT: 587
       SMTP_USERNAME: your_email@gmail.com
@@ -83,8 +87,113 @@ services:
     networks:
       - sophie-net
 
+  # ── Prometheus ─────────────────────────────────────
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    container_name: sophie-prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.enable-lifecycle'
+    volumes:
+      - ./observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    ports:
+      - "9090:9090"
+    depends_on:
+      - backend
+    networks:
+      - sophie-net
+
+  # ── Loki ───────────────────────────────────────────
+  loki:
+    image: grafana/loki:3.1.1
+    container_name: sophie-loki
+    command: -config.file=/etc/loki/loki-config.yml
+    volumes:
+      - ./observability/loki/loki-config.yml:/etc/loki/loki-config.yml:ro
+      - loki_data:/loki
+    ports:
+      - "3100:3100"
+    networks:
+      - sophie-net
+
+  # ── Promtail (Docker → Loki) ──────────────────────
+  promtail:
+    image: grafana/promtail:3.1.1
+    container_name: sophie-promtail
+    command: -config.file=/etc/promtail/promtail-config.yml
+    volumes:
+      - ./observability/promtail/promtail-config.yml:/etc/promtail/promtail-config.yml:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    depends_on:
+      - loki
+    networks:
+      - sophie-net
+
+  # ── Elasticsearch ──────────────────────────────────
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.15.0
+    container_name: sophie-elasticsearch
+    environment:
+      discovery.type: single-node
+      ES_JAVA_OPTS: -Xms1g -Xmx1g
+    volumes:
+      - ./observability/elasticsearch/elasticsearch.yml:/usr/share/elasticsearch/config/elasticsearch.yml:ro
+      - es_data:/usr/share/elasticsearch/data
+    ports:
+      - "9200:9200"
+    networks:
+      - sophie-net
+
+  # ── Logstash ───────────────────────────────────────
+  logstash:
+    image: docker.elastic.co/logstash/logstash:8.15.0
+    container_name: sophie-logstash
+    environment:
+      LS_JAVA_OPTS: -Xms512m -Xmx512m
+    volumes:
+      - ./observability/logstash/logstash.conf:/usr/share/logstash/pipeline/logstash.conf:ro
+    ports:
+      - "5044:5044"
+    depends_on:
+      - elasticsearch
+    networks:
+      - sophie-net
+
+  # ── Kibana ─────────────────────────────────────────
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.15.0
+    container_name: sophie-kibana
+    environment:
+      ELASTICSEARCH_HOSTS: http://elasticsearch:9200
+    ports:
+      - "5601:5601"
+    depends_on:
+      - elasticsearch
+    networks:
+      - sophie-net
+
+  # ── Filebeat (Docker logs → Logstash/ELK) ─────────
+  filebeat:
+    image: docker.elastic.co/beats/filebeat:8.15.0
+    container_name: sophie-filebeat
+    user: root
+    command: ["--strict.perms=false", "-e"]
+    volumes:
+      - ./observability/filebeat/filebeat.yml:/usr/share/filebeat/filebeat.yml:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    depends_on:
+      - logstash
+    networks:
+      - sophie-net
+
 volumes:
   pg_data:
+  prometheus_data:
+  loki_data:
+  es_data:
 
 
 networks:

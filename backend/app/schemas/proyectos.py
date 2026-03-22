@@ -136,3 +136,27 @@ class MiembroOut(BaseModel):
     rol_en_proyecto: Optional[str] = None
 
     model_config = {"from_attributes": True}
+
+
+class ProyectoEstadisticasOut(BaseModel):
+    id_proyecto: int
+    nombre: str
+    estado: str
+    total_tareas: int
+    tareas_completadas: int
+    tareas_pendientes: int
+    tareas_en_progreso: int
+    porcentaje_completacion: float
+    tickets_asociados: int
+    horas_estimadas: float
+    horas_realizadas: float
+    variancia_horas_pct: float
+    miembros_asignados: int
+    presupuesto: Optional[float]
+    ingresos_facturados: float
+    margen_neto_pct: float
+    fecha_inicio: Optional[datetime]
+    fecha_fin: Optional[datetime]
+    dias_restantes: Optional[int]
+
+    model_config = {"from_attributes": True}

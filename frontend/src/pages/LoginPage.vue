@@ -114,7 +114,7 @@ async function confirmRecoveryPassword(): Promise<void> {
           <span class="text-white font-bold text-xl">S</span>
         </div>
         <h1 class="text-xl font-bold text-white tracking-wide">SOPHIE</h1>
-        <p class="text-blue-200 text-xs mt-0.5">Sistema ERP / CRM — Big Solutions</p>
+        <p class="text-blue-200 text-xs mt-0.5">ERP</p>
       </div>
 
       <!-- Step indicator -->

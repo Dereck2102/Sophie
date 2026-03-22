@@ -6,10 +6,12 @@ import { useAuthStore } from '../../stores/auth'
 import { useThemeStore } from '../../stores/theme'
 import { useI18n } from 'vue-i18n'
 import { useNotificationStore } from '../../stores/notifications'
+import { useSubscriptionStore } from '../../stores/subscription'
 
 const auth = useAuthStore()
 const themeStore = useThemeStore()
 const notificationStore = useNotificationStore()
+const subscriptionStore = useSubscriptionStore()
 const router = useRouter()
 const { locale, t } = useI18n()
 const searchQuery = ref('')
@@ -21,8 +23,48 @@ const isDark = computed(() => themeStore.mode === 'dark' || (themeStore.mode ===
 
 const hasNotifications = computed(() => notificationStore.unreadCount > 0)
 
+const showSubscriptionBadge = computed(() => Boolean(auth.user && auth.user.rol !== 'superadmin' && subscriptionStore.current))
+
+const subscriptionStatusInfo = computed(() => {
+  const status = subscriptionStore.current?.status
+  if (!status) return null
+
+  if (status === 'active' || status === 'trial') {
+    return {
+      label: t('topbar.subscription.activeLabel'),
+      detail: t('topbar.subscription.activeDetail'),
+      className: 'bg-green-50 text-green-700 border-green-200 dark:bg-green-900/25 dark:text-green-300 dark:border-green-700',
+    }
+  }
+
+  if (status === 'pending') {
+    return {
+      label: t('topbar.subscription.pendingLabel'),
+      detail: t('topbar.subscription.pendingDetail'),
+      className: 'bg-amber-50 text-amber-800 border-amber-200 dark:bg-amber-900/25 dark:text-amber-300 dark:border-amber-700',
+    }
+  }
+
+  if (status === 'past_due') {
+    return {
+      label: t('topbar.subscription.pastDueLabel'),
+      detail: t('topbar.subscription.pastDueDetail'),
+      className: 'bg-red-50 text-red-700 border-red-200 dark:bg-red-900/25 dark:text-red-300 dark:border-red-700',
+    }
+  }
+
+  return {
+    label: t('topbar.subscription.inactiveLabel'),
+    detail: t('topbar.subscription.inactiveDetail'),
+    className: 'bg-slate-100 text-slate-700 border-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700',
+  }
+})
+
 onMounted(() => {
   notificationStore.fetchNotifications(false)
+  if (auth.user?.rol && auth.user.rol !== 'superadmin' && !subscriptionStore.initialized) {
+    void subscriptionStore.bootstrapForCurrentUser(auth.user)
+  }
 })
 
 function toggleTheme(): void {
@@ -63,6 +105,13 @@ function notificationIcon(severity: 'info' | 'warning' | 'critical') {
   <header class="bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 px-6 py-3 flex items-center justify-between transition-colors">
     <div class="flex items-center gap-4">
       <h1 v-if="title" class="text-lg font-semibold text-gray-800 dark:text-gray-100">{{ title }}</h1>
+      <div
+        v-if="showSubscriptionBadge && subscriptionStatusInfo"
+        :class="['hidden lg:inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-medium', subscriptionStatusInfo.className]"
+        :title="subscriptionStatusInfo.detail"
+      >
+        <span>{{ subscriptionStatusInfo.label }}</span>
+      </div>
       <div class="relative hidden md:block">
         <Search class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" :size="16" />
         <input

@@ -24,12 +24,16 @@ from app.schemas.boveda import CredencialCreate, CredencialOut, CredencialUpdate
 router = APIRouter(prefix="/boveda", tags=["Bóveda de Credenciales"])
 
 
-def _has_boveda_access(user: Usuario) -> bool:
+def _has_credential_access(user: Usuario) -> bool:
     effective_permissions = getattr(user, "effective_permissions", [])
     effective_views = getattr(user, "effective_views", [])
-    has_boveda_permission = "*" in effective_permissions or "boveda.manage" in effective_permissions
-    has_boveda_view = "*" in effective_views or "boveda" in effective_views
-    return user.rol == RolEnum.SUPERADMIN or (has_boveda_permission and has_boveda_view)
+    has_permission = (
+        "*" in effective_permissions
+        or "empresas.manage" in effective_permissions
+        or "boveda.manage" in effective_permissions
+    )
+    has_view = "*" in effective_views or "empresas" in effective_views or "boveda" in effective_views
+    return user.rol == RolEnum.SUPERADMIN or (has_permission and has_view)
 
 
 async def _get_credencial_or_404(db: AsyncSession, id_credencial: int) -> Credencial:
@@ -68,8 +72,8 @@ def _audit_vault_event(
 @router.get("/", response_model=List[CredencialOut])
 async def list_credenciales(
     db: Annotated[AsyncSession, Depends(get_db)],
-    _current_user: Annotated[Usuario, Depends(require_views("boveda"))],
-    _authorized: Annotated[Usuario, Depends(require_permissions("boveda.manage"))],
+    _current_user: Annotated[Usuario, Depends(require_views("empresas"))],
+    _authorized: Annotated[Usuario, Depends(require_permissions("empresas.manage"))],
 ) -> list[Credencial]:
     result = await db.execute(select(Credencial).order_by(Credencial.fecha_actualizacion.desc()))
     return list(result.scalars().all())
@@ -79,8 +83,8 @@ async def list_credenciales(
 async def create_credencial(
     body: CredencialCreate,
     db: Annotated[AsyncSession, Depends(get_db)],
-    current_user: Annotated[Usuario, Depends(require_views("boveda"))],
-    _authorized: Annotated[Usuario, Depends(require_permissions("boveda.manage"))],
+    current_user: Annotated[Usuario, Depends(require_views("empresas"))],
+    _authorized: Annotated[Usuario, Depends(require_permissions("empresas.manage"))],
     ip: Annotated[str, Depends(get_client_ip)],
 ) -> Credencial:
     await _assert_empresa_exists(db, body.id_empresa)
@@ -116,7 +120,7 @@ async def reveal_credencial(
     ip: Annotated[str, Depends(get_client_ip)],
 ) -> CredencialWithPassword:
     """Requires MFA-verified session. Access is logged in audit log."""
-    if not _has_boveda_access(current_user):
+    if not _has_credential_access(current_user):
         raise HTTPException(status_code=403, detail="Insufficient permissions")
 
     cred = await _get_credencial_or_404(db, id_credencial)
@@ -148,8 +152,8 @@ async def update_credencial(
     id_credencial: int,
     body: CredencialUpdate,
     db: Annotated[AsyncSession, Depends(get_db)],
-    current_user: Annotated[Usuario, Depends(require_views("boveda"))],
-    _authorized: Annotated[Usuario, Depends(require_permissions("boveda.manage"))],
+    current_user: Annotated[Usuario, Depends(require_views("empresas"))],
+    _authorized: Annotated[Usuario, Depends(require_permissions("empresas.manage"))],
     ip: Annotated[str, Depends(get_client_ip)],
 ) -> Credencial:
     cred = await _get_credencial_or_404(db, id_credencial)

@@ -10,6 +10,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import require_superadmin
+from app.core.platform_catalog import get_plan_by_tier
 from app.core.database import get_db
 from app.core.security import hash_one_time_secret
 from app.infrastructure.models.cliente import Cliente, Empresa, EstadoClienteEnum
@@ -21,7 +22,7 @@ from app.infrastructure.models.subscriptions import (
     PaymentTransaction,
     SubscriptionStatusEnum,
 )
-from app.infrastructure.models.usuario import Usuario
+from app.infrastructure.models.usuario import RolEnum, Usuario
 from app.schemas.platform import (
     GlobalCompanyOut,
     GlobalCompanyUpdateIn,
@@ -50,27 +51,18 @@ def _parse_features_json(raw: str | None) -> list[str]:
 
 
 def _default_plan_features(plan: PlanTierEnum) -> list[str]:
-    if plan == PlanTierEnum.STARTER:
-        return ["tickets", "taller", "proyectos", "dashboard_basic", "email_notifications"]
-    if plan == PlanTierEnum.PRO:
-        return ["tickets", "taller", "proyectos", "dashboard_advanced", "compras", "inventory", "workflows_basic"]
-    if plan == PlanTierEnum.ENTERPRISE:
-        return [
-            "tickets", "taller", "proyectos", "dashboard_advanced", "compras", "inventory",
-            "auditoria", "advanced_mfa", "api_access", "multiempresa", "multimoneda",
-            "workflows_advanced", "bi_realtime",
-        ]
-    return []
+    if plan == PlanTierEnum.CUSTOM:
+        return []
+    try:
+        return list(get_plan_by_tier(plan).modules)
+    except KeyError:
+        return []
 
 
 def _fixed_role_for_enterprise(rol: str) -> str:
-    if rol in {"superadmin"}:
-        return "global_admin"
-    if rol in {"admin", "jefe_tecnologias", "jefe_taller", "jefe_administrativo", "jefe_contable", "ejecutivo"}:
-        return "admin"
-    if rol in {"agente_soporte_l1", "agente_soporte_l2", "tecnico", "tecnico_taller", "desarrollador"}:
-        return "soporte"
-    return "ventas"
+    if rol == "superadmin":
+        return "superadmin"
+    return "admin"
 
 
 @router.get("/dashboard/summary", response_model=GlobalDashboardSummaryOut)
@@ -329,7 +321,15 @@ async def list_global_users(
     limit: int = Query(500, ge=1, le=2000),
 ) -> list[GlobalCompanyUserOut]:
     _ = current_user
-    result = await db.execute(select(Usuario).order_by(Usuario.fecha_creacion.desc()).limit(limit))
+    result = await db.execute(
+        select(Usuario)
+        .where(
+            Usuario.id_cliente.is_(None),
+            Usuario.rol.in_([RolEnum.SUPERADMIN, RolEnum.ADMIN]),
+        )
+        .order_by(Usuario.fecha_creacion.desc())
+        .limit(limit)
+    )
     users = list(result.scalars().all())
     if not users:
         return []
@@ -367,6 +367,8 @@ async def set_global_user_activation(
     user = user_result.scalar_one_or_none()
     if not user:
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
+    if user.id_cliente is not None or user.rol not in {RolEnum.SUPERADMIN, RolEnum.ADMIN}:
+        raise HTTPException(status_code=403, detail="Solo se pueden gestionar cuentas maestras")
     user.activo = body.activo
     await db.flush()
 
@@ -399,6 +401,8 @@ async def force_global_user_password_reset(
     user = user_result.scalar_one_or_none()
     if not user:
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
+    if user.id_cliente is not None or user.rol not in {RolEnum.SUPERADMIN, RolEnum.ADMIN}:
+        raise HTTPException(status_code=403, detail="Solo se pueden gestionar cuentas maestras")
 
     plain_token = secrets.token_urlsafe(24)
     user.password_reset_token_hash = hash_one_time_secret(plain_token)

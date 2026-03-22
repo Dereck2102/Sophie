@@ -65,13 +65,13 @@ onMounted(() => {
   <div class="space-y-6">
     <section class="rounded-2xl border border-gray-200 bg-white p-5">
       <h2 class="text-xl font-bold text-gray-900">Gestión Global de Usuarios</h2>
-      <p class="text-sm text-gray-600 mt-1">Visión global por empresa y acciones de soporte de cuenta.</p>
+      <p class="text-sm text-gray-600 mt-1">Solo cuentas maestras del panel global (superadmin y admin).</p>
     </section>
 
     <p v-if="error" class="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{{ error }}</p>
     <p v-if="success" class="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700 break-all">{{ success }}</p>
 
-    <Card title="Usuarios de todas las empresas" subtitle="SOPHIE ADMIN · Superadmin">
+    <Card title="Usuarios maestros" subtitle="SOPHIE ADMIN · Superadmin">
       <div v-if="loading" class="text-sm text-gray-500">Cargando usuarios...</div>
       <div v-else class="overflow-x-auto">
         <table class="min-w-full text-sm">
@@ -80,7 +80,7 @@ onMounted(() => {
               <th class="px-2 py-2">Usuario</th>
               <th class="px-2 py-2">Email</th>
               <th class="px-2 py-2">Empresa</th>
-              <th class="px-2 py-2">Rol ERP</th>
+              <th class="px-2 py-2">Rol Maestro</th>
               <th class="px-2 py-2">Estado</th>
               <th class="px-2 py-2">Acciones</th>
             </tr>

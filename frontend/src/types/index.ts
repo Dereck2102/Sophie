@@ -3,6 +3,11 @@
 export type RolEnum =
   | 'superadmin'
   | 'admin'
+  | 'agente_soporte'
+  | 'ventas'
+  | 'contable'
+  | 'rrhh'
+  | 'bodega'
   | 'jefe_tecnologias'
   | 'jefe_taller'
   | 'jefe_administrativo'
@@ -48,6 +53,24 @@ export interface Usuario {
   vistas: string[]
   herramientas: string[]
   fecha_creacion: string
+}
+
+export interface TenantStaffingBucket {
+  key: string
+  label: string
+  limit?: number | null
+  used: number
+  remaining?: number | null
+}
+
+export interface TenantStaffingLimits {
+  id_cliente: number
+  plan_tier: string
+  total_limit?: number | null
+  total_used: number
+  total_remaining?: number | null
+  by_role: TenantStaffingBucket[]
+  by_area: TenantStaffingBucket[]
 }
 
 export interface ConfiguracionSistema {
@@ -276,7 +299,7 @@ export interface GlobalCompanyUser {
   username: string
   email: string
   rol: RolEnum
-  rol_fijo: 'global_admin' | 'admin' | 'soporte' | 'ventas'
+  rol_fijo: 'superadmin' | 'admin'
   activo: boolean
   id_empresa?: number | null
   empresa_nombre?: string | null

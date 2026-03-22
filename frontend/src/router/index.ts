@@ -88,6 +88,7 @@ const routes: RouteRecordRaw[] = [
       { path: 'global/dashboard', name: 'GlobalDashboard', component: () => import('../pages/GlobalDashboardPage.vue'), meta: { requiresSuperadmin: true } },
       { path: 'global/companies', name: 'GlobalCompanies', component: () => import('../pages/GlobalCompaniesPage.vue'), meta: { requiresSuperadmin: true } },
       { path: 'global/users', name: 'GlobalUsers', component: () => import('../pages/GlobalUsersPage.vue'), meta: { requiresSuperadmin: true } },
+      { path: 'global/configuration', name: 'GlobalConfiguration', component: () => import('../pages/ConfigPage.vue'), meta: { requiresSuperadmin: true } },
       { path: 'boveda', redirect: '/empresas' },
       { path: 'flujo-operativo', name: 'FlujoOperativo', component: () => import('../pages/FlujoOperativoPage.vue'), meta: { requiredView: 'dashboard', requiredModule: 'E7' } },
       { path: 'ventas', name: 'Ventas', component: () => import('../pages/VentasPage.vue'), meta: { requiredView: 'ventas', requiredModule: 'E4' } },
@@ -124,6 +125,9 @@ router.beforeEach(async (to, _from, next) => {
   const requiredView = (to.meta?.requiredView as string | undefined) ?? null
   const requiredModule = (to.meta?.requiredModule as string | undefined) ?? null
   const requiresSuperadmin = Boolean(to.meta?.requiresSuperadmin)
+  const isSuperadmin = auth.user?.rol === 'superadmin'
+  const isGlobalRoute = to.path.startsWith('/global/')
+  const isSuperadminAllowedRoute = isGlobalRoute || to.name === 'Perfil' || to.name === 'Login' || Boolean(to.meta?.public)
   const userViews = auth.user?.vistas ?? []
   const canAccess = !requiredView || userViews.includes('*') || userViews.includes(requiredView)
   const isDisabledInErpOnly = ERP_ONLY_MODE && Boolean(to.meta?.disabledInErpOnly)
@@ -140,6 +144,8 @@ router.beforeEach(async (to, _from, next) => {
 
   if (to.meta.requiresAuth && !auth.accessToken) {
     next({ name: 'Login', query: { redirect: to.fullPath } })
+  } else if (isSuperadmin && !isSuperadminAllowedRoute) {
+    next({ name: 'GlobalDashboard' })
   } else if (requiresSuperadmin && auth.user?.rol !== 'superadmin') {
     next(getHomeRoute(auth.user))
   } else if (requiredModule && auth.user && !canAccessModule) {

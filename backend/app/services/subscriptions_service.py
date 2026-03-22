@@ -10,6 +10,7 @@ from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.platform_catalog import get_plan_by_tier
 from app.core.security import decrypt_vault, encrypt_vault
 from app.infrastructure.models.cliente import Empresa
 from app.infrastructure.models.subscriptions import (
@@ -96,6 +97,8 @@ _PLAN_PRESETS: dict[PlanTierEnum, dict[str, object]] = {
     },
 }
 
+_SENSITIVE_GATEWAY_EXTRA_KEYS = {"webhook_token"}
+
 
 def _parse_features_json(raw: str | None) -> list[str]:
     if not raw:
@@ -121,6 +124,51 @@ def _parse_json_obj(raw: str | None) -> dict[str, str]:
     return {str(key): str(value) for key, value in data.items() if value is not None}
 
 
+def _decrypt_gateway_value(value: str | None, *, strict: bool = False) -> str | None:
+    raw = (value or "").strip()
+    if not raw:
+        return None
+    if not raw.startswith("enc:"):
+        return raw
+    try:
+        return decrypt_vault(raw.removeprefix("enc:"))
+    except RuntimeError:
+        if strict:
+            raise HTTPException(status_code=503, detail="No se pudo descifrar configuración sensible del gateway")
+        return None
+
+
+def _serialize_gateway_extra(data: dict[str, str | None]) -> str:
+    normalized: dict[str, str | None] = {}
+    for key, value in data.items():
+        clean = (value or "").strip()
+        if key in _SENSITIVE_GATEWAY_EXTRA_KEYS:
+            if not clean:
+                normalized[key] = None
+                continue
+            try:
+                normalized[key] = f"enc:{encrypt_vault(clean)}"
+            except RuntimeError as exc:
+                raise HTTPException(status_code=503, detail=f"No se pudo cifrar configuración sensible: {exc}")
+            continue
+        normalized[key] = clean or None
+
+    return json.dumps(normalized)
+
+
+def _read_gateway_extra(raw: str | None, *, strict: bool = False) -> dict[str, str]:
+    parsed = _parse_json_obj(raw)
+    output: dict[str, str] = {}
+    for key, value in parsed.items():
+        if key in _SENSITIVE_GATEWAY_EXTRA_KEYS:
+            decrypted = _decrypt_gateway_value(value, strict=strict)
+            if decrypted:
+                output[key] = decrypted
+            continue
+        output[key] = value
+    return output
+
+
 def _plan_price(plan: PlanTierEnum, yearly: bool) -> Decimal:
     preset = _PLAN_PRESETS[plan]
     key = "yearly_price_usd" if yearly else "monthly_price_usd"
@@ -131,8 +179,13 @@ def _plan_price(plan: PlanTierEnum, yearly: bool) -> Decimal:
 
 
 def _plan_features(plan: PlanTierEnum) -> list[str]:
-    features = _PLAN_PRESETS[plan].get("features", [])
-    return [str(f) for f in features]
+    if plan == PlanTierEnum.CUSTOM:
+        return []
+    try:
+        return list(get_plan_by_tier(plan).modules)
+    except KeyError:
+        features = _PLAN_PRESETS[plan].get("features", [])
+        return [str(f) for f in features]
 
 
 def _extract_custom_features_from_text(custom_requirements: str | None) -> list[str]:
@@ -336,7 +389,7 @@ class SubscriptionService:
             status=sub.status,
             price_usd=Decimal(str(sub.price_usd)),
             currency=sub.currency,
-            features=_parse_features_json(sub.features_json),
+            features=_parse_features_json(sub.features_json) or _plan_features(sub.plan_tier),
             custom_notes=sub.custom_notes,
             updated_by_user_id=sub.updated_by_user_id,
             updated_at=sub.updated_at,
@@ -411,7 +464,7 @@ class SubscriptionService:
         if not payphone_cfg or not payphone_cfg.enabled:
             raise HTTPException(status_code=400, detail="PayPhone no está habilitado")
 
-        extra = _parse_json_obj(payphone_cfg.extra_json)
+        extra = _read_gateway_extra(payphone_cfg.extra_json, strict=True)
         expected_token = (extra.get("webhook_token") or "").strip()
         if expected_token and (not webhook_token or webhook_token.strip() != expected_token):
             raise HTTPException(status_code=401, detail="Webhook token inválido")
@@ -480,7 +533,7 @@ class SubscriptionService:
         rows = list(result.scalars().all())
         output: list[PaymentGatewayConfigOut] = []
         for row in rows:
-            extra = _parse_json_obj(row.extra_json)
+            extra = _read_gateway_extra(row.extra_json, strict=False)
             output.append(
                 PaymentGatewayConfigOut(
                     provider=row.provider,
@@ -526,7 +579,7 @@ class SubscriptionService:
             else:
                 row.secret_encrypted = None
 
-        row.extra_json = json.dumps(
+        row.extra_json = _serialize_gateway_extra(
             {
                 "endpoint_url": body.endpoint_url,
                 "store_id": body.store_id,
@@ -537,7 +590,7 @@ class SubscriptionService:
         )
 
         await self.db.flush()
-        extra = _parse_json_obj(row.extra_json)
+        extra = _read_gateway_extra(row.extra_json, strict=False)
         return PaymentGatewayConfigOut(
             provider=row.provider,
             enabled=row.enabled,

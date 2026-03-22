@@ -40,16 +40,22 @@ const navGroups = computed(() => {
   }
   const canSeeModule = (view: string) => isSuperadmin || subscription.hasModuleForView(view)
 
+  const globalGroup = {
+    key: 'global',
+    label: t('nav.groups.global'),
+    items: [
+      { path: '/global/dashboard', label: t('nav.globalDashboard'), icon: Blocks, requiredView: 'global_dashboard' },
+      { path: '/global/companies', label: t('nav.globalCompanies'), icon: Building2, requiredView: 'global_dashboard' },
+      { path: '/global/users', label: t('nav.globalUsers'), icon: Users, requiredView: 'global_dashboard' },
+      { path: '/global/configuration', label: t('nav.configuracion'), icon: Settings, requiredView: 'global_dashboard' },
+    ].filter(() => isSuperadmin),
+  }
+
+  if (isSuperadmin) {
+    return [globalGroup].filter(g => g.items.length > 0)
+  }
+
   const groups = [
-    {
-      key: 'global',
-      label: t('nav.groups.global'),
-      items: [
-        { path: '/global/dashboard', label: t('nav.globalDashboard'), icon: Blocks, requiredView: 'global_dashboard' },
-        { path: '/global/companies', label: t('nav.globalCompanies'), icon: Building2, requiredView: 'global_dashboard' },
-        { path: '/global/users', label: t('nav.globalUsers'), icon: Users, requiredView: 'global_dashboard' },
-      ].filter(() => isSuperadmin),
-    },
     {
       key: 'overview',
       label: t('nav.groups.overview'),

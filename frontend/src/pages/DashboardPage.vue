@@ -48,6 +48,8 @@ const recentTickets = ref<Ticket[]>([])
 const cotizacionStats = ref<Record<string, number>>({})
 const projectStats = ref<ProyectoEstadisticas[]>([])
 const loading = ref(true)
+const dashboardViewMode = ref<'all' | 'finance' | 'operations'>('all')
+const selectedFinancialMetric = ref<string | null>(null)
 
 const pipelineStages: PipelineStage[] = [
   { label: 'Borrador', estado: 'borrador', color: 'bg-slate-400', textColor: 'text-slate-700' },
@@ -210,6 +212,17 @@ const quickActions = computed(() => {
   return actions
 })
 
+const selectedFinancialCard = computed(() =>
+  financialCards.value.find((card) => card.label === selectedFinancialMetric.value) ?? null
+)
+
+const showFinancialPanels = computed(() => dashboardViewMode.value === 'all' || dashboardViewMode.value === 'finance')
+const showOperationalPanels = computed(() => dashboardViewMode.value === 'all' || dashboardViewMode.value === 'operations')
+
+function selectFinancialMetric(label: string): void {
+  selectedFinancialMetric.value = label
+}
+
 const projectStatsInFocus = computed(() =>
   [...projectStats.value]
     .sort((a, b) => b.porcentaje_completacion - a.porcentaje_completacion)
@@ -276,6 +289,9 @@ const DASHBOARD_REFRESH_MS = 60_000
 
 onMounted(async () => {
   await loadData()
+  if (financialCards.value.length > 0) {
+    selectedFinancialMetric.value = financialCards.value[0]?.label ?? null
+  }
   refreshTimer = setInterval(loadData, DASHBOARD_REFRESH_MS)
 })
 
@@ -296,6 +312,32 @@ onUnmounted(() => {
           <p class="mt-2 max-w-2xl text-sm text-slate-600">
             El tablero ahora prioriza facturacion, compras, caja chica, cartera y alertas de cierre para que el seguimiento contable salga de datos reales y no de simulaciones.
           </p>
+          <div class="mt-4 flex flex-wrap gap-2">
+            <button
+              type="button"
+              class="rounded-full border px-3 py-1 text-xs font-semibold transition"
+              :class="dashboardViewMode === 'all' ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-300 bg-white text-slate-700 hover:border-slate-400'"
+              @click="dashboardViewMode = 'all'"
+            >
+              Vista completa
+            </button>
+            <button
+              type="button"
+              class="rounded-full border px-3 py-1 text-xs font-semibold transition"
+              :class="dashboardViewMode === 'finance' ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-300 bg-white text-slate-700 hover:border-slate-400'"
+              @click="dashboardViewMode = 'finance'"
+            >
+              Enfoque financiero
+            </button>
+            <button
+              type="button"
+              class="rounded-full border px-3 py-1 text-xs font-semibold transition"
+              :class="dashboardViewMode === 'operations' ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-300 bg-white text-slate-700 hover:border-slate-400'"
+              @click="dashboardViewMode = 'operations'"
+            >
+              Enfoque operativo
+            </button>
+          </div>
         </div>
         <div class="grid grid-cols-2 gap-3 sm:grid-cols-4">
           <div
@@ -315,17 +357,29 @@ onUnmounted(() => {
       </div>
     </section>
 
-    <section>
+    <section v-if="showFinancialPanels">
       <div class="mb-3 flex items-center justify-between">
         <h2 class="text-sm font-semibold uppercase tracking-[0.2em] text-slate-500">Cierre del mes</h2>
         <router-link to="/ventas" class="text-sm font-medium text-blue-700 hover:underline">Ir a ventas</router-link>
+      </div>
+      <div v-if="selectedFinancialCard" class="mb-4 rounded-2xl border border-blue-100 bg-blue-50/70 p-4">
+        <div class="flex items-start justify-between gap-4">
+          <div>
+            <p class="text-xs font-semibold uppercase tracking-[0.2em] text-blue-700">Métrica seleccionada</p>
+            <p class="mt-1 text-lg font-bold text-slate-900">{{ selectedFinancialCard.label }}</p>
+            <p class="mt-1 text-sm text-slate-600">{{ selectedFinancialCard.detail }}</p>
+          </div>
+          <p class="text-xl font-bold text-blue-700">{{ formatCurrency(selectedFinancialCard.value) }}</p>
+        </div>
       </div>
       <div class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
         <router-link
           v-for="card in financialCards"
           :key="card.label"
           :to="card.link"
-          class="group rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md"
+          class="group rounded-2xl border bg-white p-5 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md"
+          :class="selectedFinancialMetric === card.label ? 'border-blue-300 ring-2 ring-blue-100' : 'border-slate-200'"
+          @mouseenter="selectFinancialMetric(card.label)"
         >
           <div class="flex items-start justify-between gap-3">
             <div>
@@ -348,8 +402,8 @@ onUnmounted(() => {
       </div>
     </section>
 
-    <section class="grid grid-cols-1 gap-6 xl:grid-cols-[1.6fr_1fr]">
-      <Card title="Tendencia financiera de 6 meses">
+    <section v-if="showFinancialPanels || showOperationalPanels" class="grid grid-cols-1 gap-6 xl:grid-cols-[1.6fr_1fr]">
+      <Card v-if="showFinancialPanels" title="Tendencia financiera de 6 meses">
         <div class="space-y-4">
           <div class="grid grid-cols-4 gap-3 rounded-2xl bg-slate-50 p-4 text-xs text-slate-600">
             <div>
@@ -420,7 +474,7 @@ onUnmounted(() => {
       </Card>
 
       <div class="space-y-6">
-        <Card title="Alertas contables">
+        <Card v-if="showFinancialPanels" title="Alertas contables">
           <div v-if="analytics.alertas.length === 0" class="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
             No hay alertas financieras activas con los datos actuales.
           </div>
@@ -448,7 +502,7 @@ onUnmounted(() => {
           </div>
         </Card>
 
-        <Card title="Herramientas contables">
+        <Card v-if="showOperationalPanels" title="Herramientas contables">
           <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <button
               v-for="action in quickActions"
@@ -465,7 +519,7 @@ onUnmounted(() => {
           </div>
         </Card>
 
-        <Card title="Proyectos en foco">
+        <Card v-if="showOperationalPanels" title="Proyectos en foco">
           <div v-if="projectStatsInFocus.length === 0" class="rounded-2xl border border-dashed border-slate-200 p-4 text-sm text-slate-500">
             Sin proyectos activos para mostrar progreso.
           </div>
@@ -490,7 +544,7 @@ onUnmounted(() => {
           </div>
         </Card>
 
-        <Card title="Correlación operativa">
+        <Card v-if="showOperationalPanels" title="Correlación operativa">
           <div v-if="analytics.correlaciones.length === 0" class="rounded-2xl border border-dashed border-slate-200 p-4 text-sm text-slate-500">
             Sin datos suficientes para correlaciones.
           </div>
@@ -511,8 +565,8 @@ onUnmounted(() => {
       </div>
     </section>
 
-    <section class="grid grid-cols-1 gap-6 xl:grid-cols-[1.1fr_0.9fr_0.9fr]">
-      <Card title="Clientes con mayor facturacion">
+    <section v-if="showFinancialPanels || showOperationalPanels" class="grid grid-cols-1 gap-6 xl:grid-cols-[1.1fr_0.9fr_0.9fr]">
+      <Card v-if="showFinancialPanels" title="Clientes con mayor facturacion">
         <div v-if="analytics.top_clientes.length === 0" class="rounded-2xl border border-dashed border-slate-200 p-6 text-sm text-slate-500">
           Aun no existen facturas suficientes para construir un ranking de clientes.
         </div>
@@ -536,7 +590,7 @@ onUnmounted(() => {
         </div>
       </Card>
 
-      <Card title="Caja chica por categoria">
+      <Card v-if="showFinancialPanels" title="Caja chica por categoria">
         <div v-if="analytics.egresos_por_categoria.length === 0" class="rounded-2xl border border-dashed border-slate-200 p-6 text-sm text-slate-500">
           No hay egresos de caja chica categorizados en el mes.
         </div>
@@ -555,7 +609,7 @@ onUnmounted(() => {
         </div>
       </Card>
 
-      <Card title="Cartera y vencimientos">
+      <Card v-if="showFinancialPanels" title="Cartera y vencimientos">
         <div class="space-y-4">
           <div v-if="analytics.cartera_aging.length === 0" class="rounded-2xl border border-dashed border-slate-200 p-6 text-sm text-slate-500">
             No hay cartera pendiente para analizar.
@@ -608,7 +662,7 @@ onUnmounted(() => {
         </div>
       </Card>
 
-      <Card title="Pipeline y servicio">
+      <Card v-if="showOperationalPanels" title="Pipeline y servicio">
         <div class="space-y-4">
           <div>
             <p class="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Cotizaciones</p>

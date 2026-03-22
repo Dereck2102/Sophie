@@ -21,7 +21,14 @@ from app.core.database import Base
 class RolEnum(str, enum.Enum):
     """Roles válidos en SOPHIE con permisos granulares adicionales."""
     SUPERADMIN = "superadmin"           # Acceso total + administración del sistema
-    ADMIN = "admin"                     # Administrador general (sin modificar superadmin)
+    ADMIN = "admin"                     # Administrador (maestro o ERP según tenant)
+    AGENTE_SOPORTE = "agente_soporte"   # Soporte ERP
+    VENTAS = "ventas"                   # Ventas ERP
+    CONTABLE = "contable"               # Contable ERP
+    RRHH = "rrhh"                       # Recursos humanos ERP
+    BODEGA = "bodega"                   # Bodega/inventario ERP
+
+    # Legacy roles kept for backward compatibility with existing data.
     JEFE_TECNOLOGIAS = "jefe_tecnologias"   # Jefe de departamento de tecnología
     JEFE_TALLER = "jefe_taller"         # Jefe de departamento de taller
     JEFE_ADMINISTRATIVO = "jefe_administrativo"  # Jefe de área administrativa

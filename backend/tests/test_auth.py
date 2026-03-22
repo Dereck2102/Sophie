@@ -268,7 +268,7 @@ async def test_create_usuario_rejects_duplicate_email(client: AsyncClient) -> No
             "username": "vendedor_1",
             "email": "duplicado@bigsolutions.pe",
             "password": "VendPass123!",
-            "rol": "ejecutivo",
+            "rol": "admin",
         },
         headers=headers,
     )
@@ -280,7 +280,7 @@ async def test_create_usuario_rejects_duplicate_email(client: AsyncClient) -> No
             "username": "vendedor_2",
             "email": "duplicado@bigsolutions.pe",
             "password": "VendPass123!",
-            "rol": "ejecutivo",
+            "rol": "admin",
         },
         headers=headers,
     )
@@ -383,3 +383,150 @@ async def test_login_with_mfa_recovery_code(client: AsyncClient) -> None:
     )
     assert login_with_recovery.status_code == 200
     assert login_with_recovery.json().get("access_token")
+
+
+@pytest.mark.asyncio
+async def test_tenant_starter_limits_one_specialist_per_role(client: AsyncClient) -> None:
+    await client.post(
+        "/api/v1/auth/register",
+        json={
+            "username": "damacoria",
+            "email": "damacoria@bigsolutions.pe",
+            "password": "OwnerPass123!",
+            "rol": "superadmin",
+        },
+    )
+    super_login = await client.post(
+        "/api/v1/auth/login",
+        json={"username": "damacoria", "password": "OwnerPass123!"},
+    )
+    super_headers = {"Authorization": f"Bearer {super_login.json()['access_token']}"}
+
+    empresa_resp = await client.post(
+        "/api/v1/clientes/",
+        json={
+            "tipo_cliente": "B2B",
+            "estado": "activo",
+            "empresa": {
+                "razon_social": "Empresa Limites Starter",
+                "ruc": "20999900001",
+                "contacto_principal": "Juan Base",
+                "telefono": "0999000111",
+                "email": "starter_limits@bigsolutions.pe",
+            },
+        },
+        headers=super_headers,
+    )
+    assert empresa_resp.status_code == 201
+    tenant_id = empresa_resp.json()["id_cliente"]
+
+    tenant_admin_resp = await client.post(
+        "/api/v1/usuarios/",
+        json={
+            "id_cliente": tenant_id,
+            "username": "tenant_admin",
+            "email": "tenant_admin@bigsolutions.pe",
+            "password": "TenantAdmin123!",
+            "rol": "admin",
+        },
+        headers=super_headers,
+    )
+    assert tenant_admin_resp.status_code == 201
+
+    tenant_login = await client.post(
+        "/api/v1/auth/login",
+        json={"username": "tenant_admin", "password": "TenantAdmin123!"},
+    )
+    tenant_headers = {"Authorization": f"Bearer {tenant_login.json()['access_token']}"}
+
+    support_1 = await client.post(
+        "/api/v1/usuarios/",
+        json={
+            "username": "support_one",
+            "email": "support_one@bigsolutions.pe",
+            "password": "Support123!",
+            "rol": "agente_soporte",
+        },
+        headers=tenant_headers,
+    )
+    assert support_1.status_code == 201
+
+    support_2 = await client.post(
+        "/api/v1/usuarios/",
+        json={
+            "username": "support_two",
+            "email": "support_two@bigsolutions.pe",
+            "password": "Support123!",
+            "rol": "agente_soporte",
+        },
+        headers=tenant_headers,
+    )
+    assert support_2.status_code == 409
+    assert "Límite por rol" in support_2.json().get("detail", "")
+
+
+@pytest.mark.asyncio
+async def test_tenant_capacity_endpoint_returns_area_and_role_buckets(client: AsyncClient) -> None:
+    await client.post(
+        "/api/v1/auth/register",
+        json={
+            "username": "damacoria",
+            "email": "damacoria@bigsolutions.pe",
+            "password": "OwnerPass123!",
+            "rol": "superadmin",
+        },
+    )
+    super_login = await client.post(
+        "/api/v1/auth/login",
+        json={"username": "damacoria", "password": "OwnerPass123!"},
+    )
+    super_headers = {"Authorization": f"Bearer {super_login.json()['access_token']}"}
+
+    empresa_resp = await client.post(
+        "/api/v1/clientes/",
+        json={
+            "tipo_cliente": "B2B",
+            "estado": "activo",
+            "empresa": {
+                "razon_social": "Empresa Capacity",
+                "ruc": "20999900002",
+                "contacto_principal": "Maria Ops",
+                "telefono": "0999000222",
+                "email": "capacity@bigsolutions.pe",
+            },
+        },
+        headers=super_headers,
+    )
+    assert empresa_resp.status_code == 201
+    tenant_id = empresa_resp.json()["id_cliente"]
+
+    await client.post(
+        "/api/v1/usuarios/",
+        json={
+            "id_cliente": tenant_id,
+            "username": "admin_capacity",
+            "email": "admin_capacity@bigsolutions.pe",
+            "password": "AdminCap123!",
+            "rol": "admin",
+        },
+        headers=super_headers,
+    )
+
+    tenant_login = await client.post(
+        "/api/v1/auth/login",
+        json={"username": "admin_capacity", "password": "AdminCap123!"},
+    )
+    tenant_headers = {"Authorization": f"Bearer {tenant_login.json()['access_token']}"}
+
+    capacity_resp = await client.get("/api/v1/usuarios/capacidad", headers=tenant_headers)
+    assert capacity_resp.status_code == 200
+    payload = capacity_resp.json()
+
+    assert payload["id_cliente"] == tenant_id
+    assert payload["plan_tier"] == "starter"
+    assert payload["total_limit"] == 6
+    assert payload["total_used"] == 1
+    assert isinstance(payload["by_role"], list)
+    assert isinstance(payload["by_area"], list)
+    assert any(item["key"] == "admin" and item["used"] == 1 for item in payload["by_role"])
+    assert any(item["key"] == "direccion" and item["used"] == 1 for item in payload["by_area"])

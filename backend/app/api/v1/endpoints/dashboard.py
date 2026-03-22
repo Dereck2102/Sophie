@@ -85,6 +85,9 @@ async def get_stats(
 ) -> DashboardStats:
     now = datetime.now(timezone.utc)
     inicio_mes = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    caja_scope = []
+    if current_user.id_cliente is not None:
+        caja_scope.append(MovimientoCajaChica.id_cliente == current_user.id_cliente)
 
     # Active clients
     clientes_result = await db.execute(
@@ -164,6 +167,7 @@ async def get_stats(
                 0,
             )
         )
+        .where(*caja_scope)
     )
     caja_chica_balance = money(caja_balance_result.scalar_one() or 0)
 
@@ -171,6 +175,7 @@ async def get_stats(
         select(func.coalesce(func.sum(MovimientoCajaChica.monto), 0)).where(
             MovimientoCajaChica.tipo == TipoMovimientoCajaEnum.EGRESO,
             MovimientoCajaChica.fecha >= inicio_mes,
+            *caja_scope,
         )
     )
     caja_chica_egresos_mes = money(caja_egresos_result.scalar_one() or 0)
@@ -196,6 +201,9 @@ async def get_analytics(
     _ = current_user
     now = datetime.now(timezone.utc)
     inicio_mes = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    caja_scope = []
+    if current_user.id_cliente is not None:
+        caja_scope.append(MovimientoCajaChica.id_cliente == current_user.id_cliente)
 
     ingresos_facturados_mes = await db.scalar(
         select(func.coalesce(func.sum(Cotizacion.total), 0)).where(
@@ -216,7 +224,7 @@ async def get_analytics(
             MovimientoCajaChica.tipo,
             func.coalesce(func.sum(MovimientoCajaChica.monto), 0),
         )
-        .where(MovimientoCajaChica.fecha >= inicio_mes)
+        .where(MovimientoCajaChica.fecha >= inicio_mes, *caja_scope)
         .group_by(MovimientoCajaChica.tipo)
     )
     caja_map = {tipo: money(total or 0) for tipo, total in caja_totales.all()}
@@ -273,6 +281,7 @@ async def get_analytics(
                 0,
             )
         )
+        .where(*caja_scope)
     )
 
     flujo_neto_mes = money(

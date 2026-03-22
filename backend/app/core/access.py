@@ -5,15 +5,12 @@ import json
 from app.infrastructure.models.usuario import RolEnum, Usuario
 
 ROLE_ACCESS: dict[RolEnum, dict[str, list[str]]] = {
-    # ─── Nivel 0: Superadministrador ───────────────────────────────────────────
     RolEnum.SUPERADMIN: {
         "permissions": ["*"],
         "views": ["*"],
         "tools": ["*"],
     },
-    # ─── Nivel 1: Admin general ──────────────────────────────────────────────
     RolEnum.ADMIN: {
-        # Acceso completo excepto auditoría avanzada; puede gestionar usuarios no-superadmin
         "permissions": ["*"],
         "views": [
             "auditoria", "empresas", "caja_chica", "compras", "configuracion",
@@ -22,103 +19,99 @@ ROLE_ACCESS: dict[RolEnum, dict[str, list[str]]] = {
         ],
         "tools": ["*"],
     },
-    # ─── Nivel 2: Jefaturas de departamento ──────────────────────────────────
-    RolEnum.JEFE_TECNOLOGIAS: {
-        # Supervisa proyectos, taller, empresas y equipo técnico
+    RolEnum.AGENTE_SOPORTE: {
         "permissions": [
-            "dashboard.view", "proyectos.manage", "tickets.manage",
-            "clientes.read", "inventario.read", "empresas.manage", "reportes.view",
+            "dashboard.view", "clientes.read", "tickets.manage", "inventario.read",
         ],
-        "views": ["empresas", "dashboard", "perfil", "proyectos", "taller"],
-        "tools": ["calculo_horas_tecnicas", "exportaciones", "reportes", "scanner_qr"],
+        "views": ["dashboard", "perfil", "taller", "inventario"],
+        "tools": ["scanner_qr", "reportes"],
+    },
+    RolEnum.VENTAS: {
+        "permissions": [
+            "dashboard.view", "clientes.manage", "ventas.manage", "reportes.view",
+        ],
+        "views": ["dashboard", "perfil", "ventas"],
+        "tools": ["reportes", "exportaciones", "calculadora_margen"],
+    },
+    RolEnum.CONTABLE: {
+        "permissions": [
+            "dashboard.view", "compras.manage", "reportes.view", "ventas.manage",
+        ],
+        "views": ["dashboard", "perfil", "caja_chica", "compras", "ventas"],
+        "tools": [
+            "control_caja_chica", "proyecciones_financieras", "simulador_iva", "reportes",
+        ],
+    },
+    RolEnum.RRHH: {
+        "permissions": [
+            "dashboard.view", "usuarios.manage", "reportes.view",
+        ],
+        "views": ["dashboard", "perfil", "usuarios"],
+        "tools": ["reportes"],
+    },
+    RolEnum.BODEGA: {
+        "permissions": [
+            "dashboard.view", "inventario.read", "compras.manage", "reportes.view",
+        ],
+        "views": ["dashboard", "perfil", "inventario", "compras"],
+        "tools": ["scanner_qr", "reportes"],
+    },
+
+    # Legacy roles mapped to closest new role behavior.
+    RolEnum.JEFE_TECNOLOGIAS: {
+        "permissions": ["dashboard.view", "clientes.read", "tickets.manage", "inventario.read"],
+        "views": ["dashboard", "perfil", "taller", "inventario"],
+        "tools": ["scanner_qr", "reportes"],
     },
     RolEnum.JEFE_TALLER: {
-        # Supervisa operaciones del taller, todos los tickets y proyectos
-        "permissions": [
-            "dashboard.view", "tickets.manage", "proyectos.read",
-            "clientes.read", "inventario.read", "reportes.view",
-        ],
-        "views": ["dashboard", "inventario", "perfil", "proyectos", "taller"],
-        "tools": ["calculo_horas_tecnicas", "exportaciones", "reportes", "scanner_qr"],
+        "permissions": ["dashboard.view", "clientes.read", "tickets.manage", "inventario.read"],
+        "views": ["dashboard", "perfil", "taller", "inventario"],
+        "tools": ["scanner_qr", "reportes"],
     },
     RolEnum.JEFE_ADMINISTRATIVO: {
-        # Gestión integral del área administrativa
-        "permissions": [
-            "dashboard.view", "clientes.manage", "ventas.manage", "compras.manage",
-            "inventario.read", "reportes.view",
-        ],
-        "views": ["caja_chica", "compras", "dashboard", "perfil", "proyectos", "ventas"],
-        "tools": [
-            "calculadora_margen", "control_caja_chica", "costeo_cotizaciones",
-            "exportaciones", "proyecciones_financieras", "reportes",
-        ],
+        "permissions": ["dashboard.view", "compras.manage", "reportes.view", "ventas.manage"],
+        "views": ["dashboard", "perfil", "caja_chica", "compras", "ventas"],
+        "tools": ["control_caja_chica", "proyecciones_financieras", "simulador_iva", "reportes"],
     },
     RolEnum.JEFE_CONTABLE: {
-        # Gestión contable, financiera y auditoría interna
-        "permissions": [
-            "dashboard.view", "ventas.manage", "compras.manage", "reportes.view",
-        ],
-        "views": ["auditoria", "caja_chica", "compras", "dashboard", "perfil", "ventas"],
-        "tools": [
-            "calculadora_margen", "control_caja_chica", "costeo_cotizaciones",
-            "exportaciones", "proyecciones_financieras", "reportes",
-            "simulador_descuentos", "simulador_iva",
-        ],
+        "permissions": ["dashboard.view", "compras.manage", "reportes.view", "ventas.manage"],
+        "views": ["dashboard", "perfil", "caja_chica", "compras", "ventas"],
+        "tools": ["control_caja_chica", "proyecciones_financieras", "simulador_iva", "reportes"],
     },
-    # ─── Nivel 3: Roles de operación transversal ─────────────────────────────
     RolEnum.EJECUTIVO: {
-        # Supervisión ejecutiva: operaciones, proyectos y CRM
-        "permissions": [
-            "dashboard.view", "clientes.manage", "ventas.manage",
-            "proyectos.manage", "tickets.manage", "inventario.read",
-            "empresas.manage", "reportes.view",
-        ],
-        "views": ["empresas", "dashboard", "inventario", "perfil", "proyectos", "taller", "ventas"],
-        "tools": ["exportaciones", "reportes"],
+        "permissions": ["dashboard.view", "clientes.manage", "ventas.manage", "reportes.view"],
+        "views": ["dashboard", "perfil", "ventas"],
+        "tools": ["reportes", "exportaciones", "calculadora_margen"],
     },
     RolEnum.ADMINISTRATIVO_CONTABLE: {
-        # Gestión financiera, compras y contabilidad operativa
-        "permissions": [
-            "dashboard.view", "compras.manage", "ventas.manage",
-            "clientes.manage", "inventario.read", "reportes.view",
-        ],
-        "views": ["caja_chica", "compras", "dashboard", "inventario", "perfil", "ventas"],
-        "tools": [
-            "calculadora_margen", "control_caja_chica", "costeo_cotizaciones",
-            "exportaciones", "proyecciones_financieras", "reportes",
-            "simulador_descuentos", "simulador_iva",
-        ],
+        "permissions": ["dashboard.view", "compras.manage", "reportes.view", "ventas.manage"],
+        "views": ["dashboard", "perfil", "caja_chica", "compras", "ventas"],
+        "tools": ["control_caja_chica", "proyecciones_financieras", "simulador_iva", "reportes"],
     },
-    # ─── Nivel 4: Personal técnico y de soporte ───────────────────────────────
     RolEnum.TECNICO: {
-        # Técnico general: solo sus propios tickets de taller
-        "permissions": ["inventario.read", "tickets.manage"],
-        "views": ["perfil", "taller"],
-        "tools": ["calculo_horas_tecnicas", "scanner_qr"],
+        "permissions": ["dashboard.view", "clientes.read", "tickets.manage", "inventario.read"],
+        "views": ["dashboard", "perfil", "taller", "inventario"],
+        "tools": ["scanner_qr", "reportes"],
     },
     RolEnum.TECNICO_TALLER: {
-        # Técnico especialista de taller: solo sus propios tickets
-        "permissions": ["inventario.read", "tickets.manage"],
-        "views": ["perfil", "taller"],
-        "tools": ["calculo_horas_tecnicas", "scanner_qr"],
+        "permissions": ["dashboard.view", "clientes.read", "tickets.manage", "inventario.read"],
+        "views": ["dashboard", "perfil", "taller", "inventario"],
+        "tools": ["scanner_qr", "reportes"],
     },
     RolEnum.AGENTE_SOPORTE_L1: {
-        # Soporte nivel 1: atiende tickets básicos y consulta CRM
-        "permissions": ["clientes.read", "tickets.manage"],
-        "views": ["perfil", "taller"],
-        "tools": ["scanner_qr"],
+        "permissions": ["dashboard.view", "clientes.read", "tickets.manage", "inventario.read"],
+        "views": ["dashboard", "perfil", "taller", "inventario"],
+        "tools": ["scanner_qr", "reportes"],
     },
     RolEnum.AGENTE_SOPORTE_L2: {
-        # Soporte nivel 2: atiende tickets complejos, puede ver proyectos
-        "permissions": ["clientes.read", "inventario.read", "proyectos.read", "tickets.manage"],
-        "views": ["perfil", "proyectos", "taller"],
-        "tools": ["calculo_horas_tecnicas", "reportes", "scanner_qr"],
+        "permissions": ["dashboard.view", "clientes.read", "tickets.manage", "inventario.read"],
+        "views": ["dashboard", "perfil", "taller", "inventario"],
+        "tools": ["scanner_qr", "reportes"],
     },
     RolEnum.DESARROLLADOR: {
-        # Desarrollador: proyectos, taller y operaciones de empresas
-        "permissions": ["inventario.read", "proyectos.manage", "tickets.manage"],
-        "views": ["empresas", "dashboard", "perfil", "proyectos", "taller"],
-        "tools": ["calculo_horas_tecnicas", "reportes", "scanner_qr"],
+        "permissions": ["dashboard.view", "clientes.read", "tickets.manage", "inventario.read"],
+        "views": ["dashboard", "perfil", "taller", "inventario"],
+        "tools": ["scanner_qr", "reportes"],
     },
 }
 

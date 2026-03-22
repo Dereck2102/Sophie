@@ -55,14 +55,36 @@ const subForm = ref<{
   billing_cycle: BillingCycle
   status: SubscriptionStatus
   custom_notes: string
-  feature_overrides_text: string
+  selected_modules: string[]
+  total_users_limit: number | null
+  role_limits: Record<string, number | null>
+  area_limits: Record<string, number | null>
+  unknown_overrides: string[]
 }>({
   id_empresa: null,
   plan_tier: 'starter',
   billing_cycle: 'monthly',
   status: 'active',
   custom_notes: '',
-  feature_overrides_text: '',
+  selected_modules: [],
+  total_users_limit: null,
+  role_limits: {
+    admin: null,
+    agente_soporte: null,
+    ventas: null,
+    contable: null,
+    rrhh: null,
+    bodega: null,
+  },
+  area_limits: {
+    direccion: null,
+    soporte: null,
+    comercial: null,
+    finanzas: null,
+    personas: null,
+    operaciones: null,
+  },
+  unknown_overrides: [],
 })
 const payphoneForm = ref({
   enabled: false,
@@ -79,10 +101,166 @@ const customOrderForm = ref({
   id_empresa: null as number | null,
   billing_cycle: 'monthly' as BillingCycle,
   amount_usd: 0,
-  feature_overrides_text: '',
+  selected_modules: [] as string[],
+  total_users_limit: null as number | null,
+  role_limits: {
+    admin: null,
+    agente_soporte: null,
+    ventas: null,
+    contable: null,
+    rrhh: null,
+    bodega: null,
+  } as Record<string, number | null>,
+  area_limits: {
+    direccion: null,
+    soporte: null,
+    comercial: null,
+    finanzas: null,
+    personas: null,
+    operaciones: null,
+  } as Record<string, number | null>,
+  unknown_overrides: [] as string[],
   custom_requirements: '',
   generate_payphone_checkout: false,
 })
+
+const ERP_MODULE_CODES = ['E1', 'E2', 'E3', 'E4', 'E5', 'E6', 'E7', 'E8'] as const
+const STAFF_LIMIT_VALUES = [1, 2, 3, 4, 5, 6, 8, 10, 12, 15, 20, 24, 30, 50, 80]
+const ROLE_LIMIT_KEYS = ['admin', 'agente_soporte', 'ventas', 'contable', 'rrhh', 'bodega'] as const
+const AREA_LIMIT_KEYS = ['direccion', 'soporte', 'comercial', 'finanzas', 'personas', 'operaciones'] as const
+
+const ROLE_LIMIT_LABELS: Record<string, string> = {
+  admin: 'Admin',
+  agente_soporte: 'Agente de Soporte',
+  ventas: 'Ventas',
+  contable: 'Contable',
+  rrhh: 'R.R.H.H',
+  bodega: 'Bodega',
+}
+
+const AREA_LIMIT_LABELS: Record<string, string> = {
+  direccion: 'Dirección',
+  soporte: 'Soporte',
+  comercial: 'Comercial',
+  finanzas: 'Finanzas',
+  personas: 'Recursos Humanos',
+  operaciones: 'Operaciones',
+}
+
+function parseFeatureOverrides(features: string[]): {
+  selectedModules: string[]
+  totalUsersLimit: number | null
+  roleLimits: Record<string, number | null>
+  areaLimits: Record<string, number | null>
+  unknown: string[]
+} {
+  const selectedModules = features.filter((item) => ERP_MODULE_CODES.includes(item as typeof ERP_MODULE_CODES[number]))
+  const roleLimits: Record<string, number | null> = {
+    admin: null,
+    agente_soporte: null,
+    ventas: null,
+    contable: null,
+    rrhh: null,
+    bodega: null,
+  }
+  const areaLimits: Record<string, number | null> = {
+    direccion: null,
+    soporte: null,
+    comercial: null,
+    finanzas: null,
+    personas: null,
+    operaciones: null,
+  }
+  let totalUsersLimit: number | null = null
+  const unknown: string[] = []
+
+  for (const feature of features) {
+    const trimmed = feature.trim()
+    if (!trimmed || selectedModules.includes(trimmed)) continue
+
+    if (trimmed.startsWith('limit_total_users:')) {
+      const value = Number(trimmed.split(':')[1])
+      totalUsersLimit = Number.isFinite(value) && value > 0 ? value : null
+      continue
+    }
+
+    if (trimmed.startsWith('limit_role_')) {
+      const [key = '', rawValue] = trimmed.split(':')
+      const roleKey = key.replace('limit_role_', '')
+      const value = Number(rawValue)
+      if (roleKey in roleLimits && Number.isFinite(value) && value > 0) {
+        roleLimits[roleKey] = value
+      } else {
+        unknown.push(trimmed)
+      }
+      continue
+    }
+
+    if (trimmed.startsWith('limit_area_')) {
+      const [key = '', rawValue] = trimmed.split(':')
+      const areaKey = key.replace('limit_area_', '')
+      const value = Number(rawValue)
+      if (areaKey in areaLimits && Number.isFinite(value) && value > 0) {
+        areaLimits[areaKey] = value
+      } else {
+        unknown.push(trimmed)
+      }
+      continue
+    }
+
+    unknown.push(trimmed)
+  }
+
+  return {
+    selectedModules,
+    totalUsersLimit,
+    roleLimits,
+    areaLimits,
+    unknown,
+  }
+}
+
+function buildFeatureOverrides(source: {
+  selected_modules: string[]
+  total_users_limit: number | null
+  role_limits: Record<string, number | null>
+  area_limits: Record<string, number | null>
+  unknown_overrides: string[]
+}): string[] {
+  const result: string[] = []
+  for (const moduleCode of source.selected_modules) {
+    if (ERP_MODULE_CODES.includes(moduleCode as typeof ERP_MODULE_CODES[number])) {
+      result.push(moduleCode)
+    }
+  }
+
+  if (source.total_users_limit && source.total_users_limit > 0) {
+    result.push(`limit_total_users:${source.total_users_limit}`)
+  }
+
+  for (const roleKey of ROLE_LIMIT_KEYS) {
+    const value = source.role_limits[roleKey]
+    if (value && value > 0) {
+      result.push(`limit_role_${roleKey}:${value}`)
+    }
+  }
+
+  for (const areaKey of AREA_LIMIT_KEYS) {
+    const value = source.area_limits[areaKey]
+    if (value && value > 0) {
+      result.push(`limit_area_${areaKey}:${value}`)
+    }
+  }
+
+  for (const unknown of source.unknown_overrides) {
+    const trimmed = unknown.trim()
+    if (trimmed) {
+      result.push(trimmed)
+    }
+  }
+
+  return Array.from(new Set(result))
+}
 
 const isEnterpriseUser = computed(() => Boolean(auth.user && auth.user.rol !== 'superadmin'))
 const companyPlanName = computed(() => {
@@ -96,6 +274,46 @@ const companyModuleLabels = computed(() =>
     label: t(`perfil.moduleNames.${moduleCode}`),
   }))
 )
+const quickPlanPresets = computed(() => planPresets.value.filter((item) => item.plan !== 'custom'))
+
+function applyPresetToForm(
+  target: 'subscription' | 'custom',
+  parsed: ReturnType<typeof parseFeatureOverrides>
+): void {
+  if (target === 'subscription') {
+    subForm.value.selected_modules = [...parsed.selectedModules]
+    subForm.value.total_users_limit = parsed.totalUsersLimit
+    subForm.value.role_limits = { ...parsed.roleLimits }
+    subForm.value.area_limits = { ...parsed.areaLimits }
+    subForm.value.unknown_overrides = [...parsed.unknown]
+    return
+  }
+
+  customOrderForm.value.selected_modules = [...parsed.selectedModules]
+  customOrderForm.value.total_users_limit = parsed.totalUsersLimit
+  customOrderForm.value.role_limits = { ...parsed.roleLimits }
+  customOrderForm.value.area_limits = { ...parsed.areaLimits }
+  customOrderForm.value.unknown_overrides = [...parsed.unknown]
+}
+
+function applyPlanPreset(target: 'subscription' | 'custom', plan: SubscriptionPlanTier): void {
+  const preset = planPresets.value.find((item) => item.plan === plan)
+  if (!preset) return
+  const parsed = parseFeatureOverrides(preset.features)
+  applyPresetToForm(target, parsed)
+}
+
+function toggleModule(target: 'subscription' | 'custom', moduleCode: string): void {
+  const current = target === 'subscription' ? subForm.value.selected_modules : customOrderForm.value.selected_modules
+  const exists = current.includes(moduleCode)
+  const next = exists ? current.filter((item) => item !== moduleCode) : [...current, moduleCode]
+
+  if (target === 'subscription') {
+    subForm.value.selected_modules = next
+    return
+  }
+  customOrderForm.value.selected_modules = next
+}
 
 const form = ref<ConfiguracionSistema>({
   nombre_instancia: 'SOPHIE',
@@ -227,8 +445,18 @@ async function loadSubscriptionsData(): Promise<void> {
         subForm.value.billing_cycle = first.billing_cycle
         subForm.value.status = first.status
         subForm.value.custom_notes = first.custom_notes ?? ''
-        subForm.value.feature_overrides_text = first.features.join(', ')
+        const parsed = parseFeatureOverrides(first.features)
+        subForm.value.selected_modules = parsed.selectedModules
+        subForm.value.total_users_limit = parsed.totalUsersLimit
+        subForm.value.role_limits = parsed.roleLimits
+        subForm.value.area_limits = parsed.areaLimits
+        subForm.value.unknown_overrides = parsed.unknown
         customOrderForm.value.id_empresa = first.id_empresa
+        customOrderForm.value.selected_modules = [...parsed.selectedModules]
+        customOrderForm.value.total_users_limit = parsed.totalUsersLimit
+        customOrderForm.value.role_limits = { ...parsed.roleLimits }
+        customOrderForm.value.area_limits = { ...parsed.areaLimits }
+        customOrderForm.value.unknown_overrides = [...parsed.unknown]
       }
     }
   } catch {
@@ -308,8 +536,18 @@ function onCompanyChange(): void {
   subForm.value.billing_cycle = selected.billing_cycle
   subForm.value.status = selected.status
   subForm.value.custom_notes = selected.custom_notes ?? ''
-  subForm.value.feature_overrides_text = selected.features.join(', ')
+  const parsed = parseFeatureOverrides(selected.features)
+  subForm.value.selected_modules = parsed.selectedModules
+  subForm.value.total_users_limit = parsed.totalUsersLimit
+  subForm.value.role_limits = parsed.roleLimits
+  subForm.value.area_limits = parsed.areaLimits
+  subForm.value.unknown_overrides = parsed.unknown
   customOrderForm.value.id_empresa = selected.id_empresa
+  customOrderForm.value.selected_modules = [...parsed.selectedModules]
+  customOrderForm.value.total_users_limit = parsed.totalUsersLimit
+  customOrderForm.value.role_limits = { ...parsed.roleLimits }
+  customOrderForm.value.area_limits = { ...parsed.areaLimits }
+  customOrderForm.value.unknown_overrides = [...parsed.unknown]
 }
 
 async function saveCompanySubscription(): Promise<void> {
@@ -321,10 +559,7 @@ async function saveCompanySubscription(): Promise<void> {
   success.value = null
   error.value = null
   try {
-    const featureOverrides = subForm.value.feature_overrides_text
-      .split(/[\n,]/)
-      .map((item) => item.trim())
-      .filter(Boolean)
+    const featureOverrides = buildFeatureOverrides(subForm.value)
     await api.put(`/api/v1/admin/subscriptions/companies/${subForm.value.id_empresa}`, {
       plan_tier: subForm.value.plan_tier,
       billing_cycle: subForm.value.billing_cycle,
@@ -379,10 +614,7 @@ async function createCustomOrder(): Promise<void> {
   error.value = null
   success.value = null
   try {
-    const featureOverrides = customOrderForm.value.feature_overrides_text
-      .split(/[\n,]/)
-      .map((item) => item.trim())
-      .filter(Boolean)
+    const featureOverrides = buildFeatureOverrides(customOrderForm.value)
 
     const { data } = await api.post<CustomOrderResponse>('/api/v1/admin/subscriptions/custom-orders', {
       id_empresa: customOrderForm.value.id_empresa,
@@ -478,6 +710,7 @@ async function handleRestore(event: Event): Promise<void> {
 onMounted(async () => {
   if (auth.user?.rol && auth.user.rol !== 'superadmin' && !subscriptionStore.initialized) {
     await subscriptionStore.bootstrapForCurrentUser(auth.user)
+    return
   }
   await loadSettings()
   await loadChannelStatus()
@@ -523,6 +756,8 @@ onMounted(async () => {
         </div>
       </div>
     </Card>
+
+    <template v-if="auth.user?.rol === 'superadmin'">
 
     <Card :title="t('configPage.brandingTitle')">
       <div v-if="loading" class="text-sm text-gray-500 dark:text-gray-400">{{ t('common.loading') }}</div>
@@ -739,14 +974,69 @@ onMounted(async () => {
           </div>
         </div>
 
-        <div>
-          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ t('configPage.featureOverrides') }}</label>
-          <textarea
-            v-model="subForm.feature_overrides_text"
-            rows="3"
-            :placeholder="t('configPage.featureOverridesHint')"
-            class="w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none resize-y"
-          />
+        <div class="space-y-3">
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Módulos ERP habilitados</label>
+          <div class="flex flex-wrap gap-2">
+            <Button
+              v-for="preset in quickPlanPresets"
+              :key="`sub-preset-${preset.plan}`"
+              type="button"
+              variant="secondary"
+              @click="applyPlanPreset('subscription', preset.plan)"
+            >
+              Preset {{ preset.name }}
+            </Button>
+          </div>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <button
+              v-for="moduleCode in ERP_MODULE_CODES"
+              :key="`sub-module-${moduleCode}`"
+              type="button"
+              class="text-left rounded-lg border p-3 transition"
+              :class="subForm.selected_modules.includes(moduleCode)
+                ? 'border-blue-500 bg-blue-50'
+                : 'border-gray-200 bg-white hover:border-gray-300'"
+              @click="toggleModule('subscription', moduleCode)"
+            >
+              <div class="flex items-center justify-between gap-3">
+                <span class="text-sm font-medium text-gray-800">{{ moduleCode }} · {{ t(`perfil.moduleNames.${moduleCode}`) }}</span>
+                <span class="text-xs font-semibold" :class="subForm.selected_modules.includes(moduleCode) ? 'text-blue-600' : 'text-gray-500'">
+                  {{ subForm.selected_modules.includes(moduleCode) ? 'Activo' : 'Inactivo' }}
+                </span>
+              </div>
+            </button>
+          </div>
+        </div>
+
+        <div class="space-y-3">
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Límites de personal</label>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div>
+              <label class="block text-xs font-medium text-gray-500 mb-1">Límite total de usuarios activos</label>
+              <select v-model.number="subForm.total_users_limit" class="w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none">
+                <option :value="null">Sin override</option>
+                <option v-for="value in STAFF_LIMIT_VALUES" :key="`total-${value}`" :value="value">{{ value }}</option>
+              </select>
+            </div>
+          </div>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div v-for="roleKey in ROLE_LIMIT_KEYS" :key="`sub-role-${roleKey}`">
+              <label class="block text-xs font-medium text-gray-500 mb-1">{{ ROLE_LIMIT_LABELS[roleKey] }}</label>
+              <select v-model.number="subForm.role_limits[roleKey]" class="w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none">
+                <option :value="null">Sin override</option>
+                <option v-for="value in STAFF_LIMIT_VALUES" :key="`sub-role-${roleKey}-${value}`" :value="value">{{ value }}</option>
+              </select>
+            </div>
+          </div>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div v-for="areaKey in AREA_LIMIT_KEYS" :key="`sub-area-${areaKey}`">
+              <label class="block text-xs font-medium text-gray-500 mb-1">{{ AREA_LIMIT_LABELS[areaKey] }}</label>
+              <select v-model.number="subForm.area_limits[areaKey]" class="w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none">
+                <option :value="null">Sin override</option>
+                <option v-for="value in STAFF_LIMIT_VALUES" :key="`sub-area-${areaKey}-${value}`" :value="value">{{ value }}</option>
+              </select>
+            </div>
+          </div>
         </div>
 
         <div>
@@ -800,14 +1090,69 @@ onMounted(async () => {
           </label>
         </div>
 
-        <div>
-          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ t('configPage.featureOverrides') }}</label>
-          <textarea
-            v-model="customOrderForm.feature_overrides_text"
-            rows="3"
-            :placeholder="t('configPage.featureOverridesHint')"
-            class="w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none resize-y"
-          />
+        <div class="space-y-3">
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Módulos ERP habilitados</label>
+          <div class="flex flex-wrap gap-2">
+            <Button
+              v-for="preset in quickPlanPresets"
+              :key="`custom-preset-${preset.plan}`"
+              type="button"
+              variant="secondary"
+              @click="applyPlanPreset('custom', preset.plan)"
+            >
+              Preset {{ preset.name }}
+            </Button>
+          </div>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <button
+              v-for="moduleCode in ERP_MODULE_CODES"
+              :key="`custom-module-${moduleCode}`"
+              type="button"
+              class="text-left rounded-lg border p-3 transition"
+              :class="customOrderForm.selected_modules.includes(moduleCode)
+                ? 'border-blue-500 bg-blue-50'
+                : 'border-gray-200 bg-white hover:border-gray-300'"
+              @click="toggleModule('custom', moduleCode)"
+            >
+              <div class="flex items-center justify-between gap-3">
+                <span class="text-sm font-medium text-gray-800">{{ moduleCode }} · {{ t(`perfil.moduleNames.${moduleCode}`) }}</span>
+                <span class="text-xs font-semibold" :class="customOrderForm.selected_modules.includes(moduleCode) ? 'text-blue-600' : 'text-gray-500'">
+                  {{ customOrderForm.selected_modules.includes(moduleCode) ? 'Activo' : 'Inactivo' }}
+                </span>
+              </div>
+            </button>
+          </div>
+        </div>
+
+        <div class="space-y-3">
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Límites de personal</label>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div>
+              <label class="block text-xs font-medium text-gray-500 mb-1">Límite total de usuarios activos</label>
+              <select v-model.number="customOrderForm.total_users_limit" class="w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none">
+                <option :value="null">Sin override</option>
+                <option v-for="value in STAFF_LIMIT_VALUES" :key="`custom-total-${value}`" :value="value">{{ value }}</option>
+              </select>
+            </div>
+          </div>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div v-for="roleKey in ROLE_LIMIT_KEYS" :key="`custom-role-${roleKey}`">
+              <label class="block text-xs font-medium text-gray-500 mb-1">{{ ROLE_LIMIT_LABELS[roleKey] }}</label>
+              <select v-model.number="customOrderForm.role_limits[roleKey]" class="w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none">
+                <option :value="null">Sin override</option>
+                <option v-for="value in STAFF_LIMIT_VALUES" :key="`custom-role-${roleKey}-${value}`" :value="value">{{ value }}</option>
+              </select>
+            </div>
+          </div>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div v-for="areaKey in AREA_LIMIT_KEYS" :key="`custom-area-${areaKey}`">
+              <label class="block text-xs font-medium text-gray-500 mb-1">{{ AREA_LIMIT_LABELS[areaKey] }}</label>
+              <select v-model.number="customOrderForm.area_limits[areaKey]" class="w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none">
+                <option :value="null">Sin override</option>
+                <option v-for="value in STAFF_LIMIT_VALUES" :key="`custom-area-${areaKey}-${value}`" :value="value">{{ value }}</option>
+              </select>
+            </div>
+          </div>
         </div>
 
         <div>
@@ -917,5 +1262,6 @@ onMounted(async () => {
     <div class="flex justify-end">
       <Button :loading="saving || restoring" @click="saveSettings">{{ t('configPage.saveSettings') }}</Button>
     </div>
+    </template>
   </div>
 </template>

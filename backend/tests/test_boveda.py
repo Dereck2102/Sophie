@@ -56,15 +56,20 @@ async def _create_user_and_login(
     username: str,
     email: str,
     role: str,
+    id_cliente: int | None = None,
 ) -> str:
+    payload = {
+        "username": username,
+        "email": email,
+        "password": "UserPass123!",
+        "rol": role,
+    }
+    if id_cliente is not None:
+        payload["id_cliente"] = id_cliente
+
     create_response = await client.post(
         "/api/v1/usuarios/",
-        json={
-            "username": username,
-            "email": email,
-            "password": "UserPass123!",
-            "rol": role,
-        },
+        json=payload,
         headers={"Authorization": f"Bearer {admin_token}"},
     )
     assert create_response.status_code == 201
@@ -180,7 +185,8 @@ async def test_boveda_permissions_for_tecnico_are_blocked(client: AsyncClient) -
         admin_token,
         username="tecnico_boveda",
         email="tecnico_boveda@bigsolutions.pe",
-        role="tecnico",
+        role="agente_soporte",
+        id_cliente=id_empresa,
     )
 
     list_response = await client.get(
@@ -218,7 +224,8 @@ async def test_boveda_delete_is_superadmin_only(client: AsyncClient) -> None:
         admin_token,
         username="ejecutivo_boveda",
         email="ejecutivo_boveda@bigsolutions.pe",
-        role="ejecutivo",
+        role="ventas",
+        id_cliente=id_empresa,
     )
 
     delete_response = await client.delete(

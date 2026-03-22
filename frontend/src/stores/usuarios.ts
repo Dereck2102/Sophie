@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import api from '../services/api'
-import type { Usuario } from '../types'
+import type { TenantStaffingLimits, Usuario } from '../types'
 
 export interface UsuarioCreate {
   username: string
@@ -30,7 +30,9 @@ export interface UsuarioUpdate {
 
 export const useUsuarioStore = defineStore('usuarios', () => {
   const usuarios = ref<Usuario[]>([])
+  const capacidad = ref<TenantStaffingLimits | null>(null)
   const loading = ref(false)
+  const loadingCapacidad = ref(false)
   const error = ref<string | null>(null)
 
   async function fetchUsuarios(): Promise<void> {
@@ -65,5 +67,33 @@ export const useUsuarioStore = defineStore('usuarios', () => {
     usuarios.value = usuarios.value.filter((u) => u.id_usuario !== id)
   }
 
-  return { usuarios, loading, error, fetchUsuarios, createUsuario, updateUsuario, deleteUsuario }
+  async function fetchCapacidad(idCliente?: number): Promise<void> {
+    loadingCapacidad.value = true
+    error.value = null
+    try {
+      const { data } = await api.get<TenantStaffingLimits>('/api/v1/usuarios/capacidad', {
+        params: idCliente ? { id_cliente: idCliente } : undefined,
+      })
+      capacidad.value = data
+    } catch (e: unknown) {
+      const err = e as { response?: { data?: { detail?: string } }; message?: string }
+      error.value = err.response?.data?.detail ?? err.message ?? 'Error al cargar capacidad por empresa'
+      capacidad.value = null
+    } finally {
+      loadingCapacidad.value = false
+    }
+  }
+
+  return {
+    usuarios,
+    capacidad,
+    loading,
+    loadingCapacidad,
+    error,
+    fetchUsuarios,
+    fetchCapacidad,
+    createUsuario,
+    updateUsuario,
+    deleteUsuario,
+  }
 })

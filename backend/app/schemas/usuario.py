@@ -87,6 +87,24 @@ class UsuarioOut(UsuarioBase):
     model_config = {"from_attributes": True}
 
 
+class TenantStaffingBucketOut(BaseModel):
+    key: str
+    label: str
+    limit: Optional[int] = None
+    used: int
+    remaining: Optional[int] = None
+
+
+class TenantStaffingLimitsOut(BaseModel):
+    id_cliente: int
+    plan_tier: str
+    total_limit: Optional[int] = None
+    total_used: int
+    total_remaining: Optional[int] = None
+    by_role: list[TenantStaffingBucketOut] = []
+    by_area: list[TenantStaffingBucketOut] = []
+
+
 class LoginRequest(BaseModel):
     username: str
     password: str

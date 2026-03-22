@@ -67,6 +67,11 @@ export default {
   roles: {
     superadmin: 'Superadmin',
     admin: 'Administrador',
+    agente_soporte: 'Agente de Soporte',
+    ventas: 'Ventas',
+    contable: 'Contable',
+    rrhh: 'R.R.H.H',
+    bodega: 'Bodega',
     jefe_tecnologias: 'Jefe de Tecnologías',
     jefe_taller: 'Jefe de Taller',
     jefe_administrativo: 'Jefe Administrativo',

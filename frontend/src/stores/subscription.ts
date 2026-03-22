@@ -29,13 +29,20 @@ export const useSubscriptionStore = defineStore('subscription', () => {
   const activeModules = computed<EnterpriseModuleCode[]>(() => {
     if (!current.value) return ALL_ENTERPRISE_MODULES
 
+    const subscriptionModules = (current.value.features ?? []).filter((item): item is EnterpriseModuleCode =>
+      ALL_ENTERPRISE_MODULES.includes(item as EnterpriseModuleCode)
+    )
+    if (subscriptionModules.length > 0) {
+      return subscriptionModules
+    }
+
     const plan = publicPlans.value.find((item) => item.tier === current.value?.plan_tier)
     const planModules = (plan?.modules ?? []).filter((item): item is EnterpriseModuleCode =>
       ALL_ENTERPRISE_MODULES.includes(item as EnterpriseModuleCode)
     )
 
     if (current.value.plan_tier === 'custom') {
-      return planModules.length > 0 ? planModules : ALL_ENTERPRISE_MODULES
+      return planModules.length > 0 ? planModules : []
     }
 
     return planModules.length > 0 ? planModules : ALL_ENTERPRISE_MODULES

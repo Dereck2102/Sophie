@@ -17,7 +17,13 @@ from app.schemas.caja_chica import CajaChicaResumenOut, MovimientoCajaChicaCreat
 router = APIRouter(prefix="/caja-chica", tags=["Caja Chica"])
 
 
-_ALLOWED_ROLES = (RolEnum.SUPERADMIN, RolEnum.ADMINISTRATIVO_CONTABLE)
+_ALLOWED_ROLES = (RolEnum.ADMIN, RolEnum.CONTABLE)
+
+
+def _resolve_tenant_id(current_user: Usuario) -> int:
+    if current_user.id_cliente is None:
+        raise HTTPException(status_code=403, detail="El usuario no está asociado a una empresa ERP")
+    return current_user.id_cliente
 
 
 def _signed_amount_expr() -> object:
@@ -35,8 +41,10 @@ async def list_movimientos(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=500),
 ) -> list[MovimientoCajaChica]:
+    id_cliente = _resolve_tenant_id(current_user)
     result = await db.execute(
         select(MovimientoCajaChica)
+        .where(MovimientoCajaChica.id_cliente == id_cliente)
         .order_by(MovimientoCajaChica.fecha.desc())
         .offset(skip)
         .limit(limit)
@@ -50,10 +58,11 @@ async def create_movimiento(
     db: Annotated[AsyncSession, Depends(get_db)],
     current_user: Annotated[Usuario, Depends(require_roles(*_ALLOWED_ROLES))],
 ) -> MovimientoCajaChica:
+    id_cliente = _resolve_tenant_id(current_user)
     if body.monto <= 0:
         raise HTTPException(status_code=400, detail="El monto debe ser mayor a cero")
 
-    mov = MovimientoCajaChica(**body.model_dump())
+    mov = MovimientoCajaChica(**body.model_dump(), id_cliente=id_cliente)
     db.add(mov)
     await db.flush()
     return mov
@@ -65,8 +74,12 @@ async def delete_movimiento(
     db: Annotated[AsyncSession, Depends(get_db)],
     current_user: Annotated[Usuario, Depends(require_roles(*_ALLOWED_ROLES))],
 ) -> None:
+    id_cliente = _resolve_tenant_id(current_user)
     result = await db.execute(
-        select(MovimientoCajaChica).where(MovimientoCajaChica.id_movimiento == id_movimiento)
+        select(MovimientoCajaChica).where(
+            MovimientoCajaChica.id_movimiento == id_movimiento,
+            MovimientoCajaChica.id_cliente == id_cliente,
+        )
     )
     mov = result.scalar_one_or_none()
     if not mov:
@@ -80,10 +93,13 @@ async def get_resumen(
     db: Annotated[AsyncSession, Depends(get_db)],
     current_user: Annotated[Usuario, Depends(require_roles(*_ALLOWED_ROLES))],
 ) -> CajaChicaResumenOut:
+    id_cliente = _resolve_tenant_id(current_user)
     now = datetime.now(timezone.utc)
     inicio_mes = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
 
-    balance_result = await db.execute(select(func.coalesce(func.sum(_signed_amount_expr()), 0)))
+    balance_result = await db.execute(
+        select(func.coalesce(func.sum(_signed_amount_expr()), 0)).where(MovimientoCajaChica.id_cliente == id_cliente)
+    )
     balance_actual = float(balance_result.scalar_one() or 0)
 
     ingresos_mes_result = await db.execute(
@@ -91,6 +107,7 @@ async def get_resumen(
             and_(
                 MovimientoCajaChica.tipo == TipoMovimientoCajaEnum.INGRESO,
                 MovimientoCajaChica.fecha >= inicio_mes,
+                MovimientoCajaChica.id_cliente == id_cliente,
             )
         )
     )
@@ -101,6 +118,7 @@ async def get_resumen(
             and_(
                 MovimientoCajaChica.tipo == TipoMovimientoCajaEnum.EGRESO,
                 MovimientoCajaChica.fecha >= inicio_mes,
+                MovimientoCajaChica.id_cliente == id_cliente,
             )
         )
     )
@@ -108,7 +126,8 @@ async def get_resumen(
 
     movimientos_mes_result = await db.execute(
         select(func.count(MovimientoCajaChica.id_movimiento)).where(
-            MovimientoCajaChica.fecha >= inicio_mes
+            MovimientoCajaChica.fecha >= inicio_mes,
+            MovimientoCajaChica.id_cliente == id_cliente,
         )
     )
     movimientos_mes = int(movimientos_mes_result.scalar_one() or 0)
@@ -135,6 +154,7 @@ async def cuadrar_con_mes_anterior(
     current_user: Annotated[Usuario, Depends(require_roles(*_ALLOWED_ROLES))],
 ) -> dict[str, float | str]:
     """Set monthly petty-cash fund to previous month's closing balance."""
+    id_cliente = _resolve_tenant_id(current_user)
     now = datetime.now(timezone.utc)
     inicio_mes_actual = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
     fin_mes_anterior = inicio_mes_actual - timedelta(microseconds=1)
@@ -144,7 +164,8 @@ async def cuadrar_con_mes_anterior(
 
     previous_balance_result = await db.execute(
         select(func.coalesce(func.sum(_signed_amount_expr()), 0)).where(
-            MovimientoCajaChica.fecha < inicio_mes_actual
+            MovimientoCajaChica.fecha < inicio_mes_actual,
+            MovimientoCajaChica.id_cliente == id_cliente,
         )
     )
     previous_balance = float(previous_balance_result.scalar_one() or 0)

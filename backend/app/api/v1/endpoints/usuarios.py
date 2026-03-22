@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+import json
 import secrets
 from datetime import datetime, timedelta, timezone
 from typing import Annotated, List
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import or_, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, require_roles
@@ -13,8 +14,16 @@ from app.core.access import dumps_json_list, get_effective_access
 from app.core.config import get_settings
 from app.core.database import get_db
 from app.core.security import hash_password, verify_password
+from app.infrastructure.models.subscriptions import EmpresaSubscription, PlanTierEnum
 from app.infrastructure.models.usuario import RolEnum, Usuario
-from app.schemas.usuario import UsuarioCreate, UsuarioOut, UsuarioSelfUpdate, UsuarioUpdate
+from app.schemas.usuario import (
+    TenantStaffingBucketOut,
+    TenantStaffingLimitsOut,
+    UsuarioCreate,
+    UsuarioOut,
+    UsuarioSelfUpdate,
+    UsuarioUpdate,
+)
 from app.services.image_service import ImageOptimizationError, optimize_image
 
 router = APIRouter(prefix="/usuarios", tags=["Usuarios"])
@@ -23,25 +32,84 @@ settings = get_settings()
 _ASSIGNABLE_ROLES = (
     RolEnum.SUPERADMIN,
     RolEnum.ADMIN,
-    RolEnum.JEFE_TECNOLOGIAS,
-    RolEnum.JEFE_TALLER,
-    RolEnum.JEFE_ADMINISTRATIVO,
-    RolEnum.JEFE_CONTABLE,
-    RolEnum.EJECUTIVO,
-    RolEnum.ADMINISTRATIVO_CONTABLE,
-    RolEnum.TECNICO,
-    RolEnum.TECNICO_TALLER,
-    RolEnum.AGENTE_SOPORTE_L1,
-    RolEnum.AGENTE_SOPORTE_L2,
-    RolEnum.DESARROLLADOR,
+    RolEnum.AGENTE_SOPORTE,
+    RolEnum.VENTAS,
+    RolEnum.CONTABLE,
+    RolEnum.RRHH,
+    RolEnum.BODEGA,
 )
 
 _PRIVILEGED_ROLES = (RolEnum.SUPERADMIN, RolEnum.ADMIN)
 _ENTERPRISE_FIXED_ROLES = (
     RolEnum.ADMIN,
-    RolEnum.AGENTE_SOPORTE_L1,
-    RolEnum.ADMINISTRATIVO_CONTABLE,
+    RolEnum.AGENTE_SOPORTE,
+    RolEnum.VENTAS,
+    RolEnum.CONTABLE,
+    RolEnum.RRHH,
+    RolEnum.BODEGA,
 )
+
+_ROLE_AREA_MAP: dict[RolEnum, str] = {
+    RolEnum.ADMIN: "direccion",
+    RolEnum.AGENTE_SOPORTE: "soporte",
+    RolEnum.VENTAS: "comercial",
+    RolEnum.CONTABLE: "finanzas",
+    RolEnum.RRHH: "personas",
+    RolEnum.BODEGA: "operaciones",
+}
+
+_AREA_LABELS: dict[str, str] = {
+    "direccion": "Dirección",
+    "soporte": "Soporte",
+    "comercial": "Comercial",
+    "finanzas": "Finanzas",
+    "personas": "Recursos Humanos",
+    "operaciones": "Operaciones",
+}
+
+_PLAN_STAFFING_LIMITS: dict[PlanTierEnum, dict[str, object]] = {
+    PlanTierEnum.STARTER: {
+        "total_active_users": 6,
+        "role_limits": {
+            RolEnum.ADMIN.value: 1,
+            RolEnum.AGENTE_SOPORTE.value: 1,
+            RolEnum.VENTAS.value: 1,
+            RolEnum.CONTABLE.value: 1,
+            RolEnum.RRHH.value: 1,
+            RolEnum.BODEGA.value: 1,
+        },
+        "area_limits": {"direccion": 1, "soporte": 1, "comercial": 1, "finanzas": 1, "personas": 1, "operaciones": 1},
+    },
+    PlanTierEnum.PRO: {
+        "total_active_users": 24,
+        "role_limits": {
+            RolEnum.ADMIN.value: 4,
+            RolEnum.AGENTE_SOPORTE.value: 6,
+            RolEnum.VENTAS.value: 5,
+            RolEnum.CONTABLE.value: 4,
+            RolEnum.RRHH.value: 2,
+            RolEnum.BODEGA.value: 3,
+        },
+        "area_limits": {"direccion": 4, "soporte": 6, "comercial": 5, "finanzas": 4, "personas": 2, "operaciones": 3},
+    },
+    PlanTierEnum.ENTERPRISE: {
+        "total_active_users": 80,
+        "role_limits": {
+            RolEnum.ADMIN.value: 10,
+            RolEnum.AGENTE_SOPORTE.value: 20,
+            RolEnum.VENTAS.value: 15,
+            RolEnum.CONTABLE.value: 12,
+            RolEnum.RRHH.value: 8,
+            RolEnum.BODEGA.value: 15,
+        },
+        "area_limits": {"direccion": 10, "soporte": 20, "comercial": 15, "finanzas": 12, "personas": 8, "operaciones": 15},
+    },
+    PlanTierEnum.CUSTOM: {
+        "total_active_users": None,
+        "role_limits": {},
+        "area_limits": {},
+    },
+}
 
 
 def _assert_same_tenant_or_superadmin(current_user: Usuario, target_user: Usuario) -> None:
@@ -71,7 +139,24 @@ def _assert_enterprise_fixed_roles(current_user: Usuario, target_role: RolEnum |
     if target_role not in _ENTERPRISE_FIXED_ROLES:
         raise HTTPException(
             status_code=403,
-            detail="En el ERP empresarial solo se permiten roles fijos: admin, soporte y ventas",
+            detail="En el ERP solo se permiten roles: admin, agente_soporte, ventas, contable, rrhh y bodega",
+        )
+
+
+def _assert_role_scope_by_tenant(target_tenant_id: int | None, target_role: RolEnum) -> None:
+    master_roles = {RolEnum.SUPERADMIN, RolEnum.ADMIN}
+    if target_tenant_id is None:
+        if target_role not in master_roles:
+            raise HTTPException(
+                status_code=400,
+                detail="En el panel maestro solo se permiten roles superadmin y admin",
+            )
+        return
+
+    if target_role not in _ENTERPRISE_FIXED_ROLES:
+        raise HTTPException(
+            status_code=400,
+            detail="En el ERP solo se permiten roles: admin, agente_soporte, ventas, contable, rrhh y bodega",
         )
 
 
@@ -95,6 +180,195 @@ def _serialize_user(user: Usuario) -> UsuarioOut:
         vistas=access["views"],
         herramientas=access["tools"],
         fecha_creacion=user.fecha_creacion,
+    )
+
+
+def _parse_feature_limits(raw_features: str | None) -> dict[str, int]:
+    if not raw_features:
+        return {}
+    try:
+        features = json.loads(raw_features)
+    except json.JSONDecodeError:
+        return {}
+    if not isinstance(features, list):
+        return {}
+
+    parsed: dict[str, int] = {}
+    for item in features:
+        value = str(item).strip()
+        if not value:
+            continue
+        if ":" not in value:
+            continue
+        key, _, raw_number = value.partition(":")
+        number = raw_number.strip()
+        if not number.isdigit():
+            continue
+        parsed[key.strip().lower()] = int(number)
+    return parsed
+
+
+async def _resolve_tenant_staffing_limits(
+    db: AsyncSession,
+    *,
+    id_cliente: int,
+) -> tuple[PlanTierEnum, dict[str, object]]:
+    result = await db.execute(
+        select(EmpresaSubscription).where(EmpresaSubscription.id_empresa == id_cliente)
+    )
+    sub = result.scalar_one_or_none()
+    plan_tier = sub.plan_tier if sub else PlanTierEnum.STARTER
+    base = dict(_PLAN_STAFFING_LIMITS.get(plan_tier, _PLAN_STAFFING_LIMITS[PlanTierEnum.STARTER]))
+    base_role_limits = dict(base.get("role_limits", {}))
+    base_area_limits = dict(base.get("area_limits", {}))
+
+    feature_limits = _parse_feature_limits(sub.features_json if sub else None)
+    if "limit_total_users" in feature_limits:
+        base["total_active_users"] = feature_limits["limit_total_users"]
+
+    for role in _ENTERPRISE_FIXED_ROLES:
+        role_key = f"limit_role_{role.value}"
+        if role_key in feature_limits:
+            base_role_limits[role.value] = feature_limits[role_key]
+
+    for area_key in _AREA_LABELS:
+        feature_key = f"limit_area_{area_key}"
+        if feature_key in feature_limits:
+            base_area_limits[area_key] = feature_limits[feature_key]
+
+    base["role_limits"] = base_role_limits
+    base["area_limits"] = base_area_limits
+    return plan_tier, base
+
+
+async def _tenant_active_counts(
+    db: AsyncSession,
+    *,
+    id_cliente: int,
+    exclude_user_id: int | None = None,
+) -> tuple[int, dict[str, int], dict[str, int]]:
+    query = (
+        select(Usuario.rol, func.count(Usuario.id_usuario))
+        .where(Usuario.id_cliente == id_cliente, Usuario.activo.is_(True))
+        .group_by(Usuario.rol)
+    )
+    if exclude_user_id is not None:
+        query = query.where(Usuario.id_usuario != exclude_user_id)
+
+    result = await db.execute(query)
+    by_role: dict[str, int] = {}
+    by_area: dict[str, int] = {area: 0 for area in _AREA_LABELS}
+    total = 0
+
+    for role, count in result.all():
+        role_key = role.value if isinstance(role, RolEnum) else str(role)
+        count_int = int(count)
+        by_role[role_key] = count_int
+        total += count_int
+
+        area_key = _ROLE_AREA_MAP.get(RolEnum(role_key)) if role_key in RolEnum._value2member_map_ else None
+        if area_key:
+            by_area[area_key] = by_area.get(area_key, 0) + count_int
+
+    return total, by_role, by_area
+
+
+def _remaining(limit_value: int | None, used: int) -> int | None:
+    if limit_value is None:
+        return None
+    return max(limit_value - used, 0)
+
+
+async def _assert_tenant_staffing_limits(
+    db: AsyncSession,
+    *,
+    id_cliente: int | None,
+    target_role: RolEnum,
+    exclude_user_id: int | None = None,
+) -> None:
+    if id_cliente is None:
+        return
+    if target_role not in _ENTERPRISE_FIXED_ROLES:
+        return
+
+    _, limits = await _resolve_tenant_staffing_limits(db, id_cliente=id_cliente)
+    total, by_role, by_area = await _tenant_active_counts(db, id_cliente=id_cliente, exclude_user_id=exclude_user_id)
+
+    total_limit = limits.get("total_active_users")
+    if isinstance(total_limit, int) and total + 1 > total_limit:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Límite del plan alcanzado: máximo {total_limit} usuarios activos para esta empresa",
+        )
+
+    role_limits: dict[str, int] = limits.get("role_limits", {})  # type: ignore[assignment]
+    role_key = target_role.value
+    if role_key in role_limits and by_role.get(role_key, 0) + 1 > role_limits[role_key]:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Límite por rol alcanzado ({target_role.value}): máximo {role_limits[role_key]} usuarios",
+        )
+
+    area_key = _ROLE_AREA_MAP.get(target_role)
+    area_limits: dict[str, int] = limits.get("area_limits", {})  # type: ignore[assignment]
+    if area_key and area_key in area_limits and by_area.get(area_key, 0) + 1 > area_limits[area_key]:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Límite por área alcanzado ({_AREA_LABELS.get(area_key, area_key)}): máximo {area_limits[area_key]} usuarios",
+        )
+
+
+def _build_staffing_response(
+    *,
+    id_cliente: int,
+    plan_tier: PlanTierEnum,
+    limits: dict[str, object],
+    total_used: int,
+    by_role_used: dict[str, int],
+    by_area_used: dict[str, int],
+) -> TenantStaffingLimitsOut:
+    role_limits = limits.get("role_limits", {})
+    area_limits = limits.get("area_limits", {})
+    total_limit = limits.get("total_active_users")
+
+    roles_out: list[TenantStaffingBucketOut] = []
+    for role in _ENTERPRISE_FIXED_ROLES:
+        role_key = role.value
+        role_limit = role_limits.get(role_key) if isinstance(role_limits, dict) else None
+        role_used = by_role_used.get(role_key, 0)
+        roles_out.append(
+            TenantStaffingBucketOut(
+                key=role_key,
+                label=role_key,
+                limit=role_limit if isinstance(role_limit, int) else None,
+                used=role_used,
+                remaining=_remaining(role_limit if isinstance(role_limit, int) else None, role_used),
+            )
+        )
+
+    areas_out: list[TenantStaffingBucketOut] = []
+    for area_key, area_label in _AREA_LABELS.items():
+        area_limit = area_limits.get(area_key) if isinstance(area_limits, dict) else None
+        area_used = by_area_used.get(area_key, 0)
+        areas_out.append(
+            TenantStaffingBucketOut(
+                key=area_key,
+                label=area_label,
+                limit=area_limit if isinstance(area_limit, int) else None,
+                used=area_used,
+                remaining=_remaining(area_limit if isinstance(area_limit, int) else None, area_used),
+            )
+        )
+
+    total_limit_int = total_limit if isinstance(total_limit, int) else None
+    return TenantStaffingLimitsOut(
+        id_cliente=id_cliente,
+        plan_tier=plan_tier.value,
+        total_limit=total_limit_int,
+        total_used=total_used,
+        total_remaining=_remaining(total_limit_int, total_used),
+        by_role=roles_out,
+        by_area=areas_out,
     )
 
 
@@ -226,8 +500,15 @@ async def create_usuario(
         target_username=body.username,
         target_role=body.rol,
     )
+    target_tenant_id = _resolve_target_tenant(current_user, getattr(body, "id_cliente", None))
+    _assert_role_scope_by_tenant(target_tenant_id, body.rol)
+    await _assert_tenant_staffing_limits(
+        db,
+        id_cliente=target_tenant_id,
+        target_role=body.rol,
+    )
     user = Usuario(
-        id_cliente=_resolve_target_tenant(current_user, getattr(body, "id_cliente", None)),
+        id_cliente=target_tenant_id,
         username=body.username,
         email=body.email,
         password_hash=hash_password(body.password),
@@ -250,6 +531,31 @@ async def get_me(
     current_user: Annotated[Usuario, Depends(get_current_user)],
 ) -> Usuario:
     return _serialize_user(current_user)
+
+
+@router.get("/capacidad", response_model=TenantStaffingLimitsOut)
+async def get_tenant_staffing_capacity(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[Usuario, Depends(require_roles(RolEnum.SUPERADMIN, RolEnum.ADMIN))],
+    id_cliente: int | None = Query(None, ge=1),
+) -> TenantStaffingLimitsOut:
+    tenant_id = _resolve_target_tenant(current_user, id_cliente)
+    if tenant_id is None:
+        raise HTTPException(
+            status_code=400,
+            detail="Debes indicar id_cliente para consultar capacidad cuando no estás asociado a una empresa",
+        )
+
+    plan_tier, limits = await _resolve_tenant_staffing_limits(db, id_cliente=tenant_id)
+    total_used, by_role_used, by_area_used = await _tenant_active_counts(db, id_cliente=tenant_id)
+    return _build_staffing_response(
+        id_cliente=tenant_id,
+        plan_tier=plan_tier,
+        limits=limits,
+        total_used=total_used,
+        by_role_used=by_role_used,
+        by_area_used=by_area_used,
+    )
 
 
 @router.get("/asignables", response_model=List[UsuarioOut])
@@ -352,6 +658,17 @@ async def update_usuario(
         target_user=user,
     )
     payload = body.model_dump(exclude_none=True)
+    requested_tenant = payload.get("id_cliente")
+    effective_tenant_id = user.id_cliente if requested_tenant is None else _resolve_target_tenant(current_user, requested_tenant)
+    effective_active = payload.get("activo", user.activo)
+    _assert_role_scope_by_tenant(effective_tenant_id, effective_role)
+    if effective_active:
+        await _assert_tenant_staffing_limits(
+            db,
+            id_cliente=effective_tenant_id,
+            target_role=effective_role,
+            exclude_user_id=user.id_usuario,
+        )
     if "email" in payload:
         await _validate_unique_identity(db, email=payload["email"], exclude_user_id=id_usuario)
     if "telefono_recuperacion" in payload:
@@ -371,7 +688,7 @@ async def update_usuario(
     tools = payload.pop("herramientas", None)
     requested_tenant = payload.pop("id_cliente", None)
     if requested_tenant is not None:
-        payload["id_cliente"] = _resolve_target_tenant(current_user, requested_tenant)
+        payload["id_cliente"] = effective_tenant_id
     for k, v in payload.items():
         setattr(user, k, v)
     if permissions is not None:

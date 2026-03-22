@@ -27,20 +27,14 @@ const formError = ref<string | null>(null)
 const roles: RolEnum[] = [
   'superadmin',
   'admin',
-  'jefe_tecnologias',
-  'jefe_taller',
-  'jefe_administrativo',
-  'jefe_contable',
-  'ejecutivo',
-  'administrativo_contable',
-  'tecnico',
-  'tecnico_taller',
-  'agente_soporte_l1',
-  'agente_soporte_l2',
-  'desarrollador',
+  'agente_soporte',
+  'ventas',
+  'contable',
+  'rrhh',
+  'bodega',
 ]
 
-const enterpriseFixedRoles: RolEnum[] = ['admin', 'agente_soporte_l1', 'administrativo_contable']
+const enterpriseFixedRoles: RolEnum[] = ['admin', 'agente_soporte', 'ventas', 'contable', 'rrhh', 'bodega']
 
 const availableRoles = computed<RolEnum[]>(() => {
   if (authStore.user?.rol === 'superadmin') return roles
@@ -123,6 +117,31 @@ const roleProfiles: Record<RolEnum, AccessProfile> = {
     permisos: ['*'],
     vistas: ['auditoria', 'empresas', 'caja_chica', 'compras', 'configuracion', 'dashboard', 'inventario', 'perfil', 'proyectos', 'taller', 'usuarios', 'ventas'],
     herramientas: ['*'],
+  },
+  agente_soporte: {
+    permisos: ['clientes.read', 'dashboard.view', 'inventario.read', 'tickets.manage'],
+    vistas: ['dashboard', 'inventario', 'perfil', 'taller'],
+    herramientas: ['reportes', 'scanner_qr'],
+  },
+  ventas: {
+    permisos: ['clientes.manage', 'dashboard.view', 'reportes.view', 'ventas.manage'],
+    vistas: ['dashboard', 'perfil', 'ventas'],
+    herramientas: ['calculadora_margen', 'exportaciones', 'reportes'],
+  },
+  contable: {
+    permisos: ['compras.manage', 'dashboard.view', 'reportes.view', 'ventas.manage'],
+    vistas: ['caja_chica', 'compras', 'dashboard', 'perfil', 'ventas'],
+    herramientas: ['control_caja_chica', 'proyecciones_financieras', 'reportes', 'simulador_iva'],
+  },
+  rrhh: {
+    permisos: ['dashboard.view', 'reportes.view'],
+    vistas: ['dashboard', 'perfil', 'usuarios'],
+    herramientas: ['reportes'],
+  },
+  bodega: {
+    permisos: ['compras.manage', 'dashboard.view', 'inventario.read', 'reportes.view'],
+    vistas: ['compras', 'dashboard', 'inventario', 'perfil'],
+    herramientas: ['reportes', 'scanner_qr'],
   },
   // ── Nivel 2: Jefaturas ────────────────────────────────────────────
   jefe_tecnologias: {
@@ -255,7 +274,12 @@ const filteredRows = computed(() =>
     .map((u) => ({ ...u, id: u.id_usuario }))
 )
 
-onMounted(() => usuarioStore.fetchUsuarios())
+onMounted(async () => {
+  await usuarioStore.fetchUsuarios()
+  if (authStore.user?.rol !== 'superadmin') {
+    await usuarioStore.fetchCapacidad()
+  }
+})
 
 function openEdit(row: Record<string, unknown>): void {
   const user = usuarioStore.usuarios.find((u) => u.id_usuario === row.id_usuario)
@@ -292,6 +316,9 @@ async function handleCreate(): Promise<void> {
       vistas: createForm.value.vistas,
       herramientas: createForm.value.herramientas,
     })
+    if (authStore.user?.rol !== 'superadmin') {
+      await usuarioStore.fetchCapacidad()
+    }
     showCreateModal.value = false
     resetCreateForm()
   } catch (e: unknown) {
@@ -318,6 +345,9 @@ async function handleEdit(): Promise<void> {
       vistas: editForm.value.vistas,
       herramientas: editForm.value.herramientas,
     })
+    if (authStore.user?.rol !== 'superadmin') {
+      await usuarioStore.fetchCapacidad()
+    }
     showEditModal.value = false
     selectedUser.value = null
   } catch (e: unknown) {
@@ -361,6 +391,9 @@ async function handleDelete(): Promise<void> {
   formError.value = null
   try {
     await usuarioStore.deleteUsuario(selectedUser.value.id_usuario)
+    if (authStore.user?.rol !== 'superadmin') {
+      await usuarioStore.fetchCapacidad()
+    }
     showDeleteModal.value = false
     showEditModal.value = false
     selectedUser.value = null
@@ -390,6 +423,71 @@ async function handleDelete(): Promise<void> {
         {{ t('usuarios.newUser') }}
       </Button>
     </div>
+
+    <Card
+      v-if="authStore.user?.rol !== 'superadmin'"
+      title="Capacidad de personal por plan"
+    >
+      <p class="text-sm text-gray-500 mb-4">
+        Controla cuántas personas activas puede registrar tu empresa por rol y por área.
+      </p>
+
+      <div v-if="usuarioStore.loadingCapacidad" class="text-sm text-gray-500">Cargando capacidad...</div>
+      <div v-else-if="usuarioStore.capacidad" class="space-y-4">
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <div class="rounded-xl border p-3">
+            <p class="text-xs uppercase tracking-wide text-gray-500">Plan</p>
+            <p class="text-lg font-semibold text-gray-900 capitalize">{{ usuarioStore.capacidad.plan_tier }}</p>
+          </div>
+          <div class="rounded-xl border p-3">
+            <p class="text-xs uppercase tracking-wide text-gray-500">Usuarios activos</p>
+            <p class="text-lg font-semibold text-gray-900">
+              {{ usuarioStore.capacidad.total_used }}
+              <span v-if="usuarioStore.capacidad.total_limit !== null && usuarioStore.capacidad.total_limit !== undefined">
+                / {{ usuarioStore.capacidad.total_limit }}
+              </span>
+            </p>
+          </div>
+          <div class="rounded-xl border p-3">
+            <p class="text-xs uppercase tracking-wide text-gray-500">Disponibles</p>
+            <p class="text-lg font-semibold text-emerald-700">
+              {{ usuarioStore.capacidad.total_remaining ?? 'Sin límite' }}
+            </p>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <div class="rounded-xl border overflow-hidden">
+            <div class="px-3 py-2 bg-gray-50 text-sm font-semibold text-gray-700">Cupos por rol</div>
+            <div class="divide-y">
+              <div v-for="item in usuarioStore.capacidad.by_role" :key="`role-${item.key}`" class="px-3 py-2 flex items-center justify-between text-sm">
+                <span class="text-gray-700 capitalize">{{ roleLabel(item.key as RolEnum) }}</span>
+                <span class="font-medium text-gray-900">
+                  {{ item.used }}
+                  <span v-if="item.limit !== null && item.limit !== undefined">/ {{ item.limit }}</span>
+                  <span v-else>/ ∞</span>
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <div class="rounded-xl border overflow-hidden">
+            <div class="px-3 py-2 bg-gray-50 text-sm font-semibold text-gray-700">Cupos por área</div>
+            <div class="divide-y">
+              <div v-for="item in usuarioStore.capacidad.by_area" :key="`area-${item.key}`" class="px-3 py-2 flex items-center justify-between text-sm">
+                <span class="text-gray-700">{{ item.label }}</span>
+                <span class="font-medium text-gray-900">
+                  {{ item.used }}
+                  <span v-if="item.limit !== null && item.limit !== undefined">/ {{ item.limit }}</span>
+                  <span v-else>/ ∞</span>
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <p v-else class="text-sm text-red-600">No se pudo cargar la capacidad de personal.</p>
+    </Card>
 
     <Card :padding="false">
       <!-- Search -->

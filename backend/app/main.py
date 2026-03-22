@@ -2,12 +2,16 @@ from __future__ import annotations
 
 import ipaddress
 import time
+from collections import defaultdict, deque
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from prometheus_fastapi_instrumentator import Instrumentator
 from sqlalchemy import select
+from starlette.middleware.trustedhost import TrustedHostMiddleware
+from starlette.responses import JSONResponse
 
 from app.api.v1 import api_router
 from app.core.config import get_settings
@@ -18,6 +22,28 @@ from app.infrastructure.models.usuario import Usuario
 from app.infrastructure.models import *  # noqa: F401,F403 - register all models
 
 settings = get_settings()
+
+
+class _InMemoryRateLimiter:
+    def __init__(self, window_seconds: int):
+        self.window_seconds = max(window_seconds, 1)
+        self._buckets: dict[str, deque[float]] = defaultdict(deque)
+
+    def allow(self, key: str, limit: int) -> bool:
+        if limit <= 0:
+            return True
+        now = time.monotonic()
+        bucket = self._buckets[key]
+        window_start = now - self.window_seconds
+        while bucket and bucket[0] < window_start:
+            bucket.popleft()
+        if len(bucket) >= limit:
+            return False
+        bucket.append(now)
+        return True
+
+
+rate_limiter = _InMemoryRateLimiter(settings.RATE_LIMIT_WINDOW_SECONDS)
 
 
 @asynccontextmanager
@@ -46,6 +72,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+if settings.GZIP_ENABLED:
+    app.add_middleware(GZipMiddleware, minimum_size=settings.GZIP_MINIMUM_SIZE)
+
+if settings.TRUSTED_HOSTS:
+    app.add_middleware(TrustedHostMiddleware, allowed_hosts=settings.TRUSTED_HOSTS)
+
 app.include_router(api_router)
 
 if settings.METRICS_ENABLED:
@@ -54,6 +86,43 @@ if settings.METRICS_ENABLED:
         endpoint=settings.METRICS_PATH,
         include_in_schema=False,
     )
+
+
+@app.middleware("http")
+async def security_shield(request, call_next):
+    content_length = request.headers.get("content-length")
+    if content_length and content_length.isdigit():
+        if int(content_length) > settings.REQUEST_BODY_MAX_BYTES:
+            return JSONResponse(
+                status_code=413,
+                content={"detail": "Payload demasiado grande"},
+            )
+
+    if settings.RATE_LIMIT_ENABLED:
+        ip = _extract_client_ip(request) or "unknown"
+        path = request.url.path.lower()
+        is_sensitive = "/auth/" in path or "/payphone/webhook" in path
+        limit = settings.RATE_LIMIT_AUTH_MAX_REQUESTS if is_sensitive else settings.RATE_LIMIT_MAX_REQUESTS
+        scope = "sensitive" if is_sensitive else "default"
+        if not rate_limiter.allow(f"{ip}:{scope}", limit):
+            return JSONResponse(
+                status_code=429,
+                headers={"Retry-After": str(settings.RATE_LIMIT_WINDOW_SECONDS)},
+                content={"detail": "Demasiadas solicitudes. Intenta nuevamente en unos segundos."},
+            )
+
+    response = await call_next(request)
+
+    if settings.SECURITY_HEADERS_ENABLED:
+        response.headers.setdefault("X-Content-Type-Options", "nosniff")
+        response.headers.setdefault("X-Frame-Options", "DENY")
+        response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+        response.headers.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+        response.headers.setdefault("Content-Security-Policy", "default-src 'none'; frame-ancestors 'none'; base-uri 'none'")
+        if not settings.DEBUG:
+            response.headers.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+
+    return response
 
 
 def _extract_client_ip(request) -> str | None:

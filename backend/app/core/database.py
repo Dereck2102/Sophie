@@ -29,6 +29,11 @@ class Base(DeclarativeBase):
 
 _DEVELOPMENT_SCHEMA_PATCHES = (
     "ALTER TYPE rolenum ADD VALUE IF NOT EXISTS 'TECNICO'",
+    "ALTER TYPE rolenum ADD VALUE IF NOT EXISTS 'AGENTE_SOPORTE'",
+    "ALTER TYPE rolenum ADD VALUE IF NOT EXISTS 'VENTAS'",
+    "ALTER TYPE rolenum ADD VALUE IF NOT EXISTS 'CONTABLE'",
+    "ALTER TYPE rolenum ADD VALUE IF NOT EXISTS 'RRHH'",
+    "ALTER TYPE rolenum ADD VALUE IF NOT EXISTS 'BODEGA'",
     "ALTER TABLE IF EXISTS ticket ADD COLUMN IF NOT EXISTS fecha_inicio_trabajo TIMESTAMPTZ",
     "ALTER TABLE IF EXISTS ticket ADD COLUMN IF NOT EXISTS fecha_fin_trabajo TIMESTAMPTZ",
     "ALTER TABLE IF EXISTS ticket ADD COLUMN IF NOT EXISTS fecha_cierre TIMESTAMPTZ",
@@ -101,6 +106,8 @@ _DEVELOPMENT_SCHEMA_PATCHES = (
     "ALTER TABLE IF EXISTS configuracion_sistema ADD COLUMN IF NOT EXISTS costo_material_default INTEGER DEFAULT 0",
     "ALTER TABLE IF EXISTS configuracion_sistema ADD COLUMN IF NOT EXISTS costo_mano_obra_default INTEGER DEFAULT 0",
     "ALTER TABLE IF EXISTS configuracion_sistema ADD COLUMN IF NOT EXISTS fondo_caja_chica_mensual NUMERIC(12, 2) DEFAULT 0",
+    "ALTER TABLE IF EXISTS movimiento_caja_chica ADD COLUMN IF NOT EXISTS id_cliente INTEGER",
+    "CREATE INDEX IF NOT EXISTS ix_movimiento_caja_chica_id_cliente ON movimiento_caja_chica (id_cliente)",
     "ALTER TABLE IF EXISTS tarea ADD COLUMN IF NOT EXISTS prioridad VARCHAR(20) DEFAULT 'media'",
     "ALTER TABLE IF EXISTS tarea ADD COLUMN IF NOT EXISTS id_asignado INTEGER",
     "ALTER TABLE IF EXISTS tarea ADD COLUMN IF NOT EXISTS fecha_vencimiento TIMESTAMPTZ",

@@ -22,6 +22,7 @@ export type RolEnum =
 
 export type TipoCliente = 'B2B' | 'B2C'
 export type EstadoCliente = 'activo' | 'inactivo' | 'prospecto'
+export type TipoSuscripcion = 'individual' | 'corporativa'
 export type EstadoCotizacion = 'borrador' | 'enviada' | 'aprobada' | 'rechazada' | 'facturada'
 export type EstadoVenta = 'pendiente' | 'procesando' | 'facturada' | 'anulada'
 export type EstadoTicket = 'abierto' | 'en_progreso' | 'esperando_cliente' | 'resuelto' | 'cerrado'
@@ -53,7 +54,20 @@ export interface Usuario {
   vistas: string[]
   herramientas: string[]
   fecha_creacion: string
+  // Nuevos campos para suscripción dual
+  tipo_suscripcion: TipoSuscripcion
+  id_cliente: number
+  id_empresa?: number
+  es_admin_global: boolean
 }
+
+export interface RoleAccessProfile {
+  permisos: string[]
+  vistas: string[]
+  herramientas: string[]
+}
+
+export type RoleProfilesResponse = Record<RolEnum, RoleAccessProfile>
 
 export interface TenantStaffingBucket {
   key: string
@@ -100,6 +114,57 @@ export interface ConfiguracionSistema {
   costo_material_default: number
   costo_mano_obra_default: number
   fondo_caja_chica_mensual: number
+}
+
+// Nuevas configuraciones para arquitectura dual B2B/B2C
+export interface ConfiguracionEmpresa {
+  id_config?: number
+  id_cliente: number
+  timezone: string
+  market: string
+  require_mfa_global: boolean
+  session_timeout_minutes: number
+  max_login_attempts: number
+  color_primario?: string
+  color_secundario?: string
+  default_iva: number
+  default_descuento: number
+  payphone_key?: string
+  payphone_secret?: string
+  stripe_key?: string
+  fecha_creacion?: string
+  fecha_actualizacion?: string
+}
+
+export interface ConfiguracionUsuario {
+  id_config?: number
+  id_usuario: number
+  preferencia_idioma: 'es' | 'en'
+  tema: 'light' | 'dark' | 'system'
+  notificaciones_email: boolean
+  notificaciones_sms: boolean
+  timezone_personal?: string
+  reporte_footer?: string
+  fecha_actualizacion?: string
+}
+
+export interface SuscripcionDetalle {
+  id_suscripcion?: number
+  id_cliente: number
+  tipo: TipoSuscripcion
+  plan_tier: SubscriptionPlanTier
+  billing_cycle: BillingCycle
+  status: SubscriptionStatus
+  fecha_inicio: string
+  fecha_fin?: string
+  price_usd: number
+  modules_enabled?: string[]
+  seat_limit?: number
+  features_individual?: {
+    has_advanced_reporting: boolean
+    has_custom_branding: boolean
+    max_storage_gb: number
+  }
 }
 
 export interface AuditoriaLog {
@@ -273,6 +338,8 @@ export interface GlobalDashboardSummary {
 export interface GlobalCompany {
   id_empresa: number
   nombre: string
+  branding_nombre?: string | null
+  branding_logo_url?: string | null
   ruc: string
   estado: EstadoCliente
   plan_tier: SubscriptionPlanTier
@@ -286,6 +353,8 @@ export interface GlobalCompany {
 
 export interface GlobalCompanyUpdate {
   nombre?: string
+  branding_nombre?: string
+  branding_logo_url?: string
   ruc?: string
   contacto_principal?: string
   telefono?: string
@@ -303,6 +372,21 @@ export interface GlobalCompanyUser {
   activo: boolean
   id_empresa?: number | null
   empresa_nombre?: string | null
+}
+
+export interface UserSubscription {
+  id_usuario: number
+  username: string
+  email: string
+  plan_tier: SubscriptionPlanTier
+  billing_cycle: BillingCycle
+  status: SubscriptionStatus
+  price_usd: number
+  currency: string
+  features: string[]
+  custom_notes?: string | null
+  updated_by_user_id?: number | null
+  updated_at?: string | null
 }
 
 export interface GlobalUserActivationIn {
@@ -329,6 +413,10 @@ export interface Empresa {
   email?: string
   direccion?: string
   sector?: string
+  branding_nombre?: string
+  branding_logo_url?: string
+  branding_slogan?: string
+  configuracion?: ConfiguracionEmpresa
 }
 
 export interface ClienteB2C {

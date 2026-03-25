@@ -163,3 +163,14 @@ def get_effective_access(user: Usuario) -> dict[str, list[str]]:
 
 def has_access_item(items: list[str], value: str) -> bool:
     return "*" in items or value in items
+
+
+def get_role_profiles_payload() -> dict[str, dict[str, list[str]]]:
+    payload: dict[str, dict[str, list[str]]] = {}
+    for role, access in ROLE_ACCESS.items():
+        payload[role.value] = {
+            "permisos": _normalize_access_items(list(access.get("permissions", []))),
+            "vistas": _normalize_access_items(list(access.get("views", []))),
+            "herramientas": sorted(list(access.get("tools", []))),
+        }
+    return payload

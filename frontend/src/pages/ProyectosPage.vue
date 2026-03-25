@@ -34,7 +34,7 @@ const auth = useAuthStore()
 const clienteStore = useClienteStore()
 const usuariosStore = useUsuarioStore()
 const canDeleteProject = computed(() =>
-  auth.user?.rol === 'superadmin' ||
+  auth.isSuperadminUser ||
   auth.user?.rol === 'ejecutivo'
 )
 

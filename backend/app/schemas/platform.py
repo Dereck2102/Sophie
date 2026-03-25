@@ -61,6 +61,8 @@ class GlobalDashboardSummaryOut(BaseModel):
 class GlobalCompanyOut(BaseModel):
     id_empresa: int
     nombre: str
+    branding_nombre: str | None = None
+    branding_logo_url: str | None = None
     ruc: str
     estado: EstadoClienteEnum
     plan_tier: PlanTierEnum
@@ -74,6 +76,8 @@ class GlobalCompanyOut(BaseModel):
 
 class GlobalCompanyUpdateIn(BaseModel):
     nombre: str | None = None
+    branding_nombre: str | None = None
+    branding_logo_url: str | None = None
     ruc: str | None = None
     contacto_principal: str | None = None
     telefono: str | None = None

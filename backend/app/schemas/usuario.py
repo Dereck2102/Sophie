@@ -10,6 +10,7 @@ from app.infrastructure.models.usuario import RolEnum
 
 class UsuarioBase(BaseModel):
     id_cliente: Optional[int] = None
+    id_empresa: Optional[int] = None
     username: str
     email: EmailStr
     rol: RolEnum
@@ -82,6 +83,8 @@ class UsuarioOut(UsuarioBase):
     permisos: list[str] = []
     vistas: list[str] = []
     herramientas: list[str] = []
+    tipo_suscripcion: str = "corporativa"
+    es_admin_global: bool = False
     fecha_creacion: datetime
 
     model_config = {"from_attributes": True}

@@ -73,11 +73,41 @@ class EmpresaSubscription(Base):
     updated_by = relationship("Usuario")
 
 
+class UserSubscription(Base):
+    __tablename__ = "user_subscription"
+
+    id_usuario: Mapped[int] = mapped_column(
+        Integer, ForeignKey("usuario.id_usuario", ondelete="CASCADE"), primary_key=True
+    )
+    plan_tier: Mapped[PlanTierEnum] = mapped_column(Enum(PlanTierEnum), nullable=False, default=PlanTierEnum.STARTER)
+    billing_cycle: Mapped[BillingCycleEnum] = mapped_column(
+        Enum(BillingCycleEnum), nullable=False, default=BillingCycleEnum.MONTHLY
+    )
+    status: Mapped[SubscriptionStatusEnum] = mapped_column(
+        Enum(SubscriptionStatusEnum), nullable=False, default=SubscriptionStatusEnum.PENDING
+    )
+    price_usd: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False, default=0)
+    currency: Mapped[str] = mapped_column(String(8), nullable=False, default="USD")
+    features_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    custom_notes: Mapped[str | None] = mapped_column(String(800), nullable=True)
+    updated_by_user_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("usuario.id_usuario"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    usuario = relationship("Usuario", foreign_keys=[id_usuario])
+    updated_by = relationship("Usuario", foreign_keys=[updated_by_user_id])
+
+
 class PaymentTransaction(Base):
     __tablename__ = "payment_transaction"
 
     id_pago: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     id_empresa: Mapped[int | None] = mapped_column(Integer, ForeignKey("empresa.id_cliente", ondelete="SET NULL"), nullable=True)
+    id_usuario_owner: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("usuario.id_usuario", ondelete="SET NULL"),
+        nullable=True,
+    )
     plan_tier: Mapped[PlanTierEnum] = mapped_column(Enum(PlanTierEnum), nullable=False)
     billing_cycle: Mapped[BillingCycleEnum] = mapped_column(Enum(BillingCycleEnum), nullable=False)
     amount: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False, default=0)
@@ -93,6 +123,7 @@ class PaymentTransaction(Base):
     paid_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     empresa = relationship("Empresa")
+    usuario_owner = relationship("Usuario")
 
 
 class CustomOrder(Base):

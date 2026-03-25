@@ -32,7 +32,10 @@ const DISABLED_VIEWS_ERP_ONLY = new Set(['crm'])
 
 const navGroups = computed(() => {
   const userViews = auth.user?.vistas ?? []
-  const isSuperadmin = auth.user?.rol === 'superadmin'
+  const isSuperadmin = auth.isSuperadminUser
+  const isB2C = auth.user?.tipo_suscripcion === 'individual'
+  const isB2B = auth.user?.tipo_suscripcion === 'corporativa'
+  const empresaId = auth.user?.id_empresa
   const hasStar = userViews.includes('*')
   const canSee = (view: string) => {
     if (ERP_ONLY_MODE && DISABLED_VIEWS_ERP_ONLY.has(view)) return false
@@ -55,41 +58,58 @@ const navGroups = computed(() => {
     return [globalGroup].filter(g => g.items.length > 0)
   }
 
+  // Rutas base para B2B con empresa seleccionada
+  const baseRoute = isB2B && empresaId ? `/empresas/${empresaId}` : ''
+
   const groups = [
+    // B2C: Empresa list solo para B2B
+    {
+      key: 'enterprise-selector',
+      label: t('nav.groups.overview'),
+      items: isB2B ? [
+        { path: '/empresas', label: t('nav.empresas'), icon: Building2, requiredView: 'empresas', requiredModule: 'E1' },
+      ] : [],
+    },
     {
       key: 'overview',
       label: t('nav.groups.overview'),
       items: [
-        { path: '/', label: t('nav.dashboard'), icon: LayoutDashboard, requiredView: 'dashboard' },
-        { path: '/flujo-operativo', label: t('nav.flujoOperativo'), icon: Landmark, requiredView: 'dashboard' },
-      ].filter(i => canSee(i.requiredView) && canSeeModule(i.requiredView)),
+        { path: baseRoute + '/' || '/', label: t('nav.dashboard'), icon: LayoutDashboard, requiredView: 'dashboard', requiredModule: 'E2' },
+        { path: baseRoute + '/flujo-operativo' || '/flujo-operativo', label: t('nav.flujoOperativo'), icon: Landmark, requiredView: 'dashboard', requiredModule: 'E7' },
+      ].filter(i => canSee(i.requiredView) && canSeeModule(i.requiredModule as any)),
     },
     {
       key: 'operations',
       label: t('nav.groups.operations'),
       items: [
-        { path: '/ventas', label: t('nav.ventas'), icon: ShoppingCart, requiredView: 'ventas' },
-        { path: '/taller', label: t('nav.taller'), icon: Wrench, requiredView: 'taller' },
-        { path: '/proyectos', label: t('nav.proyectos'), icon: Code2, requiredView: 'proyectos' },
-        { path: '/compras', label: t('nav.compras'), icon: Package, requiredView: 'compras' },
-      ].filter(i => canSee(i.requiredView) && canSeeModule(i.requiredView)),
+        { path: baseRoute + '/ventas' || '/ventas', label: t('nav.ventas'), icon: ShoppingCart, requiredView: 'ventas', requiredModule: 'E4' },
+        { path: baseRoute + '/taller' || '/taller', label: t('nav.taller'), icon: Wrench, requiredView: 'taller', requiredModule: 'E8' },
+        { path: baseRoute + '/proyectos' || '/proyectos', label: t('nav.proyectos'), icon: Code2, requiredView: 'proyectos', requiredModule: 'E6' },
+        { path: baseRoute + '/compras' || '/compras', label: t('nav.compras'), icon: Package, requiredView: 'compras', requiredModule: 'E5' },
+      ].filter(i => canSee(i.requiredView) && canSeeModule(i.requiredModule as any)),
     },
     {
       key: 'finance',
       label: t('nav.groups.finance'),
       items: [
-        { path: '/caja-chica', label: t('nav.cajaChica'), icon: Wallet, requiredView: 'caja_chica' },
-        { path: '/empresas', label: t('nav.empresas'), icon: Building2, requiredView: 'empresas' },
-      ].filter(i => canSee(i.requiredView) && canSeeModule(i.requiredView)),
+        { path: baseRoute + '/caja-chica' || '/caja-chica', label: t('nav.cajaChica'), icon: Wallet, requiredView: 'caja_chica', requiredModule: 'E3' },
+      ].filter(i => canSee(i.requiredView) && canSeeModule(i.requiredModule as any)),
     },
     {
       key: 'system',
       label: t('nav.groups.system'),
       items: [
-        { path: '/usuarios', label: t('nav.usuarios'), icon: UserCog, requiredView: 'usuarios' },
-        { path: '/configuracion', label: t('nav.configuracion'), icon: Settings, requiredView: 'configuracion' },
-        { path: '/auditoria', label: 'Auditoría', icon: ClipboardList, requiredView: 'auditoria' },
-      ].filter(i => canSee(i.requiredView) && canSeeModule(i.requiredView)),
+        // B2B: usuarios y config de empresa
+        ...(isB2B && empresaId ? [
+          { path: baseRoute + '/usuarios', label: t('nav.usuarios'), icon: UserCog, requiredView: 'usuarios', requiredModule: 'E1' },
+          { path: baseRoute + '/configuracion', label: t('nav.configuracion'), icon: Settings, requiredView: 'configuracion', requiredModule: 'E1' },
+          { path: baseRoute + '/auditoria', label: 'Auditoría', icon: ClipboardList, requiredView: 'auditoria', requiredModule: 'E2' },
+        ] : []),
+        // B2C: configuración personal
+        ...(isB2C ? [
+          { path: '/configuracion-personal', label: t('nav.configuracion'), icon: Settings, requiredView: 'configuracion' },
+        ] : []),
+      ].filter(i => canSee(i.requiredView) && canSeeModule(i.requiredModule as any ?? 'E1')),
     },
   ]
 

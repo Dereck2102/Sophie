@@ -24,6 +24,8 @@ from app.schemas.subscriptions import (
     PaymentTransactionOut,
     PendingCustomOrderOut,
     PlanPresetOut,
+    UserSubscriptionOut,
+    UserSubscriptionUpsert,
 )
 from app.services.subscriptions_service import SubscriptionService
 
@@ -104,6 +106,30 @@ async def upsert_company_subscription(
 ) -> EmpresaSubscriptionOut:
     return await _service(db).upsert_company_subscription(
         id_empresa=id_empresa,
+        body=body,
+        current_user=current_user,
+    )
+
+
+@admin_router.get("/users", response_model=list[UserSubscriptionOut])
+async def list_user_subscriptions(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[Usuario, Depends(require_superadmin())],
+    limit: int = Query(300, ge=1, le=1000),
+) -> list[UserSubscriptionOut]:
+    _ = current_user
+    return await _service(db).list_user_subscriptions(limit=limit)
+
+
+@admin_router.put("/users/{id_usuario}", response_model=UserSubscriptionOut)
+async def upsert_user_subscription(
+    id_usuario: int,
+    body: UserSubscriptionUpsert,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[Usuario, Depends(require_superadmin())],
+) -> UserSubscriptionOut:
+    return await _service(db).upsert_user_subscription(
+        id_usuario=id_usuario,
         body=body,
         current_user=current_user,
     )

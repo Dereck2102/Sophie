@@ -23,7 +23,7 @@ const isDark = computed(() => themeStore.mode === 'dark' || (themeStore.mode ===
 
 const hasNotifications = computed(() => notificationStore.unreadCount > 0)
 
-const showSubscriptionBadge = computed(() => Boolean(auth.user && auth.user.rol !== 'superadmin' && subscriptionStore.current))
+const showSubscriptionBadge = computed(() => Boolean(auth.isEnterpriseUser && subscriptionStore.current))
 
 const subscriptionStatusInfo = computed(() => {
   const status = subscriptionStore.current?.status
@@ -62,7 +62,7 @@ const subscriptionStatusInfo = computed(() => {
 
 onMounted(() => {
   notificationStore.fetchNotifications(false)
-  if (auth.user?.rol && auth.user.rol !== 'superadmin' && !subscriptionStore.initialized) {
+  if (auth.user?.rol && auth.isEnterpriseUser && !subscriptionStore.initialized) {
     void subscriptionStore.bootstrapForCurrentUser(auth.user)
   }
 })

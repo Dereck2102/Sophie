@@ -21,6 +21,7 @@ from app.infrastructure.models.subscriptions import (
     PaymentTransaction,
     PlanTierEnum,
     SubscriptionStatusEnum,
+    UserSubscription,
 )
 
 __all__ = [
@@ -37,5 +38,5 @@ __all__ = [
     "Proyecto", "Tarea", "MiembroProyecto", "RegistroTiempo", "EstadoProyectoEnum",
     "PlanTierEnum", "BillingCycleEnum", "SubscriptionStatusEnum", "PaymentStatusEnum",
     "GatewayProviderEnum", "EmpresaSubscription", "PaymentTransaction", "PaymentGatewayConfig",
-    "CustomOrderStatusEnum", "CustomOrder", "PaymentWebhookEvent",
+    "CustomOrderStatusEnum", "CustomOrder", "PaymentWebhookEvent", "UserSubscription",
 ]

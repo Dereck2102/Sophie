@@ -19,3 +19,19 @@
 # If you keep the line number information, uncomment this to
 # hide the original source file name.
 #-renamesourcefileattribute SourceFile
+
+-keep class com.getcapacitor.** { *; }
+-keep class com.bigsolutions.sophie.** { *; }
+-keep class org.apache.cordova.** { *; }
+-dontwarn org.apache.cordova.**
+
+-assumenosideeffects class android.util.Log {
+	public static int v(...);
+	public static int d(...);
+	public static int i(...);
+}
+
+-assumenosideeffects class java.io.PrintStream {
+	public void println(...);
+	public void print(...);
+}

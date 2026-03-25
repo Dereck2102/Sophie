@@ -1,5 +1,11 @@
 apply plugin: 'com.android.application'
 
+def releaseSigningFile = rootProject.file('key.properties')
+def releaseSigningProps = new Properties()
+if (releaseSigningFile.exists()) {
+    releaseSigningProps.load(new FileInputStream(releaseSigningFile))
+}
+
 android {
     namespace "com.bigsolutions.sophie"
     compileSdk rootProject.ext.compileSdkVersion
@@ -16,10 +22,37 @@ android {
             ignoreAssetsPattern '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
-    buildTypes {
+    signingConfigs {
         release {
+            def storeFilePath = releaseSigningProps['storeFile'] ?: System.getenv('SOPHIE_ANDROID_STORE_FILE')
+            def storePasswordValue = releaseSigningProps['storePassword'] ?: System.getenv('SOPHIE_ANDROID_STORE_PASSWORD')
+            def keyAliasValue = releaseSigningProps['keyAlias'] ?: System.getenv('SOPHIE_ANDROID_KEY_ALIAS')
+            def keyPasswordValue = releaseSigningProps['keyPassword'] ?: System.getenv('SOPHIE_ANDROID_KEY_PASSWORD')
+
+            if (storeFilePath && storePasswordValue && keyAliasValue && keyPasswordValue) {
+                storeFile file(storeFilePath)
+                storePassword storePasswordValue
+                keyAlias keyAliasValue
+                keyPassword keyPasswordValue
+            }
+        }
+    }
+
+    buildTypes {
+        debug {
+            debuggable true
             minifyEnabled false
-            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            shrinkResources false
+        }
+        release {
+            debuggable false
+            jniDebuggable false
+            minifyEnabled true
+            shrinkResources true
+            if (releaseSigningFile.exists() || System.getenv('SOPHIE_ANDROID_STORE_FILE')) {
+                signingConfig signingConfigs.release
+            }
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
     }
 }

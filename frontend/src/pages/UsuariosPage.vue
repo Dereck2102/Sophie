@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
+import { useRoute } from 'vue-router'
 import { Plus, Search, UserCog, ShieldCheck, Trash2, Check } from 'lucide-vue-next'
 import Card from '../components/ui/Card.vue'
 import Table from '../components/ui/Table.vue'
@@ -10,10 +11,13 @@ import { useUsuarioStore } from '../stores/usuarios'
 import { useAuthStore } from '../stores/auth'
 import { useI18n } from 'vue-i18n'
 import type { Usuario, RolEnum } from '../types'
+import { getExpandedRolePreset, hasRoleProfileAccessWithProfiles } from '../utils/access-control'
+import type { AccessOption } from '../utils/access-control'
 
 const usuarioStore = useUsuarioStore()
 const authStore = useAuthStore()
 const { t } = useI18n()
+const route = useRoute()
 
 const searchQuery = ref('')
 const showCreateModal = ref(false)
@@ -37,31 +41,26 @@ const roles: RolEnum[] = [
 const enterpriseFixedRoles: RolEnum[] = ['admin', 'agente_soporte', 'ventas', 'contable', 'rrhh', 'bodega']
 
 const availableRoles = computed<RolEnum[]>(() => {
-  if (authStore.user?.rol === 'superadmin') return roles
+  if (authStore.isSuperadminUser) return roles
   return enterpriseFixedRoles
 })
 
 function getDefaultRole(): RolEnum {
-  if (authStore.user?.rol === 'superadmin') return 'tecnico_taller'
+  if (authStore.isSuperadminUser) return 'admin'
   return availableRoles.value[0] ?? 'admin'
 }
+
+const scopedEmpresaId = computed<number | undefined>(() => {
+  const raw = route.params.empresaId
+  const parsed = Number(Array.isArray(raw) ? raw[0] : raw)
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined
+})
 
 function roleLabel(role: RolEnum): string {
   return t(`roles.${role}`)
 }
 
-interface AccessOption {
-  value: string
-  label: string
-}
-
 type AccessArea = 'permisos' | 'vistas' | 'herramientas'
-
-interface AccessProfile {
-  permisos: string[]
-  vistas: string[]
-  herramientas: string[]
-}
 
 const permissionOptions: AccessOption[] = [
   { value: 'dashboard.view', label: 'Ver dashboard' },
@@ -106,121 +105,21 @@ const toolOptions: AccessOption[] = [
   { value: 'gestion_proyectos', label: 'Gestión de proyectos' },
 ]
 
-const roleProfiles: Record<RolEnum, AccessProfile> = {
-  // ── Nivel 0-1: Administración ──────────────────────────────────────
-  superadmin: {
-    permisos: ['*'],
-    vistas: ['*'],
-    herramientas: ['*'],
-  },
-  admin: {
-    permisos: ['*'],
-    vistas: ['auditoria', 'empresas', 'caja_chica', 'compras', 'configuracion', 'dashboard', 'inventario', 'perfil', 'proyectos', 'taller', 'usuarios', 'ventas'],
-    herramientas: ['*'],
-  },
-  agente_soporte: {
-    permisos: ['clientes.read', 'dashboard.view', 'inventario.read', 'tickets.manage'],
-    vistas: ['dashboard', 'inventario', 'perfil', 'taller'],
-    herramientas: ['reportes', 'scanner_qr'],
-  },
-  ventas: {
-    permisos: ['clientes.manage', 'dashboard.view', 'reportes.view', 'ventas.manage'],
-    vistas: ['dashboard', 'perfil', 'ventas'],
-    herramientas: ['calculadora_margen', 'exportaciones', 'reportes'],
-  },
-  contable: {
-    permisos: ['compras.manage', 'dashboard.view', 'reportes.view', 'ventas.manage'],
-    vistas: ['caja_chica', 'compras', 'dashboard', 'perfil', 'ventas'],
-    herramientas: ['control_caja_chica', 'proyecciones_financieras', 'reportes', 'simulador_iva'],
-  },
-  rrhh: {
-    permisos: ['dashboard.view', 'reportes.view'],
-    vistas: ['dashboard', 'perfil', 'usuarios'],
-    herramientas: ['reportes'],
-  },
-  bodega: {
-    permisos: ['compras.manage', 'dashboard.view', 'inventario.read', 'reportes.view'],
-    vistas: ['compras', 'dashboard', 'inventario', 'perfil'],
-    herramientas: ['reportes', 'scanner_qr'],
-  },
-  // ── Nivel 2: Jefaturas ────────────────────────────────────────────
-  jefe_tecnologias: {
-    permisos: ['empresas.manage', 'clientes.read', 'dashboard.view', 'inventario.read', 'proyectos.manage', 'reportes.view', 'tickets.manage'],
-    vistas: ['empresas', 'dashboard', 'perfil', 'proyectos', 'taller'],
-    herramientas: ['calculo_horas_tecnicas', 'exportaciones', 'reportes', 'scanner_qr'],
-  },
-  jefe_taller: {
-    permisos: ['clientes.read', 'dashboard.view', 'inventario.read', 'proyectos.read', 'reportes.view', 'tickets.manage'],
-    vistas: ['dashboard', 'inventario', 'perfil', 'proyectos', 'taller'],
-    herramientas: ['calculo_horas_tecnicas', 'exportaciones', 'reportes', 'scanner_qr'],
-  },
-  jefe_administrativo: {
-    permisos: ['clientes.manage', 'compras.manage', 'dashboard.view', 'inventario.read', 'reportes.view', 'ventas.manage'],
-    vistas: ['caja_chica', 'compras', 'dashboard', 'perfil', 'proyectos', 'ventas'],
-    herramientas: ['calculadora_margen', 'control_caja_chica', 'costeo_cotizaciones', 'exportaciones', 'proyecciones_financieras', 'reportes'],
-  },
-  jefe_contable: {
-    permisos: ['compras.manage', 'dashboard.view', 'reportes.view', 'ventas.manage'],
-    vistas: ['auditoria', 'caja_chica', 'compras', 'dashboard', 'perfil', 'ventas'],
-    herramientas: ['calculadora_margen', 'control_caja_chica', 'costeo_cotizaciones', 'exportaciones', 'proyecciones_financieras', 'reportes', 'simulador_descuentos', 'simulador_iva'],
-  },
-  // ── Nivel 3: Roles transversales ─────────────────────────────────
-  ejecutivo: {
-    permisos: ['empresas.manage', 'clientes.manage', 'dashboard.view', 'inventario.read', 'proyectos.manage', 'reportes.view', 'tickets.manage', 'ventas.manage'],
-    vistas: ['empresas', 'dashboard', 'inventario', 'perfil', 'proyectos', 'taller', 'ventas'],
-    herramientas: ['exportaciones', 'reportes'],
-  },
-  administrativo_contable: {
-    permisos: ['clientes.manage', 'compras.manage', 'dashboard.view', 'inventario.read', 'reportes.view', 'ventas.manage'],
-    vistas: ['caja_chica', 'compras', 'dashboard', 'inventario', 'perfil', 'ventas'],
-    herramientas: ['calculadora_margen', 'control_caja_chica', 'costeo_cotizaciones', 'exportaciones', 'proyecciones_financieras', 'reportes', 'simulador_descuentos', 'simulador_iva'],
-  },
-  // ── Nivel 4: Personal técnico y soporte ──────────────────────────
-  tecnico: {
-    permisos: ['inventario.read', 'tickets.manage'],
-    vistas: ['perfil', 'taller'],
-    herramientas: ['calculo_horas_tecnicas', 'scanner_qr'],
-  },
-  tecnico_taller: {
-    permisos: ['inventario.read', 'tickets.manage'],
-    vistas: ['perfil', 'taller'],
-    herramientas: ['calculo_horas_tecnicas', 'scanner_qr'],
-  },
-  agente_soporte_l1: {
-    permisos: ['clientes.read', 'tickets.manage'],
-    vistas: ['perfil', 'taller'],
-    herramientas: ['scanner_qr'],
-  },
-  agente_soporte_l2: {
-    permisos: ['clientes.read', 'inventario.read', 'proyectos.read', 'tickets.manage'],
-    vistas: ['perfil', 'proyectos', 'taller'],
-    herramientas: ['calculo_horas_tecnicas', 'reportes', 'scanner_qr'],
-  },
-  desarrollador: {
-    permisos: ['inventario.read', 'proyectos.manage', 'tickets.manage'],
-    vistas: ['empresas', 'dashboard', 'perfil', 'proyectos', 'taller'],
-    herramientas: ['calculo_horas_tecnicas', 'reportes', 'scanner_qr'],
-  },
-}
-
 const matrixOptions = {
   permisos: permissionOptions,
   vistas: viewOptions,
   herramientas: toolOptions,
 }
 
-function getRolePreset(role: RolEnum): AccessProfile {
-  const profile = roleProfiles[role]
-  return {
-    permisos: profile.permisos.includes('*') ? permissionOptions.map((p) => p.value) : [...profile.permisos],
-    vistas: profile.vistas.includes('*') ? viewOptions.map((v) => v.value) : [...profile.vistas],
-    herramientas: profile.herramientas.includes('*') ? toolOptions.map((t) => t.value) : [...profile.herramientas],
-  }
+const roleProfilesReady = computed(() => Boolean(authStore.roleProfiles))
+const roleProfilesErrorText = computed(() => authStore.roleProfilesError)
+
+function getRolePreset(role: RolEnum) {
+  return getExpandedRolePreset(role, matrixOptions, authStore.roleProfiles)
 }
 
 function hasProfileAccess(role: RolEnum, area: AccessArea, value: string): boolean {
-  const profile = roleProfiles[role]
-  return profile[area].includes('*') || profile[area].includes(value)
+  return hasRoleProfileAccessWithProfiles(role, area, value, authStore.roleProfiles)
 }
 
 const createFormDefaults = () => ({
@@ -275,8 +174,11 @@ const filteredRows = computed(() =>
 )
 
 onMounted(async () => {
-  await usuarioStore.fetchUsuarios()
-  if (authStore.user?.rol !== 'superadmin') {
+  if (!authStore.roleProfiles && !authStore.roleProfilesLoading) {
+    await authStore.fetchRoleProfiles()
+  }
+  await usuarioStore.fetchUsuarios(scopedEmpresaId.value)
+  if (!authStore.isSuperadminUser) {
     await usuarioStore.fetchCapacidad()
   }
 })
@@ -305,6 +207,7 @@ async function handleCreate(): Promise<void> {
   formError.value = null
   try {
     await usuarioStore.createUsuario({
+      id_cliente: scopedEmpresaId.value,
       username: createForm.value.username,
       email: createForm.value.email,
       password: createForm.value.password,
@@ -316,7 +219,7 @@ async function handleCreate(): Promise<void> {
       vistas: createForm.value.vistas,
       herramientas: createForm.value.herramientas,
     })
-    if (authStore.user?.rol !== 'superadmin') {
+    if (!authStore.isSuperadminUser) {
       await usuarioStore.fetchCapacidad()
     }
     showCreateModal.value = false
@@ -335,6 +238,7 @@ async function handleEdit(): Promise<void> {
   formError.value = null
   try {
     await usuarioStore.updateUsuario(selectedUser.value.id_usuario, {
+      id_cliente: scopedEmpresaId.value,
       email: editForm.value.email,
       nombre_completo: editForm.value.nombre_completo || undefined,
       rol: editForm.value.rol,
@@ -345,7 +249,7 @@ async function handleEdit(): Promise<void> {
       vistas: editForm.value.vistas,
       herramientas: editForm.value.herramientas,
     })
-    if (authStore.user?.rol !== 'superadmin') {
+    if (!authStore.isSuperadminUser) {
       await usuarioStore.fetchCapacidad()
     }
     showEditModal.value = false
@@ -391,7 +295,7 @@ async function handleDelete(): Promise<void> {
   formError.value = null
   try {
     await usuarioStore.deleteUsuario(selectedUser.value.id_usuario)
-    if (authStore.user?.rol !== 'superadmin') {
+    if (!authStore.isSuperadminUser) {
       await usuarioStore.fetchCapacidad()
     }
     showDeleteModal.value = false
@@ -408,6 +312,16 @@ async function handleDelete(): Promise<void> {
 
 <template>
   <div class="space-y-6">
+    <Card v-if="!roleProfilesReady" title="Perfiles de rol no disponibles">
+      <div class="space-y-3 text-sm">
+        <p class="text-amber-700">{{ roleProfilesErrorText ?? 'No se pudieron cargar los perfiles de rol del servidor.' }}</p>
+        <p class="text-gray-600">No se habilita la creación/edición de presets hasta restablecer la sincronización con backend.</p>
+        <Button size="sm" variant="secondary" :loading="authStore.roleProfilesLoading" @click="authStore.fetchRoleProfiles()">
+          Reintentar carga de perfiles
+        </Button>
+      </div>
+    </Card>
+
     <div class="flex items-center justify-between">
       <div class="flex items-center gap-3">
         <div class="p-2 bg-blue-600 rounded-xl">
@@ -418,14 +332,14 @@ async function handleDelete(): Promise<void> {
           <p class="text-gray-500 dark:text-gray-400 text-sm mt-1">{{ t('usuarios.subtitle') }}</p>
         </div>
       </div>
-      <Button @click="showCreateModal = true">
+      <Button :disabled="!roleProfilesReady" @click="showCreateModal = true">
         <Plus :size="16" class="mr-2" />
         {{ t('usuarios.newUser') }}
       </Button>
     </div>
 
     <Card
-      v-if="authStore.user?.rol !== 'superadmin'"
+      v-if="!authStore.isSuperadminUser"
       title="Capacidad de personal por plan"
     >
       <p class="text-sm text-gray-500 mb-4">
@@ -542,7 +456,7 @@ async function handleDelete(): Promise<void> {
       </Table>
     </Card>
 
-    <Card title="Matriz de acceso por rol (referencia)">
+    <Card v-if="roleProfilesReady" title="Matriz de acceso por rol (referencia)">
       <p class="text-sm text-gray-500 mb-3">Esta matriz muestra el preset recomendado por rol. Puedes partir de esto y ajustar casillas por usuario.</p>
 
       <div class="space-y-4">
@@ -684,7 +598,7 @@ async function handleDelete(): Promise<void> {
           <Button variant="secondary" type="button" @click="showCreateModal = false; resetCreateForm()">
             Cancelar
           </Button>
-          <Button type="submit" :loading="saving">Crear Usuario</Button>
+          <Button type="submit" :loading="saving" :disabled="!roleProfilesReady">Crear Usuario</Button>
         </div>
       </form>
     </Modal>
@@ -798,7 +712,7 @@ async function handleDelete(): Promise<void> {
           >
             Cancelar
           </Button>
-          <Button type="submit" :loading="saving">Guardar Cambios</Button>
+          <Button type="submit" :loading="saving" :disabled="!roleProfilesReady">Guardar cambios</Button>
         </div>
       </form>
     </Modal>

@@ -9,10 +9,21 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_current_user, require_roles
+from app.api.deps import (
+    TenantContext,
+    get_current_user,
+    require_module_enabled,
+    require_roles,
+    require_tenant_membership,
+)
 from app.core.access import dumps_json_list, get_effective_access
 from app.core.config import get_settings
 from app.core.database import get_db
+from app.core.role_helpers import (
+    assert_owner_superadmin_policy,
+    assert_role_scope_by_tenant,
+    assert_superadmin_only,
+)
 from app.core.security import hash_password, verify_password
 from app.infrastructure.models.subscriptions import EmpresaSubscription, PlanTierEnum
 from app.infrastructure.models.usuario import RolEnum, Usuario
@@ -27,6 +38,7 @@ from app.schemas.usuario import (
 from app.services.image_service import ImageOptimizationError, optimize_image
 
 router = APIRouter(prefix="/usuarios", tags=["Usuarios"])
+tenant_router = APIRouter(prefix="/empresas/{empresa_id}/usuarios", tags=["Usuarios Tenant"])
 settings = get_settings()
 
 _ASSIGNABLE_ROLES = (
@@ -125,7 +137,9 @@ def _resolve_target_tenant(current_user: Usuario, requested_id_cliente: int | No
     if current_user.rol == RolEnum.SUPERADMIN:
         return requested_id_cliente
     if current_user.id_cliente is None:
-        raise HTTPException(status_code=403, detail="Tu usuario no está asociado a un cliente")
+        if requested_id_cliente is not None:
+            raise HTTPException(status_code=403, detail="No puedes asignar usuarios a otro cliente")
+        return None
     if requested_id_cliente is not None and requested_id_cliente != current_user.id_cliente:
         raise HTTPException(status_code=403, detail="No puedes asignar usuarios a otro cliente")
     return current_user.id_cliente
@@ -143,28 +157,12 @@ def _assert_enterprise_fixed_roles(current_user: Usuario, target_role: RolEnum |
         )
 
 
-def _assert_role_scope_by_tenant(target_tenant_id: int | None, target_role: RolEnum) -> None:
-    master_roles = {RolEnum.SUPERADMIN, RolEnum.ADMIN}
-    if target_tenant_id is None:
-        if target_role not in master_roles:
-            raise HTTPException(
-                status_code=400,
-                detail="En el panel maestro solo se permiten roles superadmin y admin",
-            )
-        return
-
-    if target_role not in _ENTERPRISE_FIXED_ROLES:
-        raise HTTPException(
-            status_code=400,
-            detail="En el ERP solo se permiten roles: admin, agente_soporte, ventas, contable, rrhh y bodega",
-        )
-
-
 def _serialize_user(user: Usuario) -> UsuarioOut:
     access = get_effective_access(user)
     return UsuarioOut(
         id_usuario=user.id_usuario,
         id_cliente=user.id_cliente,
+        id_empresa=user.id_empresa,
         username=user.username,
         email=user.email,
         rol=user.rol,
@@ -179,8 +177,32 @@ def _serialize_user(user: Usuario) -> UsuarioOut:
         permisos=access["permissions"],
         vistas=access["views"],
         herramientas=access["tools"],
+        tipo_suscripcion=user.tipo_suscripcion,
+        es_admin_global=user.es_admin_global,
         fecha_creacion=user.fecha_creacion,
     )
+
+
+async def _assert_company_keeps_an_admin(
+    db: AsyncSession,
+    *,
+    id_cliente: int,
+    exclude_user_id: int,
+) -> None:
+    result = await db.execute(
+        select(func.count(Usuario.id_usuario)).where(
+            Usuario.id_cliente == id_cliente,
+            Usuario.rol == RolEnum.ADMIN,
+            Usuario.activo.is_(True),
+            Usuario.id_usuario != exclude_user_id,
+        )
+    )
+    remaining_admins = int(result.scalar() or 0)
+    if remaining_admins <= 0:
+        raise HTTPException(
+            status_code=409,
+            detail="La empresa debe mantener al menos un administrador activo",
+        )
 
 
 def _parse_feature_limits(raw_features: str | None) -> dict[str, int]:
@@ -372,50 +394,6 @@ def _build_staffing_response(
     )
 
 
-def _assert_superadmin_only(current_user: Usuario, target_user: Usuario | None = None, target_role: RolEnum | None = None) -> None:
-    """Ensures privileged-role accounts can only be managed by superadmin;
-    admin users cannot manage other admin/superadmin accounts."""
-    if current_user.rol == RolEnum.SUPERADMIN:
-        return  # Superadmin can manage anyone (further checked by owner policy)
-    _protected = (RolEnum.SUPERADMIN, RolEnum.ADMIN)
-    if target_user is not None and target_user.rol in _protected:
-        raise HTTPException(status_code=403, detail="Solo el superadmin puede gestionar cuentas de administrador")
-    if target_role in _protected:
-        raise HTTPException(status_code=403, detail="Solo el superadmin puede asignar roles de administrador")
-
-
-def _owner_superadmin_username() -> str:
-    return settings.OWNER_SUPERADMIN_USERNAME.strip().lower()
-
-
-def _assert_owner_superadmin_policy(
-    current_user: Usuario,
-    *,
-    target_username: str,
-    target_role: RolEnum,
-    target_user: Usuario | None = None,
-) -> None:
-    owner_username = _owner_superadmin_username()
-    if current_user.rol == RolEnum.SUPERADMIN and current_user.username.lower() != owner_username:
-        raise HTTPException(status_code=403, detail="Solo el superadmin propietario puede administrar cuentas")
-
-    if target_role == RolEnum.SUPERADMIN and target_username.lower() != owner_username:
-        raise HTTPException(
-            status_code=403,
-            detail=f"Solo '{settings.OWNER_SUPERADMIN_USERNAME}' puede tener rol superadmin",
-        )
-
-    if target_user is not None and target_user.rol == RolEnum.SUPERADMIN and target_user.username.lower() != owner_username:
-        raise HTTPException(status_code=403, detail="Cuenta superadmin inválida para esta política")
-
-    if (
-        target_user is not None
-        and target_user.username.lower() == owner_username
-        and target_role != RolEnum.SUPERADMIN
-    ):
-        raise HTTPException(status_code=403, detail="No se puede degradar el superadmin propietario")
-
-
 async def _validate_unique_identity(
     db: AsyncSession,
     *,
@@ -473,10 +451,20 @@ async def list_usuarios(
     current_user: Annotated[Usuario, Depends(require_roles(RolEnum.SUPERADMIN, RolEnum.ADMIN))],
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=200),
+    id_cliente: int | None = Query(None, ge=1),
 ) -> list[Usuario]:
     query = select(Usuario)
-    if current_user.rol != RolEnum.SUPERADMIN and current_user.id_cliente is not None:
-        query = query.where(Usuario.id_cliente == current_user.id_cliente)
+
+    if current_user.rol == RolEnum.SUPERADMIN:
+        if id_cliente is not None:
+            query = query.where(Usuario.id_cliente == id_cliente)
+    else:
+        target_tenant_id = _resolve_target_tenant(current_user, id_cliente)
+        if target_tenant_id is None:
+            query = query.where(Usuario.id_cliente.is_(None))
+        else:
+            query = query.where(Usuario.id_cliente == target_tenant_id)
+
     result = await db.execute(query.offset(skip).limit(limit))
     return [_serialize_user(user) for user in result.scalars().all()]
 
@@ -493,15 +481,16 @@ async def create_usuario(
         email=body.email,
         telefono_recuperacion=body.telefono_recuperacion,
     )
-    _assert_superadmin_only(current_user, target_role=body.rol)
+    target_tenant_id = _resolve_target_tenant(current_user, getattr(body, "id_cliente", None))
+    assert_superadmin_only(current_user, target_role=body.rol, target_tenant_id=target_tenant_id)
     _assert_enterprise_fixed_roles(current_user, body.rol)
-    _assert_owner_superadmin_policy(
+    assert_owner_superadmin_policy(
         current_user,
+        owner_superadmin_username=settings.OWNER_SUPERADMIN_USERNAME,
         target_username=body.username,
         target_role=body.rol,
     )
-    target_tenant_id = _resolve_target_tenant(current_user, getattr(body, "id_cliente", None))
-    _assert_role_scope_by_tenant(target_tenant_id, body.rol)
+    assert_role_scope_by_tenant(target_tenant_id, body.rol, _ENTERPRISE_FIXED_ROLES)
     await _assert_tenant_staffing_limits(
         db,
         id_cliente=target_tenant_id,
@@ -509,6 +498,7 @@ async def create_usuario(
     )
     user = Usuario(
         id_cliente=target_tenant_id,
+        id_empresa=target_tenant_id,
         username=body.username,
         email=body.email,
         password_hash=hash_password(body.password),
@@ -648,11 +638,10 @@ async def update_usuario(
     if not user:
         raise HTTPException(status_code=404, detail="Usuario not found")
     _assert_same_tenant_or_superadmin(current_user, user)
-    _assert_superadmin_only(current_user, target_user=user, target_role=body.rol)
-    _assert_enterprise_fixed_roles(current_user, body.rol)
     effective_role = body.rol if body.rol is not None else user.rol
-    _assert_owner_superadmin_policy(
+    assert_owner_superadmin_policy(
         current_user,
+        owner_superadmin_username=settings.OWNER_SUPERADMIN_USERNAME,
         target_username=user.username,
         target_role=effective_role,
         target_user=user,
@@ -660,8 +649,29 @@ async def update_usuario(
     payload = body.model_dump(exclude_none=True)
     requested_tenant = payload.get("id_cliente")
     effective_tenant_id = user.id_cliente if requested_tenant is None else _resolve_target_tenant(current_user, requested_tenant)
+    assert_superadmin_only(
+        current_user,
+        target_user=user,
+        target_role=body.rol,
+        target_tenant_id=effective_tenant_id,
+    )
+    _assert_enterprise_fixed_roles(current_user, body.rol)
     effective_active = payload.get("activo", user.activo)
-    _assert_role_scope_by_tenant(effective_tenant_id, effective_role)
+    assert_role_scope_by_tenant(effective_tenant_id, effective_role, _ENTERPRISE_FIXED_ROLES)
+
+    if user.rol == RolEnum.ADMIN and user.id_cliente is not None:
+        removes_admin_guardianship = (
+            effective_role != RolEnum.ADMIN
+            or not bool(effective_active)
+            or effective_tenant_id != user.id_cliente
+        )
+        if removes_admin_guardianship:
+            await _assert_company_keeps_an_admin(
+                db,
+                id_cliente=user.id_cliente,
+                exclude_user_id=user.id_usuario,
+            )
+
     if effective_active:
         await _assert_tenant_staffing_limits(
             db,
@@ -689,8 +699,11 @@ async def update_usuario(
     requested_tenant = payload.pop("id_cliente", None)
     if requested_tenant is not None:
         payload["id_cliente"] = effective_tenant_id
+        payload["id_empresa"] = effective_tenant_id
     for k, v in payload.items():
         setattr(user, k, v)
+    if user.id_empresa != user.id_cliente:
+        user.id_empresa = user.id_cliente
     if permissions is not None:
         if not _is_privileged:
             raise HTTPException(status_code=403, detail="Solo administradores pueden cambiar permisos granulares")
@@ -723,12 +736,106 @@ async def delete_usuario(
     user = result.scalar_one_or_none()
     if not user:
         raise HTTPException(status_code=404, detail="Usuario not found")
-    _assert_superadmin_only(current_user, target_user=user)
-    _assert_owner_superadmin_policy(
+    assert_superadmin_only(current_user, target_user=user, target_tenant_id=user.id_cliente)
+    assert_owner_superadmin_policy(
         current_user,
+        owner_superadmin_username=settings.OWNER_SUPERADMIN_USERNAME,
         target_username=user.username,
         target_role=user.rol,
         target_user=user,
     )
+
+    if user.rol == RolEnum.ADMIN and user.id_cliente is not None:
+        await _assert_company_keeps_an_admin(
+            db,
+            id_cliente=user.id_cliente,
+            exclude_user_id=user.id_usuario,
+        )
+
     await db.delete(user)
     await db.flush()
+
+
+@tenant_router.get("/", response_model=List[UsuarioOut])
+async def list_usuarios_by_empresa(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    tenant_ctx: Annotated[TenantContext, Depends(require_module_enabled("usuarios"))],
+    current_user: Annotated[Usuario, Depends(require_roles(RolEnum.SUPERADMIN, RolEnum.ADMIN))],
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=200),
+) -> list[UsuarioOut]:
+    _ = current_user
+    result = await db.execute(
+        select(Usuario)
+        .where(Usuario.id_cliente == tenant_ctx.tenant_id)
+        .offset(skip)
+        .limit(limit)
+    )
+    return [_serialize_user(user) for user in result.scalars().all()]
+
+
+@tenant_router.post("/", response_model=UsuarioOut, status_code=status.HTTP_201_CREATED)
+async def create_usuario_by_empresa(
+    body: UsuarioCreate,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    tenant_ctx: Annotated[TenantContext, Depends(require_module_enabled("usuarios"))],
+    current_user: Annotated[Usuario, Depends(require_roles(RolEnum.SUPERADMIN, RolEnum.ADMIN))],
+) -> UsuarioOut:
+    _ = current_user
+    await _validate_unique_identity(
+        db,
+        username=body.username,
+        email=body.email,
+        telefono_recuperacion=body.telefono_recuperacion,
+    )
+    assert_superadmin_only(current_user, target_role=body.rol, target_tenant_id=tenant_ctx.tenant_id)
+    _assert_enterprise_fixed_roles(current_user, body.rol)
+    assert_owner_superadmin_policy(
+        current_user,
+        owner_superadmin_username=settings.OWNER_SUPERADMIN_USERNAME,
+        target_username=body.username,
+        target_role=body.rol,
+    )
+    assert_role_scope_by_tenant(tenant_ctx.tenant_id, body.rol, _ENTERPRISE_FIXED_ROLES)
+    await _assert_tenant_staffing_limits(
+        db,
+        id_cliente=tenant_ctx.tenant_id,
+        target_role=body.rol,
+    )
+    user = Usuario(
+        id_cliente=tenant_ctx.tenant_id,
+        id_empresa=tenant_ctx.tenant_id,
+        username=body.username,
+        email=body.email,
+        password_hash=hash_password(body.password),
+        rol=body.rol,
+        nombre_completo=body.nombre_completo,
+        telefono_recuperacion=body.telefono_recuperacion,
+        mfa_habilitado=body.mfa_habilitado if body.mfa_habilitado is not None else False,
+        force_mfa=body.force_mfa if body.force_mfa is not None else False,
+        permisos_json=dumps_json_list(getattr(body, "permisos", None)),
+        vistas_json=dumps_json_list(getattr(body, "vistas", None)),
+        herramientas_json=dumps_json_list(getattr(body, "herramientas", None)),
+    )
+    db.add(user)
+    await db.flush()
+    return _serialize_user(user)
+
+
+@tenant_router.get("/capacidad", response_model=TenantStaffingLimitsOut)
+async def get_tenant_staffing_capacity_by_empresa(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    tenant_ctx: Annotated[TenantContext, Depends(require_tenant_membership)],
+    current_user: Annotated[Usuario, Depends(require_roles(RolEnum.SUPERADMIN, RolEnum.ADMIN))],
+) -> TenantStaffingLimitsOut:
+    _ = current_user
+    plan_tier, limits = await _resolve_tenant_staffing_limits(db, id_cliente=tenant_ctx.tenant_id)
+    total_used, by_role_used, by_area_used = await _tenant_active_counts(db, id_cliente=tenant_ctx.tenant_id)
+    return _build_staffing_response(
+        id_cliente=tenant_ctx.tenant_id,
+        plan_tier=plan_tier,
+        limits=limits,
+        total_used=total_used,
+        by_role_used=by_role_used,
+        by_area_used=by_area_used,
+    )

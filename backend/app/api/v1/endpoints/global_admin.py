@@ -156,6 +156,8 @@ async def list_global_companies(
                 GlobalCompanyOut(
                     id_empresa=empresa.id_cliente,
                     nombre=empresa.razon_social,
+                    branding_nombre=empresa.branding_nombre,
+                    branding_logo_url=empresa.branding_logo_url,
                     ruc=empresa.ruc,
                     estado=cliente.estado if cliente else EstadoClienteEnum.ACTIVO,
                     plan_tier=sub.plan_tier,
@@ -173,6 +175,8 @@ async def list_global_companies(
             GlobalCompanyOut(
                 id_empresa=empresa.id_cliente,
                 nombre=empresa.razon_social,
+                branding_nombre=empresa.branding_nombre,
+                branding_logo_url=empresa.branding_logo_url,
                 ruc=empresa.ruc,
                 estado=cliente.estado if cliente else EstadoClienteEnum.ACTIVO,
                 plan_tier=PlanTierEnum.STARTER,
@@ -202,6 +206,10 @@ async def update_global_company(
 
     if body.nombre is not None:
         empresa.razon_social = body.nombre
+    if body.branding_nombre is not None:
+        empresa.branding_nombre = body.branding_nombre
+    if body.branding_logo_url is not None:
+        empresa.branding_logo_url = body.branding_logo_url
     if body.ruc is not None:
         empresa.ruc = body.ruc
     if body.contacto_principal is not None:
@@ -229,6 +237,8 @@ async def update_global_company(
         return GlobalCompanyOut(
             id_empresa=empresa.id_cliente,
             nombre=empresa.razon_social,
+            branding_nombre=empresa.branding_nombre,
+            branding_logo_url=empresa.branding_logo_url,
             ruc=empresa.ruc,
             estado=cliente.estado if cliente else EstadoClienteEnum.ACTIVO,
             plan_tier=PlanTierEnum.STARTER,
@@ -243,6 +253,8 @@ async def update_global_company(
     return GlobalCompanyOut(
         id_empresa=empresa.id_cliente,
         nombre=empresa.razon_social,
+        branding_nombre=empresa.branding_nombre,
+        branding_logo_url=empresa.branding_logo_url,
         ruc=empresa.ruc,
         estado=cliente.estado if cliente else EstadoClienteEnum.ACTIVO,
         plan_tier=sub.plan_tier,

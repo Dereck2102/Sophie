@@ -13,7 +13,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, get_client_ip
-from app.core.access import get_effective_access
+from app.core.access import get_effective_access, get_role_profiles_payload
 from app.core.database import get_db
 from app.core.config import get_settings
 from app.core.security import (
@@ -57,6 +57,14 @@ from app.schemas.usuario import (
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 settings = get_settings()
+
+
+@router.get("/role-profiles")
+async def get_role_profiles(
+    current_user: Annotated[Usuario, Depends(get_current_user)],
+) -> dict[str, dict[str, list[str]]]:
+    _ = current_user
+    return get_role_profiles_payload()
 
 
 def _mask_email(email: str) -> str:

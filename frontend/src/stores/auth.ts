@@ -2,7 +2,8 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import api from '../services/api'
 import { useSubscriptionStore } from './subscription'
-import type { Usuario, LoginRequest, TokenResponse } from '../types'
+import type { Usuario, LoginRequest, TokenResponse, RoleProfilesResponse } from '../types'
+import { isMasterPanelRole, isSuperadminRole } from '../utils/access-control'
 
 export const useAuthStore = defineStore('auth', () => {
   const user = ref<Usuario | null>(null)
@@ -13,10 +14,16 @@ export const useAuthStore = defineStore('auth', () => {
   const mfaDestination = ref<string | null>(null)
   const mfaPhoneDestination = ref<string | null>(null)
   const mfaDebugCode = ref<string | null>(null)
+  const roleProfiles = ref<RoleProfilesResponse | null>(null)
+  const roleProfilesLoading = ref(false)
+  const roleProfilesError = ref<string | null>(null)
   const loading = ref(false)
   const error = ref<string | null>(null)
 
   const isAuthenticated = computed(() => !!accessToken.value && !!user.value)
+  const isSuperadminUser = computed(() => isSuperadminRole(user.value?.rol))
+  const isMasterAdminUser = computed(() => isMasterPanelRole(user.value?.rol))
+  const isEnterpriseUser = computed(() => Boolean(user.value && !isSuperadminUser.value))
 
   async function login(credentials: LoginRequest): Promise<boolean> {
     loading.value = true
@@ -53,10 +60,25 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
+  async function fetchRoleProfiles(): Promise<void> {
+    roleProfilesLoading.value = true
+    roleProfilesError.value = null
+    try {
+      const { data } = await api.get<RoleProfilesResponse>('/api/v1/auth/role-profiles')
+      roleProfiles.value = data
+    } catch {
+      roleProfiles.value = null
+      roleProfilesError.value = 'No se pudieron cargar los perfiles de rol del servidor'
+    } finally {
+      roleProfilesLoading.value = false
+    }
+  }
+
   async function fetchMe(): Promise<void> {
     try {
       const { data } = await api.get<Usuario>('/api/v1/usuarios/me')
       user.value = data
+      await fetchRoleProfiles()
     } catch {
       logout()
     }
@@ -73,6 +95,9 @@ export const useAuthStore = defineStore('auth', () => {
     mfaDestination.value = null
     mfaPhoneDestination.value = null
     mfaDebugCode.value = null
+    roleProfiles.value = null
+    roleProfilesLoading.value = false
+    roleProfilesError.value = null
     localStorage.removeItem('access_token')
     sessionId.value = null
     localStorage.removeItem('session_id')
@@ -98,10 +123,17 @@ export const useAuthStore = defineStore('auth', () => {
     mfaDestination,
     mfaPhoneDestination,
     mfaDebugCode,
+    roleProfiles,
+    roleProfilesLoading,
+    roleProfilesError,
     loading,
     error,
     isAuthenticated,
+    isSuperadminUser,
+    isMasterAdminUser,
+    isEnterpriseUser,
     login,
+    fetchRoleProfiles,
     fetchMe,
     logout,
   }

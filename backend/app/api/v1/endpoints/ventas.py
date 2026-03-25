@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from typing import Annotated, List
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import delete, func, select
+from sqlalchemy import and_, delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -12,6 +12,7 @@ from app.api.deps import get_current_user, require_roles
 from app.core.database import get_db
 from app.core.money import money, percentage, to_decimal
 from app.infrastructure.models.auditoria import EventoCliente
+from app.infrastructure.models.cliente import Cliente
 from app.infrastructure.models.inventario import Inventario, InventarioSerie, EstadoSerieEnum
 from app.infrastructure.models.proyectos import Proyecto
 from app.infrastructure.models.sistema import ConfiguracionSistema
@@ -32,6 +33,23 @@ from app.schemas.ventas import (
 )
 
 router = APIRouter(prefix="/ventas", tags=["Ventas"])
+
+
+def _tenant_id_for_user(current_user: Usuario) -> int | None:
+    if current_user.rol == RolEnum.SUPERADMIN:
+        return None
+    return current_user.id_cliente
+
+
+def _assert_cotizacion_tenant_access(current_user: Usuario, cotizacion: Cotizacion) -> None:
+    tenant_id = _tenant_id_for_user(current_user)
+    if tenant_id is None:
+        return
+    if cotizacion.tenant_id == tenant_id:
+        return
+    if cotizacion.tenant_id is None and cotizacion.id_cliente == tenant_id:
+        return
+    raise HTTPException(status_code=403, detail="No puedes acceder a cotizaciones de otro tenant")
 
 
 async def _get_iva_rate(db: AsyncSession) -> float:
@@ -144,6 +162,7 @@ async def list_cotizaciones(
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=200),
 ) -> list[CotizacionOut]:
+    tenant_id = _tenant_id_for_user(current_user)
     q = (
         select(Cotizacion)
         .options(selectinload(Cotizacion.detalles))
@@ -151,6 +170,13 @@ async def list_cotizaciones(
         .limit(limit)
         .order_by(Cotizacion.fecha_creacion.desc())
     )
+    if tenant_id is not None:
+        q = q.where(
+            or_(
+                Cotizacion.tenant_id == tenant_id,
+                and_(Cotizacion.tenant_id.is_(None), Cotizacion.id_cliente == tenant_id),
+            )
+        )
     result = await db.execute(q)
     cotizaciones = list(result.scalars().all())
     product_ids = {d.id_producto for c in cotizaciones for d in c.detalles}
@@ -166,6 +192,20 @@ async def create_cotizacion(
         Usuario, Depends(require_roles(RolEnum.EJECUTIVO, RolEnum.SUPERADMIN))
     ],
 ) -> CotizacionOut:
+    tenant_id = _tenant_id_for_user(current_user)
+
+    cliente_result = await db.execute(select(Cliente).where(Cliente.id_cliente == body.id_cliente))
+    cliente = cliente_result.scalar_one_or_none()
+    if not cliente:
+        raise HTTPException(status_code=404, detail="Cliente not found")
+
+    if tenant_id is not None:
+        cliente_belongs_to_tenant = cliente.tenant_id == tenant_id or (
+            cliente.tenant_id is None and cliente.id_cliente == tenant_id
+        )
+        if not cliente_belongs_to_tenant:
+            raise HTTPException(status_code=403, detail="No puedes crear cotizaciones para otro tenant")
+
     # Use MAX(id)+1 rather than COUNT to avoid duplicate numbers after deletions
     max_id_result = await db.execute(select(func.coalesce(func.max(Cotizacion.id_cotizacion), 0)))
     max_id = int(max_id_result.scalar_one() or 0)
@@ -186,6 +226,7 @@ async def create_cotizacion(
 
     cotizacion = Cotizacion(
         numero=numero,
+        tenant_id=tenant_id if tenant_id is not None else cliente.tenant_id,
         id_cliente=body.id_cliente,
         id_vendedor=current_user.id_usuario,
         id_proyecto=body.id_proyecto,
@@ -248,6 +289,7 @@ async def get_cotizacion(
         Usuario, Depends(require_roles(RolEnum.EJECUTIVO, RolEnum.SUPERADMIN))
     ],
 ) -> CotizacionOut:
+    tenant_id = _tenant_id_for_user(current_user)
     result = await db.execute(
         select(Cotizacion)
         .options(selectinload(Cotizacion.detalles))
@@ -256,6 +298,8 @@ async def get_cotizacion(
     c = result.scalar_one_or_none()
     if not c:
         raise HTTPException(status_code=404, detail="Cotizacion not found")
+    if tenant_id is not None:
+        _assert_cotizacion_tenant_access(current_user, c)
     product_ids = {d.id_producto for d in c.detalles}
     cost_map = await _get_cost_map(db, product_ids)
     return _serialize_cotizacion(c, cost_map)
@@ -268,6 +312,7 @@ async def update_cotizacion(
     db: Annotated[AsyncSession, Depends(get_db)],
     current_user: Annotated[Usuario, Depends(get_current_user)],
 ) -> CotizacionOut:
+    tenant_id = _tenant_id_for_user(current_user)
     result = await db.execute(
         select(Cotizacion)
         .options(selectinload(Cotizacion.detalles))
@@ -276,6 +321,8 @@ async def update_cotizacion(
     c = result.scalar_one_or_none()
     if not c:
         raise HTTPException(status_code=404, detail="Cotizacion not found")
+    if tenant_id is not None:
+        _assert_cotizacion_tenant_access(current_user, c)
     if body.estado:
         c.estado = body.estado
     if body.id_proyecto is not None:
@@ -349,6 +396,7 @@ async def facturar_cotizacion(
     cotizacion = result.scalar_one_or_none()
     if not cotizacion:
         raise HTTPException(status_code=404, detail="Cotizacion not found")
+    _assert_cotizacion_tenant_access(current_user, cotizacion)
     if cotizacion.estado == EstadoCotizacionEnum.FACTURADA:
         raise HTTPException(status_code=400, detail="Already invoiced")
 
@@ -414,6 +462,7 @@ async def delete_cotizacion(
     cotizacion = result.scalar_one_or_none()
     if not cotizacion:
         raise HTTPException(status_code=404, detail="Cotizacion not found")
+    _assert_cotizacion_tenant_access(current_user, cotizacion)
 
     await db.execute(
         delete(Venta)

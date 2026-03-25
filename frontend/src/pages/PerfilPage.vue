@@ -67,8 +67,8 @@ const adminShortcuts = [
   { label: 'Auditoría', route: '/auditoria', icon: ShieldCheck, description: 'Revisar trazabilidad y actividad global' },
 ]
 
-const isAdminArea = computed(() => ['superadmin', 'admin'].includes(auth.user?.rol ?? ''))
-const isEnterpriseUser = computed(() => Boolean(auth.user && auth.user.rol !== 'superadmin'))
+const isAdminArea = computed(() => auth.isMasterAdminUser)
+const isEnterpriseUser = computed(() => auth.isEnterpriseUser)
 
 const planLabel = computed(() => {
   const plan = subscriptionStore.current?.plan_tier
@@ -83,7 +83,7 @@ const moduleLabels = computed(() =>
   }))
 )
 const visibleAdminShortcuts = computed(() => adminShortcuts.filter((shortcut) => {
-  if (auth.user?.rol === 'superadmin') return true
+  if (auth.isSuperadminUser) return true
   if (auth.user?.rol === 'admin') return shortcut.route !== '/auditoria' ? true : (auth.user?.vistas ?? []).includes('auditoria')
   return false
 }))
@@ -195,7 +195,7 @@ async function rotateRecoveryCodes(): Promise<void> {
 }
 
 onMounted(async () => {
-  if (auth.user?.rol && auth.user.rol !== 'superadmin' && !subscriptionStore.initialized) {
+  if (auth.user?.rol && auth.isEnterpriseUser && !subscriptionStore.initialized) {
     await subscriptionStore.bootstrapForCurrentUser(auth.user)
   }
 })

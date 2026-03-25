@@ -30,7 +30,7 @@ const formError = ref<string | null>(null)
 const seriesError = ref<string | null>(null)
 const filterBajoStock = ref(false)
 
-const canEdit = computed(() => auth.user?.rol === 'superadmin' || auth.user?.rol === 'administrativo_contable')
+const canEdit = computed(() => auth.isSuperadminUser || auth.user?.rol === 'administrativo_contable')
 
 const categorias = ['hardware', 'software', 'accesorio', 'repuesto', 'licencia'] as const
 const filterCategoria = ref<'all' | typeof categorias[number]>('all')

@@ -34,6 +34,12 @@ from app.schemas.dashboard import (
 router = APIRouter(prefix="/dashboard", tags=["Dashboard"])
 
 
+def _tenant_id_for_scope(current_user: Usuario) -> int | None:
+    if current_user.rol == "superadmin":
+        return None
+    return current_user.id_cliente
+
+
 def _month_window(base: datetime, offset: int) -> tuple[datetime, datetime, str]:
     month = base.month + offset
     year = base.year
@@ -85,14 +91,24 @@ async def get_stats(
 ) -> DashboardStats:
     now = datetime.now(timezone.utc)
     inicio_mes = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    tenant_id = _tenant_id_for_scope(current_user)
     caja_scope = []
-    if current_user.id_cliente is not None:
-        caja_scope.append(MovimientoCajaChica.id_cliente == current_user.id_cliente)
+    cliente_scope = []
+    cotizacion_scope = []
+    ticket_scope = []
+    proyecto_scope = []
+    if tenant_id is not None:
+        caja_scope.append(MovimientoCajaChica.id_cliente == tenant_id)
+        cliente_scope.append(Cliente.id_cliente == tenant_id)
+        cotizacion_scope.append(Cotizacion.id_cliente == tenant_id)
+        ticket_scope.append(Ticket.id_cliente == tenant_id)
+        proyecto_scope.append(Proyecto.id_cliente == tenant_id)
 
     # Active clients
     clientes_result = await db.execute(
         select(func.count(Cliente.id_cliente)).where(
-            Cliente.estado == EstadoClienteEnum.ACTIVO
+            Cliente.estado == EstadoClienteEnum.ACTIVO,
+            *cliente_scope,
         )
     )
     total_clientes = clientes_result.scalar_one() or 0
@@ -100,7 +116,8 @@ async def get_stats(
     # Cotizaciones this month
     cotizaciones_result = await db.execute(
         select(func.count(Cotizacion.id_cotizacion)).where(
-            Cotizacion.fecha_creacion >= inicio_mes
+            Cotizacion.fecha_creacion >= inicio_mes,
+            *cotizacion_scope,
         )
     )
     cotizaciones_mes = cotizaciones_result.scalar_one() or 0
@@ -108,7 +125,8 @@ async def get_stats(
     # Open tickets
     tickets_result = await db.execute(
         select(func.count(Ticket.id_ticket)).where(
-            Ticket.estado.in_([EstadoTicketEnum.ABIERTO, EstadoTicketEnum.EN_PROGRESO])
+            Ticket.estado.in_([EstadoTicketEnum.ABIERTO, EstadoTicketEnum.EN_PROGRESO]),
+            *ticket_scope,
         )
     )
     tickets_abiertos = tickets_result.scalar_one() or 0
@@ -126,6 +144,7 @@ async def get_stats(
         select(func.coalesce(func.sum(Cotizacion.total), 0)).where(
             Cotizacion.estado == EstadoCotizacionEnum.FACTURADA,
             Cotizacion.fecha_creacion >= inicio_mes,
+            *cotizacion_scope,
         )
     )
     revenue_mes = int(money(revenue_result.scalar_one() or 0))
@@ -133,7 +152,8 @@ async def get_stats(
     # Active projects
     proyectos_result = await db.execute(
         select(func.count(Proyecto.id_proyecto)).where(
-            Proyecto.estado == EstadoProyectoEnum.EN_PROGRESO
+            Proyecto.estado == EstadoProyectoEnum.EN_PROGRESO,
+            *proyecto_scope,
         )
     )
     proyectos_activos = proyectos_result.scalar_one() or 0
@@ -150,6 +170,7 @@ async def get_stats(
         .where(
             Cotizacion.estado == EstadoCotizacionEnum.FACTURADA,
             Cotizacion.fecha_creacion >= inicio_mes,
+            *cotizacion_scope,
         )
     )
     margen_bruto_mes = money(margen_result.scalar_one() or 0)
@@ -201,23 +222,36 @@ async def get_analytics(
     _ = current_user
     now = datetime.now(timezone.utc)
     inicio_mes = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    tenant_id = _tenant_id_for_scope(current_user)
     caja_scope = []
-    if current_user.id_cliente is not None:
-        caja_scope.append(MovimientoCajaChica.id_cliente == current_user.id_cliente)
+    cotizacion_scope = []
+    ticket_scope = []
+    compra_scope = []
+    if tenant_id is not None:
+        caja_scope.append(MovimientoCajaChica.id_cliente == tenant_id)
+        cotizacion_scope.append(Cotizacion.id_cliente == tenant_id)
+        ticket_scope.append(Ticket.id_cliente == tenant_id)
+        compra_scope.append(Usuario.id_cliente == tenant_id)
 
     ingresos_facturados_mes = await db.scalar(
         select(func.coalesce(func.sum(Cotizacion.total), 0)).where(
             Cotizacion.estado == EstadoCotizacionEnum.FACTURADA,
             Cotizacion.fecha_creacion >= inicio_mes,
+            *cotizacion_scope,
         )
     )
 
-    compras_registradas_mes = await db.scalar(
-        select(func.coalesce(func.sum(OrdenCompra.total), 0)).where(
+    compras_query = (
+        select(func.coalesce(func.sum(OrdenCompra.total), 0))
+        .select_from(OrdenCompra)
+        .join(Usuario, Usuario.id_usuario == OrdenCompra.id_comprador)
+        .where(
             OrdenCompra.fecha_creacion >= inicio_mes,
             OrdenCompra.estado != EstadoOrdenEnum.CANCELADA,
+            *compra_scope,
         )
     )
+    compras_registradas_mes = await db.scalar(compras_query)
 
     caja_totales = await db.execute(
         select(
@@ -236,19 +270,25 @@ async def get_analytics(
             Cotizacion.estado.in_([
                 EstadoCotizacionEnum.ENVIADA,
                 EstadoCotizacionEnum.APROBADA,
-            ])
+            ]),
+            *cotizacion_scope,
         )
     )
 
-    ordenes_pendientes_monto = await db.scalar(
-        select(func.coalesce(func.sum(OrdenCompra.total), 0)).where(
+    ordenes_query = (
+        select(func.coalesce(func.sum(OrdenCompra.total), 0))
+        .select_from(OrdenCompra)
+        .join(Usuario, Usuario.id_usuario == OrdenCompra.id_comprador)
+        .where(
             OrdenCompra.estado.in_([
                 EstadoOrdenEnum.BORRADOR,
                 EstadoOrdenEnum.ENVIADA,
                 EstadoOrdenEnum.RECIBIDA_PARCIAL,
-            ])
+            ]),
+            *compra_scope,
         )
     )
+    ordenes_pendientes_monto = await db.scalar(ordenes_query)
 
     margen_bruto_mes = await db.scalar(
         select(
@@ -265,6 +305,7 @@ async def get_analytics(
         .where(
             Cotizacion.estado == EstadoCotizacionEnum.FACTURADA,
             Cotizacion.fecha_creacion >= inicio_mes,
+            *cotizacion_scope,
         )
     )
 
@@ -299,6 +340,7 @@ async def get_analytics(
         .where(
             Cotizacion.estado == EstadoCotizacionEnum.FACTURADA,
             Cotizacion.fecha_creacion >= inicio_mes,
+            *cotizacion_scope,
         )
         .group_by(Cotizacion.id_cliente)
         .order_by(desc("facturado"))
@@ -335,6 +377,7 @@ async def get_analytics(
         .where(
             MovimientoCajaChica.tipo == TipoMovimientoCajaEnum.EGRESO,
             MovimientoCajaChica.fecha >= inicio_mes,
+            *caja_scope,
         )
         .group_by(func.coalesce(MovimientoCajaChica.categoria, "Sin categoria"))
         .order_by(desc("total"))
@@ -349,6 +392,7 @@ async def get_analytics(
         select(Cotizacion)
         .options(selectinload(Cotizacion.cliente).selectinload(Cliente.empresa), selectinload(Cotizacion.cliente).selectinload(Cliente.cliente_b2c))
         .where(Cotizacion.estado.in_([EstadoCotizacionEnum.ENVIADA, EstadoCotizacionEnum.APROBADA]))
+        .where(*cotizacion_scope)
         .order_by(Cotizacion.fecha_vencimiento.asc().nullslast(), Cotizacion.fecha_creacion.asc())
     )
     receivables = receivable_rows.all()
@@ -428,6 +472,7 @@ async def get_analytics(
             Cotizacion.estado == EstadoCotizacionEnum.FACTURADA,
             Cotizacion.fecha_creacion >= trend_start,
             Cotizacion.fecha_creacion < trend_end,
+            *cotizacion_scope,
         )
         .group_by(cot_month_bucket)
     )
@@ -436,10 +481,13 @@ async def get_analytics(
             compras_month_bucket.label("bucket"),
             func.coalesce(func.sum(OrdenCompra.total), 0).label("total"),
         )
+        .select_from(OrdenCompra)
+        .join(Usuario, Usuario.id_usuario == OrdenCompra.id_comprador)
         .where(
             OrdenCompra.fecha_creacion >= trend_start,
             OrdenCompra.fecha_creacion < trend_end,
             OrdenCompra.estado != EstadoOrdenEnum.CANCELADA,
+            *compra_scope,
         )
         .group_by(compras_month_bucket)
     )
@@ -452,6 +500,7 @@ async def get_analytics(
         .where(
             MovimientoCajaChica.fecha >= trend_start,
             MovimientoCajaChica.fecha < trend_end,
+            *caja_scope,
         )
         .group_by(caja_month_bucket, MovimientoCajaChica.tipo)
     )
@@ -565,16 +614,18 @@ async def get_analytics(
 
     tickets_abiertos = await db.scalar(
         select(func.count(Ticket.id_ticket)).where(
-            Ticket.estado.in_([EstadoTicketEnum.ABIERTO, EstadoTicketEnum.EN_PROGRESO])
+            Ticket.estado.in_([EstadoTicketEnum.ABIERTO, EstadoTicketEnum.EN_PROGRESO]),
+            *ticket_scope,
         )
     )
     cotizaciones_total_mes = await db.scalar(
-        select(func.count(Cotizacion.id_cotizacion)).where(Cotizacion.fecha_creacion >= inicio_mes)
+        select(func.count(Cotizacion.id_cotizacion)).where(Cotizacion.fecha_creacion >= inicio_mes, *cotizacion_scope)
     )
     cotizaciones_facturadas_mes = await db.scalar(
         select(func.count(Cotizacion.id_cotizacion)).where(
             Cotizacion.estado == EstadoCotizacionEnum.FACTURADA,
             Cotizacion.fecha_creacion >= inicio_mes,
+            *cotizacion_scope,
         )
     )
 

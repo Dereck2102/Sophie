@@ -32,7 +32,6 @@ _NEW_ROLES = [
 
 def upgrade() -> None:
     conn = op.get_bind()
-    conn = conn.execution_options(isolation_level="AUTOCOMMIT")
     for role in _NEW_ROLES:
         conn.execute(sa.text(f"ALTER TYPE rolenum ADD VALUE IF NOT EXISTS '{role}'"))
 

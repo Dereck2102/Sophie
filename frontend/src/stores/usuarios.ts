@@ -4,6 +4,7 @@ import api from '../services/api'
 import type { TenantStaffingLimits, Usuario } from '../types'
 
 export interface UsuarioCreate {
+  id_cliente?: number
   username: string
   email: string
   password: string
@@ -17,6 +18,7 @@ export interface UsuarioCreate {
 }
 
 export interface UsuarioUpdate {
+  id_cliente?: number
   email?: string
   nombre_completo?: string
   activo?: boolean
@@ -35,11 +37,13 @@ export const useUsuarioStore = defineStore('usuarios', () => {
   const loadingCapacidad = ref(false)
   const error = ref<string | null>(null)
 
-  async function fetchUsuarios(): Promise<void> {
+  async function fetchUsuarios(idCliente?: number): Promise<void> {
     loading.value = true
     error.value = null
     try {
-      const { data } = await api.get<Usuario[]>('/api/v1/usuarios/')
+      const { data } = await api.get<Usuario[]>('/api/v1/usuarios/', {
+        params: idCliente ? { id_cliente: idCliente } : undefined,
+      })
       usuarios.value = data
     } catch (e: unknown) {
       const err = e as { message?: string }

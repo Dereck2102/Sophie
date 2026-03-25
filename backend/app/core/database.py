@@ -57,6 +57,8 @@ _DEVELOPMENT_SCHEMA_PATCHES = (
     "ALTER TABLE IF EXISTS inventario ADD COLUMN IF NOT EXISTS costo_adquisicion NUMERIC(12, 2) DEFAULT 0",
     "ALTER TABLE IF EXISTS empresa ADD COLUMN IF NOT EXISTS direccion VARCHAR(300)",
     "ALTER TABLE IF EXISTS empresa ADD COLUMN IF NOT EXISTS sector VARCHAR(100)",
+    "ALTER TABLE IF EXISTS empresa ADD COLUMN IF NOT EXISTS branding_nombre VARCHAR(200)",
+    "ALTER TABLE IF EXISTS empresa ADD COLUMN IF NOT EXISTS branding_logo_url VARCHAR(500)",
     "ALTER TABLE IF EXISTS cliente_b2c ADD COLUMN IF NOT EXISTS direccion VARCHAR(300)",
     "ALTER TABLE IF EXISTS cotizacion ADD COLUMN IF NOT EXISTS fecha_vencimiento TIMESTAMPTZ",
     "ALTER TABLE IF EXISTS cotizacion ADD COLUMN IF NOT EXISTS id_proyecto INTEGER",
@@ -131,6 +133,10 @@ _DEVELOPMENT_SCHEMA_PATCHES = (
     "CREATE INDEX IF NOT EXISTS ix_log_auditoria_id_usuario ON log_auditoria (id_usuario)",
     "CREATE INDEX IF NOT EXISTS ix_log_auditoria_accion_tipo ON log_auditoria (accion_tipo)",
     "CREATE INDEX IF NOT EXISTS ix_log_auditoria_modulo ON log_auditoria (modulo)",
+    "ALTER TABLE IF EXISTS payment_transaction ADD COLUMN IF NOT EXISTS id_usuario_owner INTEGER",
+    "CREATE INDEX IF NOT EXISTS ix_payment_transaction_id_usuario_owner ON payment_transaction (id_usuario_owner)",
+    "CREATE TABLE IF NOT EXISTS user_subscription (id_usuario INTEGER PRIMARY KEY, plan_tier VARCHAR(10) NOT NULL DEFAULT 'starter', billing_cycle VARCHAR(10) NOT NULL DEFAULT 'monthly', status VARCHAR(20) NOT NULL DEFAULT 'pending', price_usd NUMERIC(10,2) NOT NULL DEFAULT 0, currency VARCHAR(8) NOT NULL DEFAULT 'USD', features_json TEXT, custom_notes VARCHAR(800), updated_by_user_id INTEGER, created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW())",
+    "CREATE INDEX IF NOT EXISTS ix_user_subscription_updated_by ON user_subscription (updated_by_user_id)",
 )
 
 

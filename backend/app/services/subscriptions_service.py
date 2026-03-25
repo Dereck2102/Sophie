@@ -25,6 +25,7 @@ from app.infrastructure.models.subscriptions import (
     PaymentWebhookEvent,
     PlanTierEnum,
     SubscriptionStatusEnum,
+    UserSubscription,
 )
 from app.infrastructure.models.usuario import RolEnum, Usuario
 from app.schemas.subscriptions import (
@@ -42,6 +43,8 @@ from app.schemas.subscriptions import (
     PaymentTransactionOut,
     PendingCustomOrderOut,
     PlanPresetOut,
+    UserSubscriptionOut,
+    UserSubscriptionUpsert,
 )
 
 _PLAN_PRESETS: dict[PlanTierEnum, dict[str, object]] = {
@@ -249,8 +252,34 @@ class SubscriptionService:
     ) -> bool:
         if payment.plan_tier == PlanTierEnum.CUSTOM and not allow_custom:
             return False
-        if payment.id_empresa is None:
+        if payment.id_empresa is None and payment.id_usuario_owner is None:
             return False
+
+        if payment.id_usuario_owner is not None:
+            user_result = await self.db.execute(select(Usuario).where(Usuario.id_usuario == payment.id_usuario_owner))
+            user = user_result.scalar_one_or_none()
+            if not user:
+                return False
+
+            user_sub_result = await self.db.execute(
+                select(UserSubscription).where(UserSubscription.id_usuario == payment.id_usuario_owner)
+            )
+            user_sub = user_sub_result.scalar_one_or_none()
+            if not user_sub:
+                user_sub = UserSubscription(id_usuario=payment.id_usuario_owner)
+                self.db.add(user_sub)
+
+            user_sub.plan_tier = payment.plan_tier
+            user_sub.billing_cycle = payment.billing_cycle
+            user_sub.status = SubscriptionStatusEnum.ACTIVE
+            user_sub.price_usd = Decimal(str(payment.amount))
+            user_sub.currency = payment.currency or "USD"
+            if payment.plan_tier == PlanTierEnum.CUSTOM:
+                user_sub.features_json = json.dumps(_extract_custom_features_from_text(payment.custom_requirements))
+            else:
+                user_sub.features_json = json.dumps(_plan_features(payment.plan_tier))
+            await self.db.flush()
+            return True
 
         result = await self.db.execute(
             select(EmpresaSubscription).where(EmpresaSubscription.id_empresa == payment.id_empresa)
@@ -404,6 +433,14 @@ class SubscriptionService:
             empresa = empresa_result.scalar_one_or_none()
             if not empresa:
                 raise HTTPException(status_code=404, detail="Empresa no encontrada")
+        if body.id_usuario_owner is not None:
+            user_result = await self.db.execute(select(Usuario).where(Usuario.id_usuario == body.id_usuario_owner))
+            owner = user_result.scalar_one_or_none()
+            if not owner:
+                raise HTTPException(status_code=404, detail="Usuario no encontrado")
+
+        if body.id_empresa is not None and body.id_usuario_owner is not None:
+            raise HTTPException(status_code=400, detail="Define id_empresa o id_usuario_owner, pero no ambos")
 
         is_yearly = body.billing_cycle.value == "yearly"
         amount = _plan_price(body.plan, yearly=is_yearly)
@@ -414,6 +451,7 @@ class SubscriptionService:
 
         payment = PaymentTransaction(
             id_empresa=body.id_empresa,
+            id_usuario_owner=body.id_usuario_owner,
             plan_tier=body.plan,
             billing_cycle=body.billing_cycle,
             amount=amount,
@@ -697,6 +735,114 @@ class SubscriptionService:
         return EmpresaSubscriptionOut(
             id_empresa=id_empresa,
             empresa_nombre=empresa.razon_social,
+            plan_tier=sub.plan_tier,
+            billing_cycle=sub.billing_cycle,
+            status=sub.status,
+            price_usd=Decimal(str(sub.price_usd)),
+            currency=sub.currency,
+            features=final_features,
+            custom_notes=sub.custom_notes,
+            updated_by_user_id=sub.updated_by_user_id,
+            updated_at=sub.updated_at,
+        )
+
+    async def list_user_subscriptions(self, *, limit: int) -> list[UserSubscriptionOut]:
+        users_result = await self.db.execute(
+            select(Usuario).where(Usuario.id_cliente.is_not(None)).order_by(Usuario.username.asc()).limit(limit)
+        )
+        users = list(users_result.scalars().all())
+        if not users:
+            return []
+
+        ids = [user.id_usuario for user in users]
+        subs_result = await self.db.execute(select(UserSubscription).where(UserSubscription.id_usuario.in_(ids)))
+        subs_map = {sub.id_usuario: sub for sub in subs_result.scalars().all()}
+
+        output: list[UserSubscriptionOut] = []
+        for user in users:
+            sub = subs_map.get(user.id_usuario)
+            if sub:
+                features = _parse_features_json(sub.features_json)
+                output.append(
+                    UserSubscriptionOut(
+                        id_usuario=user.id_usuario,
+                        username=user.username,
+                        email=user.email,
+                        plan_tier=sub.plan_tier,
+                        billing_cycle=sub.billing_cycle,
+                        status=sub.status,
+                        price_usd=Decimal(str(sub.price_usd)),
+                        currency=sub.currency,
+                        features=features,
+                        custom_notes=sub.custom_notes,
+                        updated_by_user_id=sub.updated_by_user_id,
+                        updated_at=sub.updated_at,
+                    )
+                )
+            else:
+                output.append(
+                    UserSubscriptionOut(
+                        id_usuario=user.id_usuario,
+                        username=user.username,
+                        email=user.email,
+                        plan_tier=PlanTierEnum.STARTER,
+                        billing_cycle=BillingCycleEnum.MONTHLY,
+                        status=SubscriptionStatusEnum.PENDING,
+                        price_usd=_plan_price(PlanTierEnum.STARTER, yearly=False),
+                        currency="USD",
+                        features=_plan_features(PlanTierEnum.STARTER),
+                        custom_notes=None,
+                        updated_by_user_id=None,
+                        updated_at=None,
+                    )
+                )
+        return output
+
+    async def upsert_user_subscription(
+        self,
+        *,
+        id_usuario: int,
+        body: UserSubscriptionUpsert,
+        current_user: Usuario,
+    ) -> UserSubscriptionOut:
+        user_result = await self.db.execute(select(Usuario).where(Usuario.id_usuario == id_usuario))
+        user = user_result.scalar_one_or_none()
+        if not user:
+            raise HTTPException(status_code=404, detail="Usuario no encontrado")
+
+        default_features = _plan_features(body.plan_tier)
+        override_features = sorted({item.strip() for item in body.feature_overrides if item and item.strip()})
+
+        if body.plan_tier == PlanTierEnum.CUSTOM and not override_features:
+            raise HTTPException(
+                status_code=400,
+                detail="El plan custom requiere features explícitas definidas por superadmin.",
+            )
+
+        final_features = override_features or default_features
+        price = _plan_price(body.plan_tier, yearly=body.billing_cycle.value == "yearly")
+
+        sub_result = await self.db.execute(select(UserSubscription).where(UserSubscription.id_usuario == id_usuario))
+        sub = sub_result.scalar_one_or_none()
+        if not sub:
+            sub = UserSubscription(id_usuario=id_usuario)
+            self.db.add(sub)
+
+        sub.plan_tier = body.plan_tier
+        sub.billing_cycle = body.billing_cycle
+        sub.status = body.status
+        sub.price_usd = price
+        sub.currency = "USD"
+        sub.features_json = json.dumps(final_features)
+        sub.custom_notes = body.custom_notes
+        sub.updated_by_user_id = current_user.id_usuario
+
+        await self.db.flush()
+
+        return UserSubscriptionOut(
+            id_usuario=id_usuario,
+            username=user.username,
+            email=user.email,
             plan_tier=sub.plan_tier,
             billing_cycle=sub.billing_cycle,
             status=sub.status,

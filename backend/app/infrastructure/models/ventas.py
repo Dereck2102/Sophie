@@ -38,6 +38,12 @@ class Cotizacion(Base):
 
     id_cotizacion: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     numero: Mapped[str] = mapped_column(String(30), unique=True, nullable=False)
+    tenant_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("cliente.id_cliente", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     id_cliente: Mapped[int] = mapped_column(
         Integer, ForeignKey("cliente.id_cliente"), nullable=False
     )
@@ -64,7 +70,9 @@ class Cotizacion(Base):
     )
     fecha_vencimiento: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
-    cliente: Mapped["Cliente"] = relationship(back_populates="cotizaciones")
+    cliente: Mapped["Cliente"] = relationship(
+        back_populates="cotizaciones", foreign_keys=[id_cliente]
+    )
     vendedor: Mapped["Usuario"] = relationship()
     proyecto: Mapped["Proyecto | None"] = relationship("Proyecto")
     detalles: Mapped[list["DetalleCotizacion"]] = relationship(

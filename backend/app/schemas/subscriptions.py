@@ -28,6 +28,7 @@ class CheckoutRequest(BaseModel):
     plan: PlanTierEnum
     billing_cycle: BillingCycleEnum = BillingCycleEnum.MONTHLY
     id_empresa: int | None = None
+    id_usuario_owner: int | None = None
     customer_name: str | None = None
     customer_email: EmailStr | None = None
     custom_requirements: str | None = None
@@ -91,9 +92,33 @@ class EmpresaSubscriptionOut(BaseModel):
     updated_at: datetime | None = None
 
 
+class UserSubscriptionUpsert(BaseModel):
+    plan_tier: PlanTierEnum
+    billing_cycle: BillingCycleEnum = BillingCycleEnum.MONTHLY
+    status: SubscriptionStatusEnum = SubscriptionStatusEnum.ACTIVE
+    custom_notes: str | None = None
+    feature_overrides: list[str] = Field(default_factory=list)
+
+
+class UserSubscriptionOut(BaseModel):
+    id_usuario: int
+    username: str
+    email: str
+    plan_tier: PlanTierEnum
+    billing_cycle: BillingCycleEnum
+    status: SubscriptionStatusEnum
+    price_usd: Decimal
+    currency: str
+    features: list[str]
+    custom_notes: str | None = None
+    updated_by_user_id: int | None = None
+    updated_at: datetime | None = None
+
+
 class PaymentTransactionOut(BaseModel):
     id_pago: int
     id_empresa: int | None
+    id_usuario_owner: int | None
     plan_tier: PlanTierEnum
     billing_cycle: BillingCycleEnum
     amount: Decimal

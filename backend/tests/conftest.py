@@ -23,6 +23,7 @@ os.environ.setdefault("SECRET_KEY", "test-secret-key-32chars-padding!!")
 _vault_key = base64.b64encode(os.urandom(32)).decode()
 os.environ.setdefault("VAULT_SECRET_KEY", _vault_key)
 os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite:///:memory:")
+os.environ.setdefault("RATE_LIMIT_ENABLED", "false")
 
 from app.core.database import Base, get_db  # noqa: E402
 from app.main import app  # noqa: E402

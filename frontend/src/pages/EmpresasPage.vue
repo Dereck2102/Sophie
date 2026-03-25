@@ -71,7 +71,7 @@ const canManage = computed(() => {
   const permisos = auth.user?.permisos ?? []
   return permisos.includes('*') || permisos.includes('empresas.manage') || permisos.includes('clientes.manage')
 })
-const canDelete = computed(() => auth.user?.rol === 'superadmin')
+const canDelete = computed(() => auth.isSuperadminUser)
 
 function resetForm(): void {
   form.value = {

@@ -47,6 +47,7 @@ class Usuario(Base):
 
     id_usuario: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     id_cliente: Mapped[int | None] = mapped_column(Integer, ForeignKey("cliente.id_cliente", ondelete="SET NULL"))
+    id_empresa: Mapped[int | None] = mapped_column(Integer, ForeignKey("cliente.id_cliente", ondelete="SET NULL"))
     username: Mapped[str] = mapped_column(String(60), unique=True, nullable=False, index=True)
     email: Mapped[str] = mapped_column(String(120), unique=True, nullable=False)
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
@@ -81,8 +82,14 @@ class Usuario(Base):
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_login_ip: Mapped[str | None] = mapped_column(String(64))
     last_login_user_agent: Mapped[str | None] = mapped_column(String(300))
+    # Nuevas columnas para suscripción dual B2B/B2C
+    tipo_suscripcion: Mapped[str] = mapped_column(String(20), default="corporativa", index=True)
+    es_admin_global: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
     fecha_creacion: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
 
     logs: Mapped[list["LogAuditoria"]] = relationship(back_populates="usuario")
+    configuracion_usuario: Mapped["ConfiguracionUsuario | None"] = relationship(
+        back_populates="usuario", uselist=False, cascade="all, delete-orphan"
+    )

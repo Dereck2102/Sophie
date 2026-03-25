@@ -93,6 +93,34 @@ Notas:
 - Para iOS necesitas macOS + Xcode.
 - En móvil se reutiliza el frontend Vue compilado (`frontend/dist`) vía Capacitor.
 
+### Seguridad APK (fase previa a release)
+
+Configuración aplicada en el proyecto Android:
+- `usesCleartextTraffic=false` y `network_security_config` sin tráfico HTTP en claro.
+- Build `release` con `R8` + `minifyEnabled=true` + `shrinkResources=true`.
+- `release` no depurable (`debuggable=false`, `jniDebuggable=false`).
+- Sanitización de logs en release (`Log.v/d/i` y `println/print`).
+
+Flujo recomendado para firma segura:
+
+```bash
+cd frontend/android
+
+# 1) Generar keystore de release (hacer una sola vez y guardarlo en lugar seguro)
+keytool -genkeypair -v -keystore sophie-release.jks -keyalg RSA -keysize 4096 -validity 3650 -alias sophie
+
+# 2) Build release (APK)
+./gradlew assembleRelease
+
+# 3) Verificar firma del APK
+apksigner verify --verbose app/build/outputs/apk/release/app-release.apk
+```
+
+Buenas prácticas:
+- No subir `*.jks`, `key.properties` ni contraseñas al repositorio.
+- Guardar secretos de firma en variables de entorno/secret manager.
+- Activar Play Integrity API y revisar permisos mínimos antes de publicar.
+
 ### Estructura del Proyecto
 
 ```

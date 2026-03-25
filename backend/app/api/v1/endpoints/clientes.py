@@ -4,7 +4,7 @@ from typing import Annotated, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -37,6 +37,23 @@ _LOAD_OPTIONS = [
     selectinload(Cliente.empresa),
     selectinload(Cliente.cliente_b2c),
 ]
+
+
+def _tenant_id_for_user(current_user: Usuario) -> int | None:
+    if current_user.rol == RolEnum.SUPERADMIN:
+        return None
+    return current_user.id_cliente
+
+
+def _assert_cliente_tenant_access(current_user: Usuario, cliente: Cliente) -> None:
+    tenant_id = _tenant_id_for_user(current_user)
+    if tenant_id is None:
+        return
+    if cliente.tenant_id == tenant_id:
+        return
+    if cliente.tenant_id is None and cliente.id_cliente == tenant_id:
+        return
+    raise HTTPException(status_code=403, detail="No tienes acceso a este cliente")
 
 
 def _assert_can_manage_cliente_payload(current_user: Usuario, body: ClienteCreate) -> None:
@@ -84,7 +101,15 @@ async def list_clientes(
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=200),
 ) -> list[Cliente]:
+    tenant_id = _tenant_id_for_user(current_user)
     q = select(Cliente).options(*_LOAD_OPTIONS).offset(skip).limit(limit)
+    if tenant_id is not None:
+        q = q.where(
+            or_(
+                Cliente.tenant_id == tenant_id,
+                Cliente.id_cliente == tenant_id,
+            )
+        )
     if tipo:
         q = q.where(Cliente.tipo_cliente == tipo)
     result = await db.execute(q)
@@ -98,11 +123,15 @@ async def create_cliente(
     current_user: Annotated[Usuario, Depends(get_current_user)],
 ) -> Cliente:
     _assert_can_manage_cliente_payload(current_user, body)
+    tenant_id = _tenant_id_for_user(current_user)
 
-    cliente = Cliente(tipo_cliente=body.tipo_cliente, estado=body.estado)
+    cliente = Cliente(tipo_cliente=body.tipo_cliente, estado=body.estado, tenant_id=tenant_id)
     db.add(cliente)
     try:
         await db.flush()
+
+        if current_user.rol == RolEnum.SUPERADMIN and body.tipo_cliente == TipoClienteEnum.B2B:
+            cliente.tenant_id = cliente.id_cliente
 
         if body.tipo_cliente == TipoClienteEnum.B2B:
             if not body.empresa:
@@ -142,6 +171,7 @@ async def get_cliente(
     cliente = result.scalar_one_or_none()
     if not cliente:
         raise HTTPException(status_code=404, detail="Cliente not found")
+    _assert_cliente_tenant_access(current_user, cliente)
     return cliente
 
 
@@ -158,6 +188,7 @@ async def update_cliente(
     cliente = result.scalar_one_or_none()
     if not cliente:
         raise HTTPException(status_code=404, detail="Cliente not found")
+    _assert_cliente_tenant_access(current_user, cliente)
 
     _assert_can_manage_existing_cliente(current_user, cliente)
 
@@ -220,6 +251,12 @@ async def get_cliente_timeline(
     db: Annotated[AsyncSession, Depends(get_db)],
     current_user: Annotated[Usuario, Depends(get_current_user)],
 ) -> list[EventoCliente]:
+    cliente_result = await db.execute(select(Cliente).where(Cliente.id_cliente == id_cliente))
+    cliente = cliente_result.scalar_one_or_none()
+    if not cliente:
+        raise HTTPException(status_code=404, detail="Cliente not found")
+    _assert_cliente_tenant_access(current_user, cliente)
+
     result = await db.execute(
         select(EventoCliente)
         .where(EventoCliente.id_cliente == id_cliente)
@@ -234,6 +271,12 @@ async def get_cliente_tickets(
     db: Annotated[AsyncSession, Depends(get_db)],
     current_user: Annotated[Usuario, Depends(get_current_user)],
 ) -> list[Ticket]:
+    cliente_result = await db.execute(select(Cliente).where(Cliente.id_cliente == id_cliente))
+    cliente = cliente_result.scalar_one_or_none()
+    if not cliente:
+        raise HTTPException(status_code=404, detail="Cliente not found")
+    _assert_cliente_tenant_access(current_user, cliente)
+
     result = await db.execute(
         select(Ticket)
         .where(Ticket.id_cliente == id_cliente)
@@ -248,6 +291,12 @@ async def get_cliente_cotizaciones(
     db: Annotated[AsyncSession, Depends(get_db)],
     current_user: Annotated[Usuario, Depends(get_current_user)],
 ) -> list[Cotizacion]:
+    cliente_result = await db.execute(select(Cliente).where(Cliente.id_cliente == id_cliente))
+    cliente = cliente_result.scalar_one_or_none()
+    if not cliente:
+        raise HTTPException(status_code=404, detail="Cliente not found")
+    _assert_cliente_tenant_access(current_user, cliente)
+
     result = await db.execute(
         select(Cotizacion)
         .options(selectinload(Cotizacion.detalles))

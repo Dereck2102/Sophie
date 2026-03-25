@@ -189,6 +189,39 @@ async def test_get_me(client: AsyncClient) -> None:
 
 
 @pytest.mark.asyncio
+async def test_role_profiles_requires_auth_and_returns_profiles(client: AsyncClient) -> None:
+    unauth = await client.get("/api/v1/auth/role-profiles")
+    assert unauth.status_code == 401
+
+    await client.post(
+        "/api/v1/auth/register",
+        json={
+            "username": "profiles_user",
+            "email": "profiles_user@bigsolutions.pe",
+            "password": "ProfilesPass123!",
+            "rol": "superadmin",
+        },
+    )
+    login = await client.post(
+        "/api/v1/auth/login",
+        json={"username": "profiles_user", "password": "ProfilesPass123!"},
+    )
+    token = login.json()["access_token"]
+
+    resp = await client.get(
+        "/api/v1/auth/role-profiles",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 200
+    payload = resp.json()
+    assert "superadmin" in payload
+    assert "admin" in payload
+    assert payload["superadmin"]["permisos"] == ["*"]
+    assert isinstance(payload["admin"]["vistas"], list)
+    assert isinstance(payload["admin"]["herramientas"], list)
+
+
+@pytest.mark.asyncio
 async def test_refresh_uses_cookie_when_body_missing(client: AsyncClient) -> None:
     await client.post(
         "/api/v1/auth/register",
@@ -525,6 +558,139 @@ async def test_tenant_starter_limits_one_specialist_per_role(client: AsyncClient
 
 
 @pytest.mark.asyncio
+async def test_tenant_admin_admin_creation_is_allowed_but_respects_plan_limits(client: AsyncClient) -> None:
+    await client.post(
+        "/api/v1/auth/register",
+        json={
+            "username": "damacoria",
+            "email": "damacoria@bigsolutions.pe",
+            "password": "OwnerPass123!",
+            "rol": "superadmin",
+        },
+    )
+    super_login = await client.post(
+        "/api/v1/auth/login",
+        json={"username": "damacoria", "password": "OwnerPass123!"},
+    )
+    super_headers = {"Authorization": f"Bearer {super_login.json()['access_token']}"}
+
+    empresa_resp = await client.post(
+        "/api/v1/clientes/",
+        json={
+            "tipo_cliente": "B2B",
+            "estado": "activo",
+            "empresa": {
+                "razon_social": "Empresa Tenant Admin",
+                "ruc": "20999900003",
+                "contacto_principal": "Rosa Ops",
+                "telefono": "0999000333",
+                "email": "tenant_admin_company@bigsolutions.pe",
+            },
+        },
+        headers=super_headers,
+    )
+    assert empresa_resp.status_code == 201
+    tenant_id = empresa_resp.json()["id_cliente"]
+
+    tenant_admin_resp = await client.post(
+        "/api/v1/usuarios/",
+        json={
+            "id_cliente": tenant_id,
+            "username": "tenant_admin_primary",
+            "email": "tenant_admin_primary@bigsolutions.pe",
+            "password": "TenantAdmin123!",
+            "rol": "admin",
+        },
+        headers=super_headers,
+    )
+    assert tenant_admin_resp.status_code == 201
+
+    tenant_login = await client.post(
+        "/api/v1/auth/login",
+        json={"username": "tenant_admin_primary", "password": "TenantAdmin123!"},
+    )
+    tenant_headers = {"Authorization": f"Bearer {tenant_login.json()['access_token']}"}
+
+    create_second_admin = await client.post(
+        "/api/v1/usuarios/",
+        json={
+            "username": "tenant_admin_secondary",
+            "email": "tenant_admin_secondary@bigsolutions.pe",
+            "password": "TenantAdmin123!",
+            "rol": "admin",
+        },
+        headers=tenant_headers,
+    )
+    assert create_second_admin.status_code == 409
+    assert "Límite por rol" in create_second_admin.json().get("detail", "")
+
+
+@pytest.mark.asyncio
+async def test_company_cannot_remove_last_active_admin(client: AsyncClient) -> None:
+    await client.post(
+        "/api/v1/auth/register",
+        json={
+            "username": "damacoria",
+            "email": "damacoria@bigsolutions.pe",
+            "password": "OwnerPass123!",
+            "rol": "superadmin",
+        },
+    )
+    super_login = await client.post(
+        "/api/v1/auth/login",
+        json={"username": "damacoria", "password": "OwnerPass123!"},
+    )
+    super_headers = {"Authorization": f"Bearer {super_login.json()['access_token']}"}
+
+    empresa_resp = await client.post(
+        "/api/v1/clientes/",
+        json={
+            "tipo_cliente": "B2B",
+            "estado": "activo",
+            "empresa": {
+                "razon_social": "Empresa Last Admin",
+                "ruc": "20999900004",
+                "contacto_principal": "Luis Ops",
+                "telefono": "0999000444",
+                "email": "last_admin_company@bigsolutions.pe",
+            },
+        },
+        headers=super_headers,
+    )
+    assert empresa_resp.status_code == 201
+    tenant_id = empresa_resp.json()["id_cliente"]
+
+    tenant_admin_resp = await client.post(
+        "/api/v1/usuarios/",
+        json={
+            "id_cliente": tenant_id,
+            "username": "tenant_admin_unique",
+            "email": "tenant_admin_unique@bigsolutions.pe",
+            "password": "TenantAdmin123!",
+            "rol": "admin",
+        },
+        headers=super_headers,
+    )
+    assert tenant_admin_resp.status_code == 201
+    tenant_admin_id = tenant_admin_resp.json()["id_usuario"]
+
+    deactivate_resp = await client.patch(
+        f"/api/v1/usuarios/{tenant_admin_id}",
+        json={"activo": False},
+        headers=super_headers,
+    )
+    assert deactivate_resp.status_code == 409
+    assert "al menos un administrador activo" in deactivate_resp.json().get("detail", "")
+
+    delete_resp = await client.delete(
+        f"/api/v1/usuarios/{tenant_admin_id}",
+        headers=super_headers,
+    )
+    assert delete_resp.status_code == 409
+    assert "al menos un administrador activo" in delete_resp.json().get("detail", "")
+
+
+@pytest.mark.asyncio
 async def test_tenant_capacity_endpoint_returns_area_and_role_buckets(client: AsyncClient) -> None:
     await client.post(
         "/api/v1/auth/register",
@@ -589,3 +755,251 @@ async def test_tenant_capacity_endpoint_returns_area_and_role_buckets(client: As
     assert isinstance(payload["by_area"], list)
     assert any(item["key"] == "admin" and item["used"] == 1 for item in payload["by_role"])
     assert any(item["key"] == "direccion" and item["used"] == 1 for item in payload["by_area"])
+
+
+@pytest.mark.asyncio
+async def test_tenant_scoped_users_route_allows_company_admin(client: AsyncClient) -> None:
+    await client.post(
+        "/api/v1/auth/register",
+        json={
+            "username": "damacoria",
+            "email": "damacoria@bigsolutions.pe",
+            "password": "OwnerPass123!",
+            "rol": "superadmin",
+        },
+    )
+    super_login = await client.post(
+        "/api/v1/auth/login",
+        json={"username": "damacoria", "password": "OwnerPass123!"},
+    )
+    super_headers = {"Authorization": f"Bearer {super_login.json()['access_token']}"}
+
+    empresa_resp = await client.post(
+        "/api/v1/clientes/",
+        json={
+            "tipo_cliente": "B2B",
+            "estado": "activo",
+            "empresa": {
+                "razon_social": "Empresa Tenant Route",
+                "ruc": "20999900005",
+                "contacto_principal": "Pablo Ops",
+                "telefono": "0999000555",
+                "email": "tenant_route@bigsolutions.pe",
+            },
+        },
+        headers=super_headers,
+    )
+    assert empresa_resp.status_code == 201
+    tenant_id = empresa_resp.json()["id_cliente"]
+
+    create_admin = await client.post(
+        "/api/v1/usuarios/",
+        json={
+            "id_cliente": tenant_id,
+            "username": "tenant_route_admin",
+            "email": "tenant_route_admin@bigsolutions.pe",
+            "password": "TenantAdmin123!",
+            "rol": "admin",
+        },
+        headers=super_headers,
+    )
+    assert create_admin.status_code == 201
+
+    tenant_login = await client.post(
+        "/api/v1/auth/login",
+        json={"username": "tenant_route_admin", "password": "TenantAdmin123!"},
+    )
+    tenant_headers = {"Authorization": f"Bearer {tenant_login.json()['access_token']}"}
+
+    list_resp = await client.get(
+        f"/api/v1/empresas/{tenant_id}/usuarios/",
+        headers=tenant_headers,
+    )
+    assert list_resp.status_code == 200
+    payload = list_resp.json()
+    assert isinstance(payload, list)
+    assert any(user["username"] == "tenant_route_admin" for user in payload)
+
+
+@pytest.mark.asyncio
+async def test_tenant_scoped_users_route_blocks_cross_tenant_access(client: AsyncClient) -> None:
+    await client.post(
+        "/api/v1/auth/register",
+        json={
+            "username": "damacoria",
+            "email": "damacoria@bigsolutions.pe",
+            "password": "OwnerPass123!",
+            "rol": "superadmin",
+        },
+    )
+    super_login = await client.post(
+        "/api/v1/auth/login",
+        json={"username": "damacoria", "password": "OwnerPass123!"},
+    )
+    super_headers = {"Authorization": f"Bearer {super_login.json()['access_token']}"}
+
+    empresa_resp = await client.post(
+        "/api/v1/clientes/",
+        json={
+            "tipo_cliente": "B2B",
+            "estado": "activo",
+            "empresa": {
+                "razon_social": "Empresa Tenant Isolation",
+                "ruc": "20999900006",
+                "contacto_principal": "Ana Ops",
+                "telefono": "0999000666",
+                "email": "tenant_isolation@bigsolutions.pe",
+            },
+        },
+        headers=super_headers,
+    )
+    assert empresa_resp.status_code == 201
+    tenant_id = empresa_resp.json()["id_cliente"]
+
+    create_admin = await client.post(
+        "/api/v1/usuarios/",
+        json={
+            "id_cliente": tenant_id,
+            "username": "tenant_isolation_admin",
+            "email": "tenant_isolation_admin@bigsolutions.pe",
+            "password": "TenantAdmin123!",
+            "rol": "admin",
+        },
+        headers=super_headers,
+    )
+    assert create_admin.status_code == 201
+
+    tenant_login = await client.post(
+        "/api/v1/auth/login",
+        json={"username": "tenant_isolation_admin", "password": "TenantAdmin123!"},
+    )
+    tenant_headers = {"Authorization": f"Bearer {tenant_login.json()['access_token']}"}
+
+    blocked_resp = await client.get(
+        "/api/v1/empresas/999999/usuarios/",
+        headers=tenant_headers,
+    )
+    assert blocked_resp.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_tenant_prefixed_dashboard_alias_allows_company_admin(client: AsyncClient) -> None:
+    await client.post(
+        "/api/v1/auth/register",
+        json={
+            "username": "damacoria",
+            "email": "damacoria@bigsolutions.pe",
+            "password": "OwnerPass123!",
+            "rol": "superadmin",
+        },
+    )
+    super_login = await client.post(
+        "/api/v1/auth/login",
+        json={"username": "damacoria", "password": "OwnerPass123!"},
+    )
+    super_headers = {"Authorization": f"Bearer {super_login.json()['access_token']}"}
+
+    empresa_resp = await client.post(
+        "/api/v1/clientes/",
+        json={
+            "tipo_cliente": "B2B",
+            "estado": "activo",
+            "empresa": {
+                "razon_social": "Empresa Dashboard Alias",
+                "ruc": "20999900007",
+                "contacto_principal": "Mario Ops",
+                "telefono": "0999000777",
+                "email": "dashboard_alias@bigsolutions.pe",
+            },
+        },
+        headers=super_headers,
+    )
+    assert empresa_resp.status_code == 201
+    tenant_id = empresa_resp.json()["id_cliente"]
+
+    create_admin = await client.post(
+        "/api/v1/usuarios/",
+        json={
+            "id_cliente": tenant_id,
+            "username": "tenant_dashboard_admin",
+            "email": "tenant_dashboard_admin@bigsolutions.pe",
+            "password": "TenantAdmin123!",
+            "rol": "admin",
+        },
+        headers=super_headers,
+    )
+    assert create_admin.status_code == 201
+
+    tenant_login = await client.post(
+        "/api/v1/auth/login",
+        json={"username": "tenant_dashboard_admin", "password": "TenantAdmin123!"},
+    )
+    tenant_headers = {"Authorization": f"Bearer {tenant_login.json()['access_token']}"}
+
+    dashboard_resp = await client.get(
+        f"/api/v1/empresas/{tenant_id}/dashboard/stats",
+        headers=tenant_headers,
+    )
+    assert dashboard_resp.status_code == 200
+    assert "total_clientes" in dashboard_resp.json()
+
+
+@pytest.mark.asyncio
+async def test_tenant_prefixed_dashboard_alias_blocks_cross_tenant_access(client: AsyncClient) -> None:
+    await client.post(
+        "/api/v1/auth/register",
+        json={
+            "username": "damacoria",
+            "email": "damacoria@bigsolutions.pe",
+            "password": "OwnerPass123!",
+            "rol": "superadmin",
+        },
+    )
+    super_login = await client.post(
+        "/api/v1/auth/login",
+        json={"username": "damacoria", "password": "OwnerPass123!"},
+    )
+    super_headers = {"Authorization": f"Bearer {super_login.json()['access_token']}"}
+
+    empresa_resp = await client.post(
+        "/api/v1/clientes/",
+        json={
+            "tipo_cliente": "B2B",
+            "estado": "activo",
+            "empresa": {
+                "razon_social": "Empresa Dashboard Isolation",
+                "ruc": "20999900008",
+                "contacto_principal": "Laura Ops",
+                "telefono": "0999000888",
+                "email": "dashboard_isolation@bigsolutions.pe",
+            },
+        },
+        headers=super_headers,
+    )
+    assert empresa_resp.status_code == 201
+    tenant_id = empresa_resp.json()["id_cliente"]
+
+    create_admin = await client.post(
+        "/api/v1/usuarios/",
+        json={
+            "id_cliente": tenant_id,
+            "username": "tenant_dashboard_isolation_admin",
+            "email": "tenant_dashboard_isolation_admin@bigsolutions.pe",
+            "password": "TenantAdmin123!",
+            "rol": "admin",
+        },
+        headers=super_headers,
+    )
+    assert create_admin.status_code == 201
+
+    tenant_login = await client.post(
+        "/api/v1/auth/login",
+        json={"username": "tenant_dashboard_isolation_admin", "password": "TenantAdmin123!"},
+    )
+    tenant_headers = {"Authorization": f"Bearer {tenant_login.json()['access_token']}"}
+
+    blocked_resp = await client.get(
+        "/api/v1/empresas/999999/dashboard/stats",
+        headers=tenant_headers,
+    )
+    assert blocked_resp.status_code == 403

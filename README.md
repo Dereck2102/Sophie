@@ -217,6 +217,16 @@ sophie/
 - **MFA:** Deshabilitado (puede habilitarse después del primer login)
 - **Status:** Completamente funcional
 
+### Credenciales de Demo Recomendadas
+
+- **Root operativo:** `root` / `RootPass123!`
+- **Superadmin propietario:** `damacoria` / `Docedos13`
+
+Notas:
+- El primer `POST /api/v1/auth/register` crea el superadmin bootstrap si la base está vacía.
+- Los usuarios operativos adicionales deben crearse desde el panel maestro o mediante seed controlado.
+- No se requiere una migración nueva para los cambios de frontend de esta iteración; la base ya cubre los campos usados por el panel maestro actual.
+
 ### Cómo Validar el Sistema
 
 ```bash

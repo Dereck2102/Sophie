@@ -9,9 +9,9 @@ withDefaults(
 </script>
 
 <template>
-  <div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700">
-    <div v-if="title" class="px-6 py-4 border-b border-gray-100 dark:border-gray-700">
-      <h3 class="text-base font-semibold text-gray-800 dark:text-gray-100">{{ title }}</h3>
+  <div class="app-surface overflow-hidden">
+    <div v-if="title" class="px-6 py-4 border-b border-slate-100/80 dark:border-slate-800/80 bg-white/40 dark:bg-slate-900/30">
+      <h3 class="text-base font-semibold text-slate-800 dark:text-slate-100">{{ title }}</h3>
     </div>
     <div :class="padding ? 'p-6' : ''">
       <slot />

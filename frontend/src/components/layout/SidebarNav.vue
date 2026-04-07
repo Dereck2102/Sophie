@@ -33,6 +33,7 @@ const DISABLED_VIEWS_ERP_ONLY = new Set(['crm'])
 const navGroups = computed(() => {
   const userViews = auth.user?.vistas ?? []
   const isSuperadmin = auth.isSuperadminUser
+  const isGlobalSupport = auth.user?.rol === 'agente_soporte' && auth.user?.es_admin_global
   const isB2C = auth.user?.tipo_suscripcion === 'individual'
   const isB2B = auth.user?.tipo_suscripcion === 'corporativa'
   const empresaId = auth.user?.id_empresa
@@ -50,11 +51,12 @@ const navGroups = computed(() => {
       { path: '/global/dashboard', label: t('nav.globalDashboard'), icon: Blocks, requiredView: 'global_dashboard' },
       { path: '/global/companies', label: t('nav.globalCompanies'), icon: Building2, requiredView: 'global_dashboard' },
       { path: '/global/users', label: t('nav.globalUsers'), icon: Users, requiredView: 'global_dashboard' },
+      { path: '/global/tickets', label: t('nav.globalTickets'), icon: Wrench, requiredView: 'global_tickets' },
       { path: '/global/configuration', label: t('nav.configuracion'), icon: Settings, requiredView: 'global_dashboard' },
-    ].filter(() => isSuperadmin),
+    ].filter((item) => isSuperadmin || item.path === '/global/tickets'),
   }
 
-  if (isSuperadmin) {
+  if (isSuperadmin || isGlobalSupport) {
     return [globalGroup].filter(g => g.items.length > 0)
   }
 

@@ -8,14 +8,14 @@ from pydantic import BaseModel, EmailStr
 from sqlalchemy import and_, cast, delete, or_, select, String
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_current_user, require_superadmin
+from app.api.deps import get_current_user, require_roles, require_superadmin
 from app.core.access import dumps_json_list, get_effective_access
 from app.core.config import get_settings
 from app.core.database import get_db
 from app.infrastructure.models.auditoria import LogAuditoria
 from app.infrastructure.models.cliente import Empresa
 from app.infrastructure.models.sistema import ConfiguracionSistema
-from app.infrastructure.models.usuario import Usuario
+from app.infrastructure.models.usuario import RolEnum, Usuario
 from app.services.email_service import EmailDeliveryError, send_email_message
 from app.services.sms_service import SmsDeliveryError, send_sms_message
 from app.schemas.usuario import (
@@ -190,7 +190,7 @@ async def test_auth_channel_sms(
 @router.get("/auditoria", response_model=list[AuditoriaLogOut])
 async def list_auditoria(
     db: Annotated[AsyncSession, Depends(get_db)],
-    current_user: Annotated[Usuario, Depends(require_superadmin())],
+    current_user: Annotated[Usuario, Depends(require_roles(RolEnum.SUPERADMIN, RolEnum.ADMIN))],
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=500),
     modulo: str | None = Query(None),
@@ -203,7 +203,15 @@ async def list_auditoria(
     fecha_hasta: datetime | None = Query(None),
     q: str | None = Query(None),
 ) -> list[AuditoriaLogOut]:
-    _ = current_user
+    tenant_id = current_user.id_cliente or current_user.id_empresa
+    is_superadmin = current_user.rol == RolEnum.SUPERADMIN
+
+    if not is_superadmin:
+        if tenant_id is None:
+            raise HTTPException(status_code=403, detail="Tu usuario admin no está asociado a una empresa")
+        if id_cliente is not None and id_cliente != tenant_id:
+            raise HTTPException(status_code=403, detail="No puedes consultar auditoría de otra empresa")
+        id_cliente = tenant_id
 
     query = (
         select(LogAuditoria, Usuario.username, Usuario.nombre_completo, Empresa.razon_social)

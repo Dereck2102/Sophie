@@ -12,6 +12,7 @@ const ERP_ONLY_DISABLED_VIEWS = new Set(['crm'])
 const VIEW_ROUTE_MAP: Record<string, string> = {
   dashboard: 'Dashboard',
   global_dashboard: 'GlobalDashboard',
+  global_tickets: 'GlobalTickets',
   taller: 'Taller',
   proyectos: 'Proyectos',
   ventas: 'Ventas',
@@ -43,6 +44,7 @@ const ROLE_VIEW_PRIORITY: Partial<Record<string, string[]>> = {
 function getHomeRoute(user: Usuario | null): { name: string; params?: Record<string, string> } {
   if (!user) return { name: 'Login' }
   if (user.rol === 'superadmin') return { name: 'GlobalDashboard' }
+  if (user.rol === 'agente_soporte' && user.es_admin_global) return { name: 'GlobalTickets' }
   
   // Nuevo: Redirigir a la lista de empresas si es B2B sin empresa seleccionada
   if (user.tipo_suscripcion === 'corporativa' && !user.id_empresa) {
@@ -122,7 +124,7 @@ const routes: RouteRecordRaw[] = [
           { path: 'caja-chica', name: 'EmpresaCajaChica', component: () => import('../pages/CajaChicaPage.vue'), meta: { requiredModule: 'E3' } },
           { path: 'taller', name: 'EmpresaTaller', component: () => import('../pages/TallerPage.vue'), meta: { requiredModule: 'E8' } },
           { path: 'proyectos', name: 'EmpresaProyectos', component: () => import('../pages/ProyectosPage.vue'), meta: { requiredModule: 'E6' } },
-          { path: 'auditoria', name: 'EmpresaAuditoria', component: () => import('../pages/AuditoriaPage.vue'), meta: { requiredModule: 'E2' } },
+          { path: 'auditoria', name: 'EmpresaAuditoria', component: () => import('../pages/AuditoriaPage.vue'), meta: { requiredView: 'auditoria', requiredModule: 'E2' } },
         ]
       },
       
@@ -131,6 +133,7 @@ const routes: RouteRecordRaw[] = [
       { path: 'global/companies', name: 'GlobalCompanies', component: () => import('../pages/GlobalCompaniesPage.vue'), meta: { requiresSuperadmin: true } },
       { path: 'global/companies/:companyId', name: 'GlobalCompanyDetail', component: () => import('../pages/GlobalCompanyDetailPage.vue'), meta: { requiresSuperadmin: true } },
       { path: 'global/users', name: 'GlobalUsers', component: () => import('../pages/GlobalUsersPage.vue'), meta: { requiresSuperadmin: true } },
+      { path: 'global/tickets', name: 'GlobalTickets', component: () => import('../pages/GlobalTicketsPage.vue'), meta: { requiresGlobalSupport: true } },
       { path: 'global/configuration', name: 'GlobalConfiguration', component: () => import('../pages/ConfigPage.vue'), meta: { requiresSuperadmin: true } },
       
       // ====== SHARED ROUTES
@@ -161,10 +164,14 @@ router.beforeEach(async (to, _from, next) => {
   const requiredView = (to.meta?.requiredView as string | undefined) ?? null
   const requiredModule = (to.meta?.requiredModule as string | undefined) ?? null
   const requiresSuperadmin = Boolean(to.meta?.requiresSuperadmin)
+  const requiresGlobalSupport = Boolean(to.meta?.requiresGlobalSupport)
   const tipoSuscripcionRequerido = (to.meta?.tipoSuscripcion as string | undefined) ?? null
   const isSuperadmin = auth.user?.rol === 'superadmin'
+  const isGlobalSupportUser = auth.user?.rol === 'agente_soporte' && auth.user?.es_admin_global
   const isGlobalRoute = to.path.startsWith('/global/')
-  const isSuperadminAllowedRoute = isGlobalRoute || to.name === 'Perfil' || to.name === 'Login' || Boolean(to.meta?.public)
+  const isEnterpriseRoute = to.path.startsWith('/empresas')
+  const isSuperadminAllowedRoute = isGlobalRoute || isEnterpriseRoute || to.name === 'Perfil' || to.name === 'Login' || Boolean(to.meta?.public)
+  const isGlobalSupportAllowedRoute = to.name === 'GlobalTickets' || to.name === 'Perfil' || to.name === 'Login' || Boolean(to.meta?.public)
   const userViews = auth.user?.vistas ?? []
   const canAccess = !requiredView || userViews.includes('*') || userViews.includes(requiredView)
   const isDisabledInErpOnly = ERP_ONLY_MODE && Boolean(to.meta?.disabledInErpOnly)
@@ -181,12 +188,19 @@ router.beforeEach(async (to, _from, next) => {
   
   // Validar tipo de suscripción (B2B/B2C)
   const tipoSuscripcionValido = !tipoSuscripcionRequerido || auth.user?.tipo_suscripcion === tipoSuscripcionRequerido
+  const requestedEmpresaIdRaw = to.params?.empresaId
+  const requestedEmpresaId = Number(Array.isArray(requestedEmpresaIdRaw) ? requestedEmpresaIdRaw[0] : requestedEmpresaIdRaw)
+  const hasRequestedEmpresaId = Number.isFinite(requestedEmpresaId) && requestedEmpresaId > 0
 
   if (to.meta.requiresAuth && !auth.accessToken) {
     next({ name: 'Login', query: { redirect: to.fullPath } })
   } else if (isSuperadmin && !isSuperadminAllowedRoute) {
     next({ name: 'GlobalDashboard' })
+  } else if (isGlobalSupportUser && !isGlobalSupportAllowedRoute) {
+    next({ name: 'GlobalTickets' })
   } else if (requiresSuperadmin && auth.user?.rol !== 'superadmin') {
+    next(getHomeRoute(auth.user))
+  } else if (requiresGlobalSupport && !isSuperadmin && !isGlobalSupportUser) {
     next(getHomeRoute(auth.user))
   } else if (requiredModule && auth.user && !canAccessModule) {
     next(getHomeRoute(auth.user))
@@ -196,8 +210,17 @@ router.beforeEach(async (to, _from, next) => {
     next(getHomeRoute(auth.user))
   } else if (requiredView && auth.user && !canAccess) {
     next(getHomeRoute(auth.user))
-  } else if (auth.user && !tipoSuscripcionValido) {
+  } else if (auth.user && !tipoSuscripcionValido && !isSuperadmin) {
     // Usuario intenta acceder a ruta de tipo suscripción diferente
+    next(getHomeRoute(auth.user))
+  } else if (
+    auth.user
+    && auth.user.tipo_suscripcion === 'corporativa'
+    && hasRequestedEmpresaId
+    && auth.user.rol !== 'superadmin'
+    && auth.user.id_empresa
+    && requestedEmpresaId !== auth.user.id_empresa
+  ) {
     next(getHomeRoute(auth.user))
   } else {
     next()

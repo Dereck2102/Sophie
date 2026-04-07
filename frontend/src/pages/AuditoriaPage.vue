@@ -5,9 +5,12 @@ import Card from '../components/ui/Card.vue'
 import Table from '../components/ui/Table.vue'
 import api from '../services/api'
 import type { AuditoriaLog } from '../types'
+import { useAuthStore } from '../stores/auth'
 
 const logs = ref<Record<string, unknown>[]>([])
 const loading = ref(false)
+const error = ref<string | null>(null)
+const auth = useAuthStore()
 
 const searchText = ref('')
 const modulo = ref('')
@@ -18,6 +21,8 @@ const accionNombre = ref('')
 const ipOrigen = ref('')
 const fechaDesde = ref('')
 const fechaHasta = ref('')
+
+const isSuperadmin = computed(() => auth.user?.rol === 'superadmin')
 
 const actionTypeOptions = [
   { value: '', label: 'Todas las acciones' },
@@ -90,13 +95,19 @@ function actionBadgeVariant(actionType: string): 'success' | 'warning' | 'danger
 
 async function loadLogs(): Promise<void> {
   loading.value = true
+  error.value = null
   try {
+    const tenantCompanyId = auth.user?.id_cliente || auth.user?.id_empresa || undefined
+    const effectiveCompanyId = isSuperadmin.value
+      ? (empresaId.value ? Number(empresaId.value) : undefined)
+      : tenantCompanyId
+
     const { data } = await api.get<AuditoriaLog[]>('/api/v1/admin/auditoria', {
       params: {
         q: searchText.value || undefined,
         modulo: modulo.value || undefined,
         id_usuario: usuarioId.value ? Number(usuarioId.value) : undefined,
-        id_cliente: empresaId.value ? Number(empresaId.value) : undefined,
+        id_cliente: effectiveCompanyId,
         accion_tipo: accionTipo.value || undefined,
         accion_nombre: accionNombre.value || undefined,
         ip_origen: ipOrigen.value || undefined,
@@ -119,6 +130,10 @@ async function loadLogs(): Promise<void> {
       ubicacion_aprox: item.ubicacion_aprox || [item.ciudad_origen, item.pais_origen].filter(Boolean).join(', ') || 'No disponible',
       detalle_resumen: summarizeDetail(item),
     }))
+  } catch (e: unknown) {
+    const err = e as { response?: { data?: { detail?: string } } }
+    logs.value = []
+    error.value = err.response?.data?.detail ?? 'No se pudo cargar auditoría.'
   } finally {
     loading.value = false
   }
@@ -145,6 +160,10 @@ onMounted(loadLogs)
     <div>
       <h1 class="text-2xl font-bold text-gray-900">Auditoría del Sistema</h1>
       <p class="text-gray-500 text-sm mt-1">Logs comprensibles de acceso, cambios y operaciones con filtros avanzados.</p>
+    </div>
+
+    <div v-if="error" class="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+      {{ error }}
     </div>
 
     <div class="grid grid-cols-2 md:grid-cols-5 gap-3">
@@ -184,7 +203,7 @@ onMounted(loadLogs)
           <label class="block text-sm font-medium text-gray-700 mb-1">Usuario (ID)</label>
           <input v-model="usuarioId" type="number" min="1" class="w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
         </div>
-        <div>
+        <div v-if="isSuperadmin">
           <label class="block text-sm font-medium text-gray-700 mb-1">Empresa (ID)</label>
           <input v-model="empresaId" type="number" min="1" class="w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
         </div>

@@ -1,92 +1,38 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { onMounted, ref } from 'vue'
 import Card from '../components/ui/Card.vue'
 import Button from '../components/ui/Button.vue'
+import Modal from '../components/ui/Modal.vue'
 import api from '../services/api'
-import type { GlobalCompanyUser, GlobalUserPasswordResetOut, PlanPreset, SubscriptionPlanTier, SubscriptionStatus, BillingCycle, UserSubscription } from '../types'
+import type { GlobalCompanyUser, GlobalUserCreateIn, GlobalUserPasswordResetOut } from '../types'
 
 const loading = ref(false)
 const mutating = ref(false)
-const savingSubscription = ref(false)
+const creatingUser = ref(false)
 const error = ref<string | null>(null)
 const success = ref<string | null>(null)
+const createModalOpen = ref(false)
 
 const users = ref<GlobalCompanyUser[]>([])
-const userSubscriptions = ref<UserSubscription[]>([])
-const plans = ref<PlanPreset[]>([])
-const selectedUserId = ref<number | null>(null)
 
-const subForm = ref<{
-  plan_tier: SubscriptionPlanTier
-  billing_cycle: BillingCycle
-  status: SubscriptionStatus
-  custom_notes: string
-  feature_overrides: string
-}>({
-  plan_tier: 'starter',
-  billing_cycle: 'monthly',
-  status: 'active',
-  custom_notes: '',
-  feature_overrides: '',
+const createForm = ref<GlobalUserCreateIn>({
+  username: '',
+  email: '',
+  password: '',
+  nombre_completo: '',
+  rol: 'agente_soporte',
 })
 
-const selectedUser = computed(() => users.value.find((item) => item.id_usuario === selectedUserId.value) ?? null)
-
-function parseFeatureOverrides(raw: string): string[] {
-  return raw
-    .split(',')
-    .map((item) => item.trim())
-    .filter((item) => item.length > 0)
-}
-
-function selectUser(userId: number): void {
-  selectedUserId.value = userId
-  const current = userSubscriptions.value.find((item) => item.id_usuario === userId)
-  if (!current) {
-    subForm.value = {
-      plan_tier: 'starter',
-      billing_cycle: 'monthly',
-      status: 'pending',
-      custom_notes: '',
-      feature_overrides: '',
-    }
-    return
-  }
-
-  subForm.value = {
-    plan_tier: current.plan_tier,
-    billing_cycle: current.billing_cycle,
-    status: current.status,
-    custom_notes: current.custom_notes ?? '',
-    feature_overrides: current.features.join(', '),
-  }
-}
-
-function applyPlanPreset(plan: SubscriptionPlanTier): void {
-  const preset = plans.value.find((item) => item.plan === plan)
-  if (!preset) return
-  subForm.value.plan_tier = plan
-  subForm.value.feature_overrides = preset.features.join(', ')
+function isStrongPassword(password: string): boolean {
+  return password.length >= 8 && /\d/.test(password)
 }
 
 async function loadUsers(): Promise<void> {
   loading.value = true
   error.value = null
   try {
-    const [usersRes, subsRes, plansRes] = await Promise.all([
-      api.get<GlobalCompanyUser[]>('/api/v1/global/users', { params: { limit: 1500 } }),
-      api.get<UserSubscription[]>('/api/v1/admin/subscriptions/users', { params: { limit: 1500 } }),
-      api.get<PlanPreset[]>('/api/v1/subscriptions/plans'),
-    ])
-    users.value = usersRes.data
-    userSubscriptions.value = subsRes.data
-    plans.value = plansRes.data
-
-    if (!selectedUserId.value && users.value.length > 0 && users.value[0]) {
-      selectUser(users.value[0].id_usuario)
-    } else if (selectedUserId.value) {
-      selectUser(selectedUserId.value)
-    }
+    const { data } = await api.get<GlobalCompanyUser[]>('/api/v1/global/users', { params: { limit: 1500 } })
+    users.value = data
   } catch (e: unknown) {
     const err = e as { response?: { data?: { detail?: string } } }
     error.value = err.response?.data?.detail ?? 'No se pudo cargar usuarios globales'
@@ -95,50 +41,41 @@ async function loadUsers(): Promise<void> {
   }
 }
 
-async function saveUserSubscription(): Promise<void> {
-  if (!selectedUserId.value) return
-  savingSubscription.value = true
+async function createUser(): Promise<void> {
+  const trimmedUsername = createForm.value.username.trim()
+  if (!trimmedUsername) {
+    error.value = 'El username es obligatorio'
+    return
+  }
+  if (!isStrongPassword(createForm.value.password)) {
+    error.value = 'La contraseña debe tener al menos 8 caracteres y al menos un número'
+    return
+  }
+
+  creatingUser.value = true
   error.value = null
   success.value = null
   try {
-    await api.put(`/api/v1/admin/subscriptions/users/${selectedUserId.value}`, {
-      plan_tier: subForm.value.plan_tier,
-      billing_cycle: subForm.value.billing_cycle,
-      status: subForm.value.status,
-      custom_notes: subForm.value.custom_notes || null,
-      feature_overrides: parseFeatureOverrides(subForm.value.feature_overrides),
+    await api.post('/api/v1/global/users', {
+      ...createForm.value,
+      username: trimmedUsername,
+      nombre_completo: createForm.value.nombre_completo?.trim() || null,
     })
-    success.value = 'Suscripción individual actualizada'
+    success.value = `Usuario ${createForm.value.username} creado correctamente`
+    createModalOpen.value = false
+    createForm.value = {
+      username: '',
+      email: '',
+      password: '',
+      nombre_completo: '',
+      rol: 'agente_soporte',
+    }
     await loadUsers()
   } catch (e: unknown) {
     const err = e as { response?: { data?: { detail?: string } } }
-    error.value = err.response?.data?.detail ?? 'No se pudo actualizar la suscripción individual'
+    error.value = err.response?.data?.detail ?? 'No se pudo crear el usuario maestro'
   } finally {
-    savingSubscription.value = false
-  }
-}
-
-async function createUserCheckout(): Promise<void> {
-  if (!selectedUserId.value) return
-  mutating.value = true
-  error.value = null
-  success.value = null
-  try {
-    const { data } = await api.post<{ id_pago: number; detail: string; checkout_url?: string | null }>('/api/v1/subscriptions/checkout', {
-      plan: subForm.value.plan_tier,
-      billing_cycle: subForm.value.billing_cycle,
-      id_usuario_owner: selectedUserId.value,
-      custom_requirements: subForm.value.plan_tier === 'custom' ? subForm.value.custom_notes : undefined,
-    })
-    success.value = `${data.detail} #${data.id_pago}`
-    if (data.checkout_url) {
-      window.open(data.checkout_url, '_blank', 'noopener,noreferrer')
-    }
-  } catch (e: unknown) {
-    const err = e as { response?: { data?: { detail?: string } } }
-    error.value = err.response?.data?.detail ?? 'No se pudo generar checkout individual'
-  } finally {
-    mutating.value = false
+    creatingUser.value = false
   }
 }
 
@@ -173,6 +110,23 @@ async function forceReset(user: GlobalCompanyUser): Promise<void> {
   }
 }
 
+async function deleteUser(user: GlobalCompanyUser): Promise<void> {
+  if (!window.confirm(`¿Eliminar usuario ${user.username}? Esta acción no se puede deshacer.`)) return
+  mutating.value = true
+  error.value = null
+  success.value = null
+  try {
+    await api.delete(`/api/v1/global/users/${user.id_usuario}`)
+    success.value = `Usuario ${user.username} eliminado`
+    await loadUsers()
+  } catch (e: unknown) {
+    const err = e as { response?: { data?: { detail?: string } } }
+    error.value = err.response?.data?.detail ?? 'No se pudo eliminar el usuario'
+  } finally {
+    mutating.value = false
+  }
+}
+
 onMounted(() => {
   void loadUsers()
 })
@@ -182,7 +136,10 @@ onMounted(() => {
   <div class="space-y-6">
     <section class="rounded-2xl border border-gray-200 bg-white p-5">
       <h2 class="text-xl font-bold text-gray-900">Gestión Global de Usuarios</h2>
-      <p class="text-sm text-gray-600 mt-1">Selecciona un usuario para asignar su plan individual sin vincularlo al plan empresarial.</p>
+      <p class="text-sm text-gray-600 mt-1">Administra únicamente cuentas maestras y de soporte del Panel Maestro.</p>
+      <div class="mt-4">
+        <Button @click="createModalOpen = true">Crear usuario maestro</Button>
+      </div>
     </section>
 
     <p v-if="error" class="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{{ error }}</p>
@@ -206,9 +163,7 @@ onMounted(() => {
             <tr
               v-for="item in users"
               :key="item.id_usuario"
-              class="border-b border-gray-100 cursor-pointer"
-              :class="selectedUserId === item.id_usuario ? 'bg-blue-50' : ''"
-              @click="selectUser(item.id_usuario)"
+              class="border-b border-gray-100"
             >
               <td class="px-2 py-2 font-medium">{{ item.username }}</td>
               <td class="px-2 py-2">{{ item.email }}</td>
@@ -218,11 +173,12 @@ onMounted(() => {
                 <span :class="item.activo ? 'text-emerald-700' : 'text-amber-700'">{{ item.activo ? 'Activo' : 'Inactivo' }}</span>
               </td>
               <td class="px-2 py-2">
-                <div class="flex flex-wrap gap-2" @click.stop>
+                <div class="flex flex-wrap gap-2">
                   <Button size="sm" variant="secondary" :disabled="mutating" @click="toggleUser(item)">
                     {{ item.activo ? 'Desactivar' : 'Activar' }}
                   </Button>
                   <Button size="sm" variant="secondary" :disabled="mutating" @click="forceReset(item)">Forzar reset</Button>
+                  <Button size="sm" variant="danger" :disabled="mutating" @click="deleteUser(item)">Eliminar</Button>
                 </div>
               </td>
             </tr>
@@ -231,67 +187,38 @@ onMounted(() => {
       </div>
     </Card>
 
-    <Card title="Suscripción individual" subtitle="Plan independiente del plan empresarial">
-      <div v-if="!selectedUser" class="text-sm text-gray-500">Selecciona un usuario de la tabla.</div>
-      <div v-else class="space-y-4">
-        <div class="text-sm text-gray-600">
-          Usuario seleccionado: <span class="font-semibold text-gray-900">{{ selectedUser.username }}</span>
-        </div>
-
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
-          <div>
-            <label class="block text-sm font-medium text-gray-700 mb-1">Plan</label>
-            <select v-model="subForm.plan_tier" class="w-full rounded-lg border px-3 py-2 text-sm">
-              <option v-for="plan in plans" :key="plan.plan" :value="plan.plan">{{ plan.name }}</option>
-            </select>
-          </div>
-          <div>
-            <label class="block text-sm font-medium text-gray-700 mb-1">Ciclo</label>
-            <select v-model="subForm.billing_cycle" class="w-full rounded-lg border px-3 py-2 text-sm">
-              <option value="monthly">Mensual</option>
-              <option value="yearly">Anual</option>
-            </select>
-          </div>
-          <div>
-            <label class="block text-sm font-medium text-gray-700 mb-1">Estado</label>
-            <select v-model="subForm.status" class="w-full rounded-lg border px-3 py-2 text-sm">
-              <option value="active">Activa</option>
-              <option value="trial">Trial</option>
-              <option value="past_due">Past due</option>
-              <option value="canceled">Cancelada</option>
-              <option value="pending">Pendiente</option>
-            </select>
-          </div>
-        </div>
-
-        <div class="flex flex-wrap gap-2">
-          <Button
-            v-for="preset in plans.filter((item) => item.plan !== 'custom')"
-            :key="`user-preset-${preset.plan}`"
-            size="sm"
-            variant="secondary"
-            type="button"
-            @click="applyPlanPreset(preset.plan)"
-          >
-            Preset {{ preset.name }}
-          </Button>
-        </div>
-
+    <Modal :open="createModalOpen" title="Crear usuario maestro" size="md" @close="createModalOpen = false">
+      <form class="space-y-3" @submit.prevent="createUser">
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">Features (separadas por coma)</label>
-          <input v-model="subForm.feature_overrides" type="text" class="w-full rounded-lg border px-3 py-2 text-sm" placeholder="E1, E2, limit_total_users:5" />
+          <label class="block text-sm font-medium text-gray-700 mb-1">Username</label>
+          <input v-model="createForm.username" type="text" class="w-full rounded-lg border px-3 py-2 text-sm" required />
         </div>
-
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">Notas</label>
-          <textarea v-model="subForm.custom_notes" rows="2" class="w-full rounded-lg border px-3 py-2 text-sm" />
+          <label class="block text-sm font-medium text-gray-700 mb-1">Email</label>
+          <input v-model="createForm.email" type="email" class="w-full rounded-lg border px-3 py-2 text-sm" required />
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">Nombre completo</label>
+          <input v-model="createForm.nombre_completo" type="text" class="w-full rounded-lg border px-3 py-2 text-sm" />
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">Rol</label>
+          <select v-model="createForm.rol" class="w-full rounded-lg border px-3 py-2 text-sm">
+            <option value="agente_soporte">Agente de soporte</option>
+            <option value="admin">Admin panel maestro</option>
+          </select>
+          <p class="mt-1 text-xs text-gray-500">El rol superadmin propietario se mantiene protegido por política del sistema.</p>
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">Password temporal</label>
+          <input v-model="createForm.password" type="password" class="w-full rounded-lg border px-3 py-2 text-sm" required minlength="8" />
         </div>
 
-        <div class="flex flex-wrap gap-2">
-          <Button :loading="savingSubscription" @click="saveUserSubscription">Guardar suscripción individual</Button>
-          <Button :loading="mutating" variant="secondary" @click="createUserCheckout">Generar checkout individual</Button>
+        <div class="flex justify-end gap-2">
+          <Button type="button" variant="secondary" @click="createModalOpen = false">Cancelar</Button>
+          <Button type="submit" :loading="creatingUser">Crear usuario</Button>
         </div>
-      </div>
-    </Card>
+      </form>
+    </Modal>
   </div>
 </template>

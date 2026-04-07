@@ -7,6 +7,7 @@ from pydantic import BaseModel
 
 from app.infrastructure.models.cliente import EstadoClienteEnum
 from app.infrastructure.models.subscriptions import BillingCycleEnum, PlanTierEnum, SubscriptionStatusEnum
+from app.infrastructure.models.tickets import EstadoTicketEnum, PrioridadEnum, TipoTicketEnum
 from app.infrastructure.models.usuario import RolEnum
 
 
@@ -97,6 +98,14 @@ class GlobalCompanyUserOut(BaseModel):
     empresa_nombre: str | None
 
 
+class GlobalUserCreateIn(BaseModel):
+    username: str
+    email: str
+    password: str
+    nombre_completo: str | None = None
+    rol: RolEnum
+
+
 class GlobalUserActivationIn(BaseModel):
     activo: bool
 
@@ -105,3 +114,40 @@ class GlobalUserPasswordResetOut(BaseModel):
     id_usuario: int
     reset_token: str
     expires_at: datetime
+
+
+class GlobalTicketOut(BaseModel):
+    id_ticket: int
+    numero: str
+    tipo: TipoTicketEnum
+    estado: EstadoTicketEnum
+    prioridad: PrioridadEnum
+    titulo: str
+    descripcion: str | None = None
+    fecha_creacion: datetime
+    id_cliente: int
+    cliente_nombre: str | None = None
+    id_empresa: int | None = None
+    empresa_nombre: str | None = None
+    id_tecnico: int | None = None
+    tecnico_username: str | None = None
+
+
+class GlobalTicketUpdateIn(BaseModel):
+    estado: EstadoTicketEnum | None = None
+    id_tecnico: int | None = None
+
+
+class GlobalTicketClientLookupOut(BaseModel):
+    id_cliente: int
+    tipo_cliente: str
+    id_empresa: int | None = None
+    empresa_nombre: str | None = None
+    cliente_nombre: str
+    ruc: str | None = None
+
+
+class GlobalTicketProjectLookupOut(BaseModel):
+    id_proyecto: int
+    id_cliente: int
+    nombre: str

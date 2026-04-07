@@ -4,6 +4,7 @@ export default {
     globalDashboard: 'Dashboard Global',
     globalCompanies: 'Empresas Globales',
     globalUsers: 'Usuarios Globales',
+    globalTickets: 'Tickets Globales',
     flujoOperativo: 'Flujo Operativo',
     ventas: 'Ventas',
     compras: 'Compras',

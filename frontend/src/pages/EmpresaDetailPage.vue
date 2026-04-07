@@ -113,8 +113,9 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, watch } from 'vue'
 import { useRoute } from 'vue-router'
+import { useRouter } from 'vue-router'
 import { useClienteStore } from '../stores/clientes'
 import { useSubscriptionStore } from '../stores/subscription'
 import { useAuthStore } from '../stores/auth'
@@ -122,11 +123,16 @@ import Badge from '../components/ui/Badge.vue'
 import type { Empresa, Cliente, EmpresaSubscription } from '../types'
 
 const route = useRoute()
+const router = useRouter()
 const clienteStore = useClienteStore()
 const subscriptionStore = useSubscriptionStore()
 const authStore = useAuthStore()
 
-const empresaId = computed(() => parseInt(route.params.empresaId as string))
+const empresaId = computed(() => {
+  const rawEmpresaId = route.params.empresaId
+  const parsedEmpresaId = Array.isArray(rawEmpresaId) ? Number(rawEmpresaId[0]) : Number(rawEmpresaId)
+  return Number.isFinite(parsedEmpresaId) && parsedEmpresaId > 0 ? parsedEmpresaId : 0
+})
 
 const empresa = computed(() => {
   return (clienteStore.clientes as Cliente[]).find(c => c.id_cliente === empresaId.value)?.empresa as Empresa | undefined
@@ -178,11 +184,16 @@ const hasModule = (moduleCode: string): boolean => {
   return subscriptionStore.hasModule(moduleCode as any)
 }
 
-// Validar que el usuario pertenece a esta empresa
-if (authStore.user?.id_empresa !== empresaId.value && authStore.user?.rol !== 'superadmin') {
-  // Redirect a empresas si no tiene acceso
-  location.href = '/empresas'
-}
+watch(
+  [() => authStore.user, empresaId],
+  ([user]) => {
+    if (!user || !empresaId.value) return
+    if (user.rol !== 'superadmin' && user.id_empresa !== empresaId.value) {
+      void router.replace({ name: 'Empresas' })
+    }
+  },
+  { immediate: true },
+)
 </script>
 
 <style scoped>

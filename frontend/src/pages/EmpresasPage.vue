@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { Building2, Pencil, Plus, Trash2 } from 'lucide-vue-next'
 import Card from '../components/ui/Card.vue'
 import Table from '../components/ui/Table.vue'
@@ -12,6 +13,7 @@ import type { EstadoCliente } from '../types'
 
 const clienteStore = useClienteStore()
 const auth = useAuthStore()
+const router = useRouter()
 
 const loading = ref(true)
 const showCreateModal = ref(false)
@@ -47,7 +49,7 @@ const columns = [
   { key: 'contacto_principal', label: t('companyPage.contact') },
   { key: 'telefono', label: t('companyPage.phone') },
   { key: 'estado', label: t('companyPage.status') },
-  { key: 'acciones', label: t('common.actions'), class: 'w-40' },
+  { key: 'acciones', label: t('common.actions'), class: 'w-64' },
 ]
 
 const empresas = computed(() =>
@@ -200,6 +202,10 @@ async function deleteCompany(idCliente: number): Promise<void> {
   }
 }
 
+function enterCompanyErp(idCliente: number): void {
+  void router.push({ name: 'EmpresaDashboard', params: { empresaId: String(idCliente) } })
+}
+
 onMounted(loadData)
 </script>
 
@@ -241,6 +247,13 @@ onMounted(loadData)
         </template>
         <template #acciones="{ row }">
           <div class="flex items-center gap-2">
+            <button
+              @click.stop="enterCompanyErp(Number((row as Record<string, unknown>).id_cliente))"
+              class="px-2 py-1 text-xs bg-blue-600 text-white rounded-lg hover:bg-blue-700 inline-flex items-center gap-1"
+            >
+              <Building2 :size="12" />
+              Entrar ERP
+            </button>
             <button
               :disabled="!canManage"
               @click.stop="openEditModal(row as never)"

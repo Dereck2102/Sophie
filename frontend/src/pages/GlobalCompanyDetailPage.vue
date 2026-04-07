@@ -30,7 +30,10 @@ const company = ref<GlobalCompany | null>(null)
 const plans = ref<PlanPreset[]>([])
 const subscriptions = ref<EmpresaSubscription[]>([])
 
-const companyId = computed(() => Number(route.params.companyId))
+const companyId = computed(() => {
+  const parsedCompanyId = Number(route.params.companyId)
+  return Number.isFinite(parsedCompanyId) && parsedCompanyId > 0 ? parsedCompanyId : 0
+})
 
 const companyForm = ref<GlobalCompanyUpdate>({
   nombre: '',

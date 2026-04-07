@@ -79,6 +79,7 @@ const pageTitle = () => {
     '/global/dashboard': t('nav.globalDashboard'),
     '/global/companies': t('nav.globalCompanies'),
     '/global/users': t('nav.globalUsers'),
+    '/global/tickets': t('nav.globalTickets'),
     '/ventas': t('nav.ventas'),
     '/compras': t('nav.compras'),
     '/taller': t('nav.taller'),
@@ -113,11 +114,16 @@ watch(
 </script>
 
 <template>
-  <div class="flex h-screen bg-gray-50 dark:bg-gray-950">
+  <div class="flex min-h-screen bg-transparent text-slate-900 dark:text-slate-100">
+    <div class="pointer-events-none fixed inset-0 -z-10 overflow-hidden">
+      <div class="absolute -left-24 top-10 h-72 w-72 rounded-full bg-sky-400/15 blur-3xl"></div>
+      <div class="absolute right-0 top-40 h-80 w-80 rounded-full bg-cyan-500/10 blur-3xl"></div>
+      <div class="absolute bottom-0 left-1/3 h-96 w-96 rounded-full bg-indigo-400/10 blur-3xl"></div>
+    </div>
     <SidebarNav />
-    <div class="flex-1 flex flex-col min-w-0 overflow-hidden">
+    <div class="flex min-w-0 flex-1 flex-col overflow-hidden">
       <TopBar :title="pageTitle()" />
-      <main class="flex-1 overflow-y-auto p-6">
+      <main class="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8">
         <RouterView />
       </main>
     </div>

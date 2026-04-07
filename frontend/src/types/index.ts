@@ -368,10 +368,55 @@ export interface GlobalCompanyUser {
   username: string
   email: string
   rol: RolEnum
-  rol_fijo: 'superadmin' | 'admin'
+  rol_fijo: 'superadmin' | 'admin' | 'soporte'
   activo: boolean
   id_empresa?: number | null
   empresa_nombre?: string | null
+}
+
+export interface GlobalUserCreateIn {
+  username: string
+  email: string
+  password: string
+  nombre_completo?: string
+  rol: 'superadmin' | 'admin' | 'agente_soporte'
+}
+
+export interface GlobalTicket {
+  id_ticket: number
+  numero: string
+  tipo: TipoTicket
+  estado: EstadoTicket
+  prioridad: PrioridadTicket
+  titulo: string
+  descripcion?: string | null
+  fecha_creacion: string
+  id_cliente: number
+  cliente_nombre?: string | null
+  id_empresa?: number | null
+  empresa_nombre?: string | null
+  id_tecnico?: number | null
+  tecnico_username?: string | null
+}
+
+export interface GlobalTicketUpdateIn {
+  estado?: EstadoTicket
+  id_tecnico?: number
+}
+
+export interface GlobalTicketClientLookup {
+  id_cliente: number
+  tipo_cliente: TipoCliente
+  id_empresa?: number | null
+  empresa_nombre?: string | null
+  cliente_nombre: string
+  ruc?: string | null
+}
+
+export interface GlobalTicketProjectLookup {
+  id_proyecto: number
+  id_cliente: number
+  nombre: string
 }
 
 export interface UserSubscription {

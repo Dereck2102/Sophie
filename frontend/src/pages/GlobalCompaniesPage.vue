@@ -24,6 +24,10 @@ const viewMode = ref<'lista' | 'recuadro' | 'simple' | 'completa'>('lista')
 
 const form = ref<GlobalCompanyUpdate>({ nombre: '', branding_nombre: '', branding_logo_url: '', ruc: '' })
 
+function isValidRuc(value: string): boolean {
+  return /^\d{10,13}$/.test(value.trim())
+}
+
 const sortedCompanies = computed(() => [...companies.value].sort((a, b) => a.nombre.localeCompare(b.nombre)))
 const availablePlans = computed(() => {
   const plans = new Set<string>()
@@ -83,11 +87,20 @@ async function loadCompanies(): Promise<void> {
 
 async function saveEdit(): Promise<void> {
   if (!editingCompanyId.value) return
+  const normalizedRuc = (form.value.ruc ?? '').trim()
+  if (!isValidRuc(normalizedRuc)) {
+    error.value = 'RUC inválido. Debe contener entre 10 y 13 dígitos.'
+    return
+  }
+
   saving.value = true
   error.value = null
   success.value = null
   try {
-    await api.patch(`/api/v1/global/companies/${editingCompanyId.value}`, form.value)
+    await api.patch(`/api/v1/global/companies/${editingCompanyId.value}`, {
+      ...form.value,
+      ruc: normalizedRuc,
+    })
     success.value = 'Empresa actualizada'
     editModalOpen.value = false
     await loadCompanies()
